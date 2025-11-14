@@ -1,6 +1,18 @@
-# Fuisor Backend
+# Fuisor Backend API
 
 Backend service for Fuisor - an Instagram-like social media application using Supabase as the database.
+
+**Repository:** [https://github.com/Ekiliot/fuisor2](https://github.com/Ekiliot/fuisor2)
+
+## 🚀 Quick Deploy
+
+This backend is ready to deploy on:
+- **Vercel** (recommended) - See `vercel.json`
+- **Railway** - See `railway.json`
+- **Render** - See `render.yaml`
+- **Heroku** - See `Procfile`
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)
 
 ## Features
 
