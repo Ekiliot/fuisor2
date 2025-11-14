@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -36,10 +37,10 @@ router.get('/', validateAuth, async (req, res) => {
         .range(from, to);
 
       if (usersError) {
-        console.error('Error searching users:', usersError);
+        logger.searchError('Error searching users', usersError);
       } else {
         users = usersData || [];
-        console.log(`Found ${users.length} users for query "${searchQuery}"`);
+        logger.search(`Found ${users.length} users for query "${searchQuery}"`);
       }
     }
 
@@ -57,7 +58,7 @@ router.get('/', validateAuth, async (req, res) => {
         .range(from, to);
 
       if (postsError) {
-        console.error('Error searching posts:', postsError);
+        logger.searchError('Error searching posts', postsError);
       } else {
         // Get user's likes for posts
         const postIds = postsData.map(post => post.id);
@@ -94,7 +95,7 @@ router.get('/', validateAuth, async (req, res) => {
         .range(from, to);
 
       if (hashtagsError) {
-        console.error('Error searching hashtags:', hashtagsError);
+        logger.searchError('Error searching hashtags', hashtagsError);
       } else {
         hashtags = hashtagsData?.map(hashtag => ({
           id: hashtag.id,
@@ -114,7 +115,7 @@ router.get('/', validateAuth, async (req, res) => {
       query: q
     });
   } catch (error) {
-    console.error('Error searching:', error);
+    logger.searchError('Error searching', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -137,13 +138,13 @@ router.get('/users', validateAuth, async (req, res) => {
       .limit(limit);
 
     if (error) {
-      console.error('Error searching users:', error);
+      logger.searchError('Error searching users', error);
       return res.status(500).json({ error: error.message });
     }
 
     res.json({ users: data || [] });
   } catch (error) {
-    console.error('Error searching users:', error);
+    logger.searchError('Error searching users', error);
     res.status(500).json({ error: error.message });
   }
 });

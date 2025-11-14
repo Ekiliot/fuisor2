@@ -2,10 +2,17 @@ import express from 'express';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validateProfileUpdate, validateUUID } from '../middleware/validation.middleware.js';
+import { logger } from '../utils/logger.js';
 import multer from 'multer';
 
 const router = express.Router();
 const upload = multer();
+
+// Константы для определения временных интервалов
+const ONLINE_THRESHOLD = 60 * 1000; // 1 минута (если heartbeat не приходил дольше - считаем офлайн)
+const RECENTLY_THRESHOLD = 5 * 60 * 1000; // 5 минут
+const THIS_WEEK_THRESHOLD = 7 * 24 * 60 * 60 * 1000; // 7 дней
+const THIS_MONTH_THRESHOLD = 30 * 24 * 60 * 60 * 1000; // 30 дней
 
 // Get current user profile
 router.get('/profile', validateAuth, async (req, res) => {
@@ -481,6 +488,199 @@ router.get('/me/saved', validateAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting saved posts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Обновить статус онлайн (heartbeat)
+// ==============================================
+router.post('/heartbeat', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        is_online: true,
+        last_seen: now,
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating online status:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, last_seen: now });
+  } catch (error) {
+    console.error('Error in heartbeat:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Получить статус пользователя (онлайн/последний заход)
+// ==============================================
+router.get('/:userId/status', validateAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user.id;
+
+    // Получаем данные пользователя
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, is_online, last_seen, show_online_status')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // ПРОВЕРКА: Если last_seen старше ONLINE_THRESHOLD, принудительно ставим is_online = false
+    const lastSeenDate = new Date(user.last_seen);
+    const now = new Date();
+    const timeSinceLastSeen = now - lastSeenDate;
+    
+    let isActuallyOnline = user.is_online;
+    
+    // Если прошло больше ONLINE_THRESHOLD с последнего heartbeat - пользователь ОФЛАЙН
+    if (timeSinceLastSeen > ONLINE_THRESHOLD) {
+      logger.users(`User ${userId} is OFFLINE (last seen ${timeSinceLastSeen}ms ago, threshold: ${ONLINE_THRESHOLD}ms)`, {
+        userId,
+        timeSinceLastSeen,
+        threshold: ONLINE_THRESHOLD,
+      });
+      isActuallyOnline = false;
+      
+      // Обновляем в БД чтобы не проверять каждый раз
+      await supabaseAdmin
+        .from('profiles')
+        .update({ is_online: false })
+        .eq('id', userId);
+    } else {
+      logger.users(`User ${userId} is ONLINE (last seen ${timeSinceLastSeen}ms ago)`, {
+        userId,
+        timeSinceLastSeen,
+      });
+    }
+
+    // Получаем настройку приватности текущего пользователя
+    const { data: currentUser, error: currentUserError } = await supabaseAdmin
+      .from('profiles')
+      .select('show_online_status')
+      .eq('id', currentUserId)
+      .single();
+
+    if (currentUserError) {
+      console.error('Error fetching current user settings:', currentUserError);
+    }
+
+    // Если у текущего пользователя отключен показ статуса, показываем приблизительное время для всех
+    const showExactTime = currentUser?.show_online_status !== false && user.show_online_status !== false;
+
+    // Если пользователь онлайн (реально онлайн!), всегда показываем это
+    if (isActuallyOnline) {
+      return res.json({
+        is_online: true,
+        last_seen: user.last_seen,
+        status_text: 'online',
+      });
+    }
+
+    // Если пользователь оффлайн
+    const diff = timeSinceLastSeen;
+
+    let statusText;
+    if (showExactTime) {
+      // Показываем точное время
+      if (diff < RECENTLY_THRESHOLD) {
+        statusText = 'recently';
+      } else if (diff < THIS_WEEK_THRESHOLD) {
+        statusText = 'this week';
+      } else if (diff < THIS_MONTH_THRESHOLD) {
+        statusText = 'this month';
+      } else {
+        statusText = 'long ago';
+      }
+    } else {
+      // Показываем приблизительное время
+      if (diff < THIS_WEEK_THRESHOLD) {
+        statusText = 'recently';
+      } else if (diff < THIS_MONTH_THRESHOLD) {
+        statusText = 'this week';
+      } else {
+        statusText = 'long ago';
+      }
+    }
+
+    res.json({
+      is_online: false,
+      last_seen: showExactTime ? user.last_seen : null,
+      status_text: statusText,
+    });
+  } catch (error) {
+    console.error('Error getting user status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Установить статус офлайн (при выходе из приложения)
+// ==============================================
+router.post('/set-offline', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        is_online: false,
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error setting offline status:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`[SetOffline] User ${userId} is now offline`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in set-offline:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Обновить настройку приватности онлайн-статуса
+// ==============================================
+router.put('/settings/online-status', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { show_online_status } = req.body;
+
+    if (typeof show_online_status !== 'boolean') {
+      return res.status(400).json({ error: 'show_online_status must be a boolean' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ show_online_status })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating online status setting:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error updating online status setting:', error);
     res.status(500).json({ error: error.message });
   }
 });

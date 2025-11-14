@@ -98,6 +98,20 @@ export const validateUUID = [
   validateRequest
 ];
 
+export const validateChatId = [
+  param('chatId')
+    .isUUID()
+    .withMessage('Invalid chat ID format'),
+  validateRequest
+];
+
+export const validateMessageId = [
+  param('messageId')
+    .isUUID()
+    .withMessage('Invalid message ID format'),
+  validateRequest
+];
+
 export const validateCommentId = [
   param('commentId')
     .isUUID()

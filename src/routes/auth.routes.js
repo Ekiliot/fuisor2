@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validateSignup, validateLogin } from '../middleware/validation.middleware.js';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.post('/signup', validateSignup, async (req, res) => {
       .single();
 
     if (existingUser) {
+      logger.auth('Registration attempt with existing username', { username });
       return res.status(400).json({ message: 'Username already taken' });
     }
 
@@ -44,11 +46,11 @@ router.post('/signup', validateSignup, async (req, res) => {
       ]);
 
     if (profileError) {
-      console.error('Profile creation error:', profileError);
+      logger.authError('Profile creation error', profileError);
       throw profileError;
     }
 
-    console.log('Profile created successfully for user:', data.user.id);
+    logger.auth('User registered successfully', { userId: data.user.id, username, email });
     res.status(201).json({ message: 'User created successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -77,6 +79,7 @@ router.post('/login', validateLogin, async (req, res) => {
         .single();
 
       if (profileError || !profile) {
+        logger.auth('Login attempt with invalid username', { email_or_username });
         return res.status(401).json({ error: 'Invalid username or password' });
       }
       
@@ -88,7 +91,10 @@ router.post('/login', validateLogin, async (req, res) => {
       password,
     });
 
-    if (error) throw error;
+    if (error) {
+      logger.authError('Login failed', { email_or_username, error: error.message });
+      throw error;
+    }
 
     // Get user profile for additional info
     const { data: userProfile } = await supabase
@@ -97,12 +103,15 @@ router.post('/login', validateLogin, async (req, res) => {
       .eq('id', data.user.id)
       .single();
 
+    logger.auth('User logged in successfully', { userId: data.user.id, username: userProfile?.username });
+
     res.json({ 
       user: data.user, 
       session: data.session,
       profile: userProfile
     });
   } catch (error) {
+    logger.authError('Login error', error);
     res.status(401).json({ error: error.message });
   }
 });
@@ -111,9 +120,14 @@ router.post('/login', validateLogin, async (req, res) => {
 router.post('/logout', validateAuth, async (req, res) => {
   try {
     const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    if (error) {
+      logger.authError('Logout error', error);
+      throw error;
+    }
+    logger.auth('User logged out', { userId: req.user.id });
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
+    logger.authError('Logout error', error);
     res.status(500).json({ error: error.message });
   }
 });

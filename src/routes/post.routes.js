@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validatePost, validatePostUpdate, validateComment, validateUUID, validateCommentId } from '../middleware/validation.middleware.js';
 import { createNotification } from './notification.routes.js';
+import { logger } from '../utils/logger.js';
 import multer from 'multer';
 
 const router = express.Router();
@@ -11,11 +12,11 @@ const upload = multer();
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
   if (req.method === 'POST') {
-    console.log('=== POST REQUEST TO /posts ===');
-    console.log('Method:', req.method);
-    console.log('URL:', req.url);
-    console.log('Headers:', req.headers);
-    console.log('Body keys:', Object.keys(req.body || {}));
+    logger.post('POST request to /posts', {
+      method: req.method,
+      url: req.url,
+      bodyKeys: Object.keys(req.body || {})
+    });
   }
   next();
 });
@@ -74,42 +75,40 @@ router.get('/', validateAuth, async (req, res) => {
 // Create post
 router.post('/', validateAuth, upload.single('media'), validatePost, async (req, res) => {
   try {
-    console.log('=== POST CREATION REQUEST ===');
-    console.log('User ID:', req.user.id);
-    console.log('User email:', req.user.email);
-    console.log('Request body:', req.body);
-    console.log('Media file:', req.file ? {
+    logger.post('Post creation request', {
+      userId: req.user.id,
+      userEmail: req.user.email,
+      hasMedia: !!req.file,
+      mediaInfo: req.file ? {
       originalname: req.file.originalname,
       mimetype: req.file.mimetype,
       size: req.file.size
-    } : 'No file');
+      } : null
+    });
     
     const { caption, media_type, mentions, hashtags } = req.body;
     const media = req.file;
 
     if (!media) {
-      console.log('❌ No media file provided');
+      logger.postError('No media file provided', { userId: req.user.id });
       return res.status(400).json({ message: 'Media file is required' });
     }
 
-    console.log('✅ Media file received, validating...');
+    logger.post('Media file received, validating...');
 
     // Validate media type
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
     const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
 
-    console.log('Media mimetype:', media.mimetype);
-    console.log('Allowed types:', allowedTypes);
-
     if (!allowedTypes.includes(media.mimetype)) {
-      console.log('❌ Invalid file type:', media.mimetype);
+      logger.postError('Invalid file type', { mimetype: media.mimetype, userId: req.user.id });
       return res.status(400).json({ 
         message: 'Invalid file type. Supported: images (JPEG, PNG, GIF, WebP) and videos (MP4, WebM, QuickTime)' 
       });
     }
 
-    console.log('✅ Media type validation passed');
+    logger.post('Media type validation passed');
 
     // Determine media type if not provided
     let detectedMediaType = media_type;
@@ -126,22 +125,20 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
     }
 
     // Upload media to Supabase Storage
-    console.log('📤 Uploading media to Supabase Storage...');
+    logger.post('Uploading media to Supabase Storage...');
     const fileExt = media.originalname.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(7)}.${fileExt}`;
-    console.log('Generated filename:', fileName);
-    console.log('File size:', media.buffer.length);
     
     const { error: uploadError } = await supabaseAdmin.storage
       .from('post-media')
       .upload(fileName, media.buffer);
 
     if (uploadError) {
-      console.log('❌ Storage upload error:', uploadError);
+      logger.postError('Storage upload error', uploadError);
       throw uploadError;
     }
     
-    console.log('✅ Media uploaded to storage successfully');
+    logger.post('Media uploaded to storage successfully', { fileName });
 
     // Get public URL for the uploaded media
     const { data: { publicUrl } } = supabaseAdmin.storage
@@ -149,11 +146,13 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
       .getPublicUrl(fileName);
 
     // Create post record using admin client to bypass RLS
-    console.log('=== CREATING POST IN DATABASE ===');
-    console.log('User ID:', req.user.id);
-    console.log('Caption:', caption);
-    console.log('Media URL:', publicUrl);
-    console.log('Media Type:', detectedMediaType);
+    logger.post('Creating post in database', {
+      userId: req.user.id,
+      caption: caption?.substring(0, 50),
+      mediaType: detectedMediaType,
+      hasMentions: !!mentions,
+      hasHashtags: !!hashtags
+    });
     
     const { data, error } = await supabaseAdmin
       .from('posts')
@@ -168,9 +167,12 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
       .select()
       .single();
       
-    console.log('Database response:', { data, error });
+    if (error) {
+      logger.postError('Database error creating post', error);
+      throw error;
+    }
 
-    if (error) throw error;
+    logger.post('Post created successfully', { postId: data.id, userId: req.user.id });
 
     // Process mentions if provided
     if (mentions && Array.isArray(mentions)) {
@@ -205,11 +207,12 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
 // Get feed posts (posts from followed users) - MUST be before /:id route
 router.get('/feed', validateAuth, async (req, res) => {
   try {
-    console.log('=== FEED REQUEST RECEIVED ===');
-    console.log('User ID:', req.user?.id);
-    console.log('User email:', req.user?.email);
-    console.log('Query params:', req.query);
-    console.log('Headers:', req.headers);
+    logger.recommendations('Feed request received', {
+      userId: req.user?.id,
+      userEmail: req.user?.email,
+      page: req.query.page,
+      limit: req.query.limit
+    });
     
     const { page = 1, limit = 10 } = req.query;
     const from = (page - 1) * limit;
@@ -223,17 +226,19 @@ router.get('/feed', validateAuth, async (req, res) => {
       .eq('follower_id', userId);
 
     if (followingError) {
-      console.log('❌ Error getting following:', followingError);
+      logger.recommendationsError('Error getting following users', followingError);
       throw followingError;
     }
 
-    console.log('Following users:', following?.length || 0);
     const followingIds = following.map(f => f.following_id);
     
     // Always include own posts in feed
     followingIds.push(userId);
     
-    console.log('✅ Including own posts, total users:', followingIds.length);
+    logger.recommendations('Feed preparation', {
+      followingCount: following?.length || 0,
+      totalUsers: followingIds.length
+    });
 
     // If user doesn't follow anyone (new user), show all posts (discovery mode)
     let query = supabaseAdmin
@@ -248,9 +253,9 @@ router.get('/feed', validateAuth, async (req, res) => {
     // Otherwise show all posts (discovery mode for new users)
     if (followingIds.length > 1) { // > 1 because we always have userId
       query = query.in('user_id', followingIds);
-      console.log('✅ Filtered feed: showing posts from followed users');
+      logger.recommendations('Filtered feed: showing posts from followed users');
     } else {
-      console.log('✅ Discovery mode: showing all posts (new user)');
+      logger.recommendations('Discovery mode: showing all posts (new user)');
     }
 
     const { data, error, count } = await query
@@ -258,11 +263,11 @@ router.get('/feed', validateAuth, async (req, res) => {
       .range(from, to);
 
     if (error) {
-      console.log('❌ Error getting posts:', error);
+      logger.recommendationsError('Error getting posts', error);
       throw error;
     }
 
-    console.log('✅ Posts retrieved:', data?.length || 0);
+    logger.recommendations('Posts retrieved', { count: data?.length || 0, total: count });
 
     // Get user's likes for all posts
     const postIds = data.map(post => post.id);
@@ -273,22 +278,44 @@ router.get('/feed', validateAuth, async (req, res) => {
       .in('post_id', postIds);
 
     if (likesError) {
-      console.log('❌ Error getting user likes:', likesError);
+      logger.recommendationsError('Error getting user likes', likesError);
       throw likesError;
     }
 
     const likedPostIds = new Set(userLikes.map(like => like.post_id));
-    console.log('✅ User liked posts:', likedPostIds.size);
+    logger.recommendations('Feed response prepared', { 
+      postsCount: data?.length || 0,
+      likedPosts: likedPostIds.size
+    });
 
-    // Transform data to include likes count and is_liked status
+    // Get comments count for all posts (including replies)
+    const { data: commentsCounts, error: commentsCountError } = await supabaseAdmin
+      .from('comments')
+      .select('post_id')
+      .in('post_id', postIds);
+
+    if (commentsCountError) {
+      logger.recommendationsError('Error getting comments count', commentsCountError);
+    }
+
+    // Count comments per post (including replies)
+    const commentsCountMap = {};
+    if (commentsCounts) {
+      commentsCounts.forEach(comment => {
+        commentsCountMap[comment.post_id] = (commentsCountMap[comment.post_id] || 0) + 1;
+      });
+    }
+
+    // Transform data to include likes count, comments count and is_liked status
     const postsWithLikes = data.map(post => ({
       ...post,
       likes_count: post.likes?.[0]?.count || 0,
+      comments_count: commentsCountMap[post.id] || 0,
       is_liked: likedPostIds.has(post.id),
       likes: undefined // Remove the likes array from response
     }));
 
-    console.log('✅ Feed response sent successfully');
+    logger.recommendations('Feed response sent successfully');
     res.json({
       posts: postsWithLikes,
       total: count,
@@ -296,7 +323,7 @@ router.get('/feed', validateAuth, async (req, res) => {
       totalPages: Math.ceil(count / limit)
     });
   } catch (error) {
-    console.log('❌ Feed error:', error);
+    logger.recommendationsError('Feed error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -397,6 +424,12 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
+    logger.post('Like/Unlike post request', {
+      postId: id,
+      userId: userId,
+      userEmail: req.user.email
+    });
+
     // Check if already liked
     const { data: existingLike } = await supabaseAdmin
       .from('likes')
@@ -405,15 +438,23 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
       .eq('user_id', userId)
       .single();
 
+    let isLiked;
+    let likesCount;
+
     if (existingLike) {
       // Unlike
+      logger.post('Unliking post', { postId: id, userId: userId });
+      
       const { error } = await supabaseAdmin
         .from('likes')
         .delete()
         .eq('post_id', id)
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        logger.postError('Error unliking post', { postId: id, userId: userId, error });
+        throw error;
+      }
 
       // Delete like notification
       await supabaseAdmin
@@ -423,14 +464,20 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
         .eq('actor_id', userId)
         .eq('type', 'like');
 
-      res.json({ message: 'Post unliked successfully' });
+      isLiked = false;
+      logger.post('Post unliked successfully', { postId: id, userId: userId });
     } else {
       // Like
+      logger.post('Liking post', { postId: id, userId: userId });
+      
       const { error } = await supabaseAdmin
         .from('likes')
         .insert([{ post_id: id, user_id: userId }]);
 
-      if (error) throw error;
+      if (error) {
+        logger.postError('Error liking post', { postId: id, userId: userId, error });
+        throw error;
+      }
 
       // Get post owner to create notification
       const { data: post } = await supabaseAdmin
@@ -441,11 +488,48 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
 
       if (post && post.user_id !== userId) {
         await createNotification(post.user_id, userId, 'like', id);
+        logger.post('Like notification created', { 
+          postId: id, 
+          likerId: userId, 
+          postOwnerId: post.user_id 
+        });
       }
 
-      res.json({ message: 'Post liked successfully' });
+      isLiked = true;
+      logger.post('Post liked successfully', { postId: id, userId: userId });
     }
+
+    // Get updated likes count
+    const { count: likesCountResult, error: likesCountError } = await supabaseAdmin
+      .from('likes')
+      .select('id', { count: 'exact', head: true })
+      .eq('post_id', id);
+
+    if (likesCountError) {
+      logger.postError('Error getting likes count', { postId: id, error: likesCountError });
+      likesCount = 0;
+    } else {
+      likesCount = likesCountResult || 0;
+      logger.post('Likes count retrieved', { postId: id, likesCount: likesCount });
+    }
+
+    logger.post('Like/Unlike response prepared', {
+      postId: id,
+      isLiked: isLiked,
+      likesCount: likesCount
+    });
+
+    res.json({ 
+      message: isLiked ? 'Post liked successfully' : 'Post unliked successfully',
+      isLiked: isLiked,
+      likesCount: likesCount
+    });
   } catch (error) {
+    logger.postError('Like/Unlike post error', { 
+      postId: req.params.id, 
+      userId: req.user?.id, 
+      error: error.message 
+    });
     res.status(500).json({ error: error.message });
   }
 });
@@ -474,6 +558,16 @@ router.get('/:id/comments', validateAuth, validateUUID, async (req, res) => {
       .range(from, to);
 
     if (error) throw error;
+
+    // Get total count of ALL comments (including replies) for this post
+    const { count: totalCommentsCount, error: totalCountError } = await supabaseAdmin
+      .from('comments')
+      .select('id', { count: 'exact', head: true })
+      .eq('post_id', id);
+
+    if (totalCountError) {
+      logger.postError('Error getting total comments count', { postId: id, error: totalCountError });
+    }
 
     // Get comment IDs for all comments (including replies)
     const commentIds = comments.map(c => c.id);
@@ -538,11 +632,14 @@ router.get('/:id/comments', validateAuth, validateUUID, async (req, res) => {
       });
     }
 
+    // Use total count of all comments (including replies) instead of just top-level comments
+    const finalTotal = totalCommentsCount !== null ? totalCommentsCount : count;
+
     res.json({
       comments,
-      total: count,
+      total: finalTotal, // Total count of ALL comments including replies
       page: parseInt(page),
-      totalPages: Math.ceil(count / limit)
+      totalPages: Math.ceil(count / limit) // Pages are still based on top-level comments for pagination
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -798,7 +895,7 @@ router.post('/:id/comments/:commentId/like', validateAuth, validateUUID, validat
 
     res.json({ isLiked: true, isDisliked: false });
   } catch (error) {
-    console.error('Error liking comment:', error);
+    logger.postError('Error liking comment', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -880,7 +977,7 @@ router.post('/:id/comments/:commentId/dislike', validateAuth, validateUUID, vali
 
     res.json({ isLiked: false, isDisliked: true });
   } catch (error) {
-    console.error('Error disliking comment:', error);
+    logger.postError('Error disliking comment', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -938,9 +1035,7 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
     const to = from + limit - 1;
     const userId = req.user.id;
 
-    console.log('=== HASHTAG SEARCH ===');
-    console.log('Searching for hashtag:', hashtag);
-    console.log('Page:', page, 'Limit:', limit);
+    logger.hashtags('Hashtag search', { hashtag, page, limit, userId });
 
     // Search for posts where caption contains the hashtag
     const { data, error, count } = await supabaseAdmin
@@ -954,9 +1049,12 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
       .order('created_at', { ascending: false })
       .range(from, to);
 
-    if (error) throw error;
+    if (error) {
+      logger.hashtags('Hashtag search error', error);
+      throw error;
+    }
 
-    console.log('Found posts:', data.length);
+    logger.hashtags(`Found ${data.length} posts for hashtag #${hashtag}`);
 
     // Get user's likes for all posts
     const postIds = data.map(post => post.id);
@@ -978,7 +1076,11 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
       likes: undefined // Remove the likes array from response
     }));
 
-    console.log('Returning posts:', postsWithLikes.length);
+    logger.hashtags('Hashtag search completed', { 
+      hashtag, 
+      postsCount: postsWithLikes.length, 
+      total: count 
+    });
 
     res.json({
       posts: postsWithLikes,
@@ -987,7 +1089,7 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
       totalPages: Math.ceil(count / limit)
     });
   } catch (error) {
-    console.error('Hashtag search error:', error);
+    logger.hashtags('Hashtag search error', error);
     res.status(500).json({ error: error.message });
   }
 });
