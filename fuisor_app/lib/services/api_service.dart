@@ -12,7 +12,7 @@ class ApiService {
   // Для Android эмулятора: 'http://10.0.2.2:3000/api'
   // Для реального устройства: 'http://192.168.X.X:3000/api' (замените X.X на IP вашего ПК)
   // Production API URL (Vercel): 'https://fuisor2.vercel.app/api'
-  static const String baseUrl = 'http://localhost:3000/api';
+  static const String baseUrl = 'https://fuisor2.vercel.app/api';
   String? _accessToken;
 
   void setAccessToken(String? token) {

@@ -55,7 +55,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       print('ProfileScreen: Current user username: ${authProvider.currentUser?.username}');
       
       // Determine which user's posts to load
-      final targetUserId = widget.userId ?? authProvider.currentUser?.id;
+      // Обрабатываем случай, когда widget.userId может быть пустой строкой
+      final providedUserId = (widget.userId != null && widget.userId!.isNotEmpty) 
+          ? widget.userId 
+          : null;
+      final targetUserId = providedUserId ?? authProvider.currentUser?.id;
       
       if (targetUserId != null && targetUserId.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
@@ -67,14 +71,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         final futures = <Future>[];
         
         // Load the user's profile if viewing another user
-        if (widget.userId != null && widget.userId != authProvider.currentUser?.id) {
+        if (providedUserId != null && providedUserId != authProvider.currentUser?.id) {
           if (!_isLoadingUserData) {
             _isLoadingUserData = true;
             setState(() {
               _isLoadingUser = true;
             });
             
-            futures.add(_loadUserData(widget.userId!));
+            futures.add(_loadUserData(providedUserId));
           }
         }
         

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import '../models/user.dart' show Post, Comment;
 import '../services/api_service.dart';
+import '../services/cache_service.dart';
 
 class PostsProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final CacheService _cacheService = CacheService();
   List<Post> _posts = [];
   List<Post> _feedPosts = [];
   List<Post> _videoPosts = [];
@@ -101,6 +103,17 @@ class PostsProvider extends ChangeNotifier {
       // НЕ очищаем _feedPosts здесь - очистим только после успешной загрузки
       _isInitialLoading = false; // Не первая загрузка при refresh
       notifyListeners(); // Уведомляем о начале refresh
+    } else {
+      // При первой загрузке или загрузке следующей страницы - проверяем кеш
+      if (_feedPosts.isEmpty && _isInitialLoading) {
+        final cachedFeed = _cacheService.getCachedFeed();
+        if (cachedFeed != null && _cacheService.isFeedCacheValid()) {
+          _feedPosts = cachedFeed;
+          _isInitialLoading = false;
+          notifyListeners();
+          print('PostsProvider: Loaded feed from cache (${cachedFeed.length} posts)');
+        }
+      }
     }
 
     _isLoadingFeed = true;
@@ -122,8 +135,12 @@ class PostsProvider extends ChangeNotifier {
       if (refresh) {
         _feedPosts = newPosts; // Заменяем только после успешной загрузки
         _isRefreshing = false;
+        // Кешируем обновленный feed
+        await _cacheService.cacheFeed(newPosts);
       } else {
         _feedPosts.addAll(newPosts);
+        // Обновляем кеш при загрузке новых постов
+        await _cacheService.cacheFeed(_feedPosts);
       }
 
       _hasMorePosts = newPosts.length == 10;
@@ -137,13 +154,19 @@ class PostsProvider extends ChangeNotifier {
         _hasMorePosts = false; // Больше нет постов для загрузки
         print('PostsProvider: No more posts to load, stopping pagination');
       } else {
-        // При ошибке refresh восстанавливаем старые данные
-        if (oldPosts != null) {
+        // При ошибке refresh восстанавливаем старые данные или кеш
+        if (oldPosts != null && oldPosts.isNotEmpty) {
           _feedPosts = oldPosts; // Восстанавливаем старые данные
           print('PostsProvider: Refresh failed, restored old posts');
         } else {
-          // Если это первая загрузка и нет старых данных
-          _feedPosts = [];
+          // Если нет старых данных, пытаемся загрузить из кеша
+          final cachedFeed = _cacheService.getCachedFeed();
+          if (cachedFeed != null) {
+            _feedPosts = cachedFeed;
+            print('PostsProvider: Refresh failed, loaded from cache');
+          } else {
+            _feedPosts = [];
+          }
         }
         _isRefreshing = false;
         _setError(e.toString());
@@ -155,12 +178,25 @@ class PostsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadVideoPosts({bool refresh = false, String? accessToken}) async {
+  Future<void> loadVideoPosts({bool refresh = false, String? accessToken, int retryAttempt = 0}) async {
+    const int maxRetries = 3;
+    const Duration retryDelay = Duration(seconds: 2);
+
     try {
       if (refresh) {
         _currentVideoPage = 1;
         _hasMoreVideoPosts = true;
         _videoPosts.clear();
+      } else {
+        // При первой загрузке проверяем кеш
+        if (_videoPosts.isEmpty) {
+          final cachedVideoPosts = _cacheService.getCachedVideoPosts();
+          if (cachedVideoPosts != null) {
+            _videoPosts = cachedVideoPosts;
+            notifyListeners();
+            print('PostsProvider: Loaded video posts from cache (${cachedVideoPosts.length} posts)');
+          }
+        }
       }
 
       _setLoading(true);
@@ -181,8 +217,12 @@ class PostsProvider extends ChangeNotifier {
 
       if (refresh) {
         _videoPosts = newVideoPosts;
+        // Кешируем обновленные видео посты
+        await _cacheService.cacheVideoPosts(newVideoPosts);
       } else {
         _videoPosts.addAll(newVideoPosts);
+        // Обновляем кеш
+        await _cacheService.cacheVideoPosts(_videoPosts);
       }
 
       _hasMoreVideoPosts = newVideoPosts.length == 10;
@@ -190,11 +230,35 @@ class PostsProvider extends ChangeNotifier {
 
       _setLoading(false);
     } catch (e) {
+      print('PostsProvider: Error loading video posts (attempt ${retryAttempt + 1}): $e');
+      
+      // Retry логика (только для не-refresh запросов)
+      if (retryAttempt < maxRetries && !refresh) {
+        print('PostsProvider: Retrying video posts load in ${retryDelay.inSeconds}s... (attempt ${retryAttempt + 1}/$maxRetries)');
+        await Future.delayed(retryDelay);
+        await loadVideoPosts(refresh: refresh, accessToken: accessToken, retryAttempt: retryAttempt + 1);
+        return;
+      }
+
       if (!refresh) {
         _hasMoreVideoPosts = false;
-        print('PostsProvider: No more video posts to load');
+        print('PostsProvider: No more video posts to load after ${retryAttempt + 1} attempts');
+        // При ошибке используем кеш, если есть
+        if (_videoPosts.isEmpty) {
+          final cachedVideoPosts = _cacheService.getCachedVideoPosts();
+          if (cachedVideoPosts != null) {
+            _videoPosts = cachedVideoPosts;
+            notifyListeners();
+          }
+        }
       } else {
-        _videoPosts = [];
+        // При ошибке refresh пытаемся загрузить из кеша
+        final cachedVideoPosts = _cacheService.getCachedVideoPosts();
+        if (cachedVideoPosts != null) {
+          _videoPosts = cachedVideoPosts;
+        } else {
+          _videoPosts = [];
+        }
         _setError(e.toString());
       }
       _setLoading(false);
@@ -207,6 +271,16 @@ class PostsProvider extends ChangeNotifier {
         _currentPage = 1;
         _hasMorePosts = true;
         _hashtagPosts.clear();
+      } else {
+        // При первой загрузке проверяем кеш
+        if (_hashtagPosts.isEmpty) {
+          final cachedHashtagPosts = _cacheService.getCachedHashtagPosts(hashtag);
+          if (cachedHashtagPosts != null) {
+            _hashtagPosts = cachedHashtagPosts;
+            notifyListeners();
+            print('PostsProvider: Loaded hashtag posts from cache (${cachedHashtagPosts.length} posts)');
+          }
+        }
       }
 
       _setLoading(true);
@@ -220,8 +294,12 @@ class PostsProvider extends ChangeNotifier {
 
       if (refresh) {
         _hashtagPosts = newPosts;
+        // Кешируем обновленные посты по хештегу
+        await _cacheService.cacheHashtagPosts(hashtag, newPosts);
       } else {
         _hashtagPosts.addAll(newPosts);
+        // Обновляем кеш
+        await _cacheService.cacheHashtagPosts(hashtag, _hashtagPosts);
       }
 
       _hasMorePosts = newPosts.length == 10;
@@ -229,6 +307,14 @@ class PostsProvider extends ChangeNotifier {
 
       _setLoading(false);
     } catch (e) {
+      // При ошибке используем кеш, если есть
+      if (_hashtagPosts.isEmpty) {
+        final cachedHashtagPosts = _cacheService.getCachedHashtagPosts(hashtag);
+        if (cachedHashtagPosts != null) {
+          _hashtagPosts = cachedHashtagPosts;
+          notifyListeners();
+        }
+      }
       _setError(e.toString());
       _setLoading(false);
     }
@@ -358,7 +444,7 @@ class PostsProvider extends ChangeNotifier {
 
   Future<Map<String, dynamic>> loadComments(String postId, {int page = 1, int limit = 20}) async {
     try {
-      // Если комментарии уже закэшированы для первой страницы, используем их
+      // Если комментарии уже закэшированы в памяти для первой страницы, используем их
       if (page == 1 && _commentsCache.containsKey(postId)) {
         final cachedComments = _commentsCache[postId]!;
         return {
@@ -369,6 +455,21 @@ class PostsProvider extends ChangeNotifier {
         };
       }
 
+      // Проверяем кеш на диске для первой страницы
+      if (page == 1) {
+        final cachedComments = _cacheService.getCachedComments(postId);
+        if (cachedComments != null && _cacheService.isCommentsCacheValid(postId)) {
+          // Загружаем в память для быстрого доступа
+          _commentsCache[postId] = cachedComments;
+          return {
+            'comments': cachedComments,
+            'total': cachedComments.length,
+            'page': 1,
+            'totalPages': 1,
+          };
+        }
+      }
+
       _setLoading(true);
       _setError(null);
       
@@ -376,21 +477,38 @@ class PostsProvider extends ChangeNotifier {
       
       // Проверяем, что result содержит comments
       if (result['comments'] != null) {
-        // Кэшируем комментарии для первой страницы
+        // Кэшируем комментарии для первой страницы (в память и на диск)
         if (page == 1) {
           final comments = result['comments'] as List<Comment>? ?? <Comment>[];
           _commentsCache[postId] = comments;
+          // Сохраняем в кеш на диске
+          await _cacheService.cacheComments(postId, comments);
         }
       } else {
         // Если результат пустой, сохраняем пустой список
         if (page == 1) {
           _commentsCache[postId] = <Comment>[];
+          await _cacheService.cacheComments(postId, []);
         }
       }
       
       _setLoading(false);
       return result;
     } catch (e) {
+      // При ошибке пытаемся использовать кеш
+      if (page == 1) {
+        final cachedComments = _cacheService.getCachedComments(postId);
+        if (cachedComments != null) {
+          _commentsCache[postId] = cachedComments;
+          _setLoading(false);
+          return {
+            'comments': cachedComments,
+            'total': cachedComments.length,
+            'page': 1,
+            'totalPages': 1,
+          };
+        }
+      }
       _setLoading(false);
       _setError(e.toString());
       rethrow;
@@ -433,7 +551,7 @@ class PostsProvider extends ChangeNotifier {
   }
 
   // Обновить кэш комментариев после добавления нового комментария
-  void updateCommentsCache(String postId, Comment newComment, {String? parentCommentId}) {
+  Future<void> updateCommentsCache(String postId, Comment newComment, {String? parentCommentId}) async {
     if (!_commentsCache.containsKey(postId)) {
       _commentsCache[postId] = [];
     }
@@ -452,6 +570,9 @@ class PostsProvider extends ChangeNotifier {
       // Это обычный комментарий - добавляем в начало
       _commentsCache[postId]!.insert(0, newComment);
     }
+    
+    // Обновляем кеш на диске
+    await _cacheService.cacheComments(postId, _commentsCache[postId]!);
   }
 
   // Очистить кэш комментариев для поста
@@ -621,6 +742,16 @@ class PostsProvider extends ChangeNotifier {
       _isRefreshingUserPosts = true;
       // НЕ очищаем _userPosts здесь - очистим только после успешной загрузки
       notifyListeners(); // Уведомляем о начале refresh
+    } else {
+      // При первой загрузке проверяем кеш
+      if (_userPosts.isEmpty) {
+        final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
+        if (cachedUserPosts != null) {
+          _userPosts = cachedUserPosts;
+          notifyListeners();
+          print('PostsProvider: Loaded user posts from cache (${cachedUserPosts.length} posts)');
+        }
+      }
     }
 
     if (!_hasMoreUserPosts && !refresh) {
@@ -652,8 +783,12 @@ class PostsProvider extends ChangeNotifier {
         if (refresh) {
           _userPosts = response; // Заменяем только после успешной загрузки
           _isRefreshingUserPosts = false;
+          // Кешируем обновленные посты пользователя
+          await _cacheService.cacheUserPosts(userId, response);
         } else {
           _userPosts.addAll(response);
+          // Обновляем кеш
+          await _cacheService.cacheUserPosts(userId, _userPosts);
         }
         _currentUserPage++;
         
@@ -665,6 +800,8 @@ class PostsProvider extends ChangeNotifier {
         if (refresh) {
           _userPosts = []; // Пустой список только после успешной загрузки
           _isRefreshingUserPosts = false;
+          // Кешируем пустой список
+          await _cacheService.cacheUserPosts(userId, []);
         }
         _hasMoreUserPosts = false;
       }
@@ -674,10 +811,30 @@ class PostsProvider extends ChangeNotifier {
       _setLoading(false);
     } catch (e) {
       print('PostsProvider: Error loading user posts: $e');
-      // При ошибке refresh восстанавливаем старые данные
-      if (refresh && oldPosts != null) {
-        _userPosts = oldPosts; // Восстанавливаем старые данные
-        print('PostsProvider: User posts refresh failed, restored old posts');
+      // При ошибке refresh восстанавливаем старые данные или кеш
+      if (refresh) {
+        if (oldPosts != null && oldPosts.isNotEmpty) {
+          _userPosts = oldPosts; // Восстанавливаем старые данные
+          print('PostsProvider: User posts refresh failed, restored old posts');
+        } else {
+          // Если нет старых данных, пытаемся загрузить из кеша
+          final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
+          if (cachedUserPosts != null) {
+            _userPosts = cachedUserPosts;
+            print('PostsProvider: User posts refresh failed, loaded from cache');
+          } else {
+            _userPosts = [];
+          }
+        }
+      } else {
+        // При ошибке загрузки следующей страницы используем кеш, если список пуст
+        if (_userPosts.isEmpty) {
+          final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
+          if (cachedUserPosts != null) {
+            _userPosts = cachedUserPosts;
+            notifyListeners();
+          }
+        }
       }
       _isRefreshingUserPosts = false;
       _setError(e.toString());

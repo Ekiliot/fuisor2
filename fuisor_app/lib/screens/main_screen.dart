@@ -50,6 +50,17 @@ class _MainScreenState extends State<MainScreen> {
               await _shortsScreenKey.currentState?.pauseAllVideos();
             }
 
+            // Если возвращаемся на Shorts, возобновляем видео
+            if (_currentIndex != 3 && index == 3) {
+              setState(() {
+                _currentIndex = index;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _shortsScreenKey.currentState?.initializeScreen();
+              });
+              return;
+            }
+
             if (index == 2) {
               // Кнопка создания поста - открываем MediaSelectionScreen
               Navigator.of(context).push(
@@ -57,7 +68,7 @@ class _MainScreenState extends State<MainScreen> {
                   builder: (context) => const MediaSelectionScreen(),
                 ),
               );
-              } else if (index == 3) {
+            } else if (index == 3) {
               // Кнопка Shorts - проверяем двойное нажатие
               final now = DateTime.now();
               if (_lastShortsTapTime != null &&

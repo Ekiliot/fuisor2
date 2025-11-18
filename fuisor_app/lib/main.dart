@@ -6,12 +6,17 @@ import 'providers/posts_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/online_status_provider.dart';
 import 'services/api_service.dart';
+import 'services/cache_service.dart';
 import 'utils/themes.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Инициализация кеша (используем синглтон)
+  await CacheService().init();
+  
   runApp(const FuisorApp());
 }
 
