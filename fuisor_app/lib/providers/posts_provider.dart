@@ -10,6 +10,7 @@ class PostsProvider extends ChangeNotifier {
   List<Post> _posts = [];
   List<Post> _feedPosts = [];
   List<Post> _videoPosts = [];
+  List<Post> _followingVideoPosts = [];
   List<Post> _hashtagPosts = [];
   List<Post> _mentionedPosts = [];
   List<Post> _userPosts = [];
@@ -24,14 +25,17 @@ class PostsProvider extends ChangeNotifier {
   String? _error;
   int _currentPage = 1;
   int _currentVideoPage = 1;
+  int _currentFollowingVideoPage = 1;
   int _currentUserPage = 1;
   bool _hasMorePosts = true;
   bool _hasMoreVideoPosts = true;
+  bool _hasMoreFollowingVideoPosts = true;
   bool _hasMoreUserPosts = true;
 
   List<Post> get posts => _posts;
   List<Post> get feedPosts => _feedPosts;
   List<Post> get videoPosts => _videoPosts;
+  List<Post> get followingVideoPosts => _followingVideoPosts;
   List<Post> get hashtagPosts => _hashtagPosts;
   List<Post> get mentionedPosts => _mentionedPosts;
   List<Post> get userPosts => _userPosts;
@@ -42,6 +46,7 @@ class PostsProvider extends ChangeNotifier {
   String? get error => _error;
   bool get hasMorePosts => _hasMorePosts;
   bool get hasMoreVideoPosts => _hasMoreVideoPosts;
+  bool get hasMoreFollowingVideoPosts => _hasMoreFollowingVideoPosts;
   bool get hasMoreUserPosts => _hasMoreUserPosts;
 
   void _setLoading(bool loading) {
@@ -265,6 +270,65 @@ class PostsProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> loadFollowingVideoPosts({bool refresh = false, String? accessToken, int retryAttempt = 0}) async {
+    const int maxRetries = 3;
+    const Duration retryDelay = Duration(seconds: 2);
+
+    try {
+      if (refresh) {
+        _currentFollowingVideoPage = 1;
+        _hasMoreFollowingVideoPosts = true;
+        _followingVideoPosts.clear();
+      }
+
+      _setLoading(true);
+      _setError(null);
+
+      // Устанавливаем токен перед запросом
+      if (accessToken != null) {
+        _apiService.setAccessToken(accessToken);
+      }
+
+      final newVideoPosts = await _apiService.getFollowingVideoPosts(
+        page: _currentFollowingVideoPage,
+        limit: 10,
+      );
+
+      // Предзагружаем комментарии для всех постов в фоне
+      _preloadCommentsForPosts(newVideoPosts);
+
+      if (refresh) {
+        _followingVideoPosts = newVideoPosts;
+      } else {
+        _followingVideoPosts.addAll(newVideoPosts);
+      }
+
+      _hasMoreFollowingVideoPosts = newVideoPosts.length == 10;
+      _currentFollowingVideoPage++;
+
+      _setLoading(false);
+    } catch (e) {
+      print('PostsProvider: Error loading following video posts (attempt ${retryAttempt + 1}): $e');
+      
+      // Retry логика (только для не-refresh запросов)
+      if (retryAttempt < maxRetries && !refresh) {
+        print('PostsProvider: Retrying following video posts load in ${retryDelay.inSeconds}s... (attempt ${retryAttempt + 1}/$maxRetries)');
+        await Future.delayed(retryDelay);
+        await loadFollowingVideoPosts(refresh: refresh, accessToken: accessToken, retryAttempt: retryAttempt + 1);
+        return;
+      }
+
+      if (!refresh) {
+        _hasMoreFollowingVideoPosts = false;
+        print('PostsProvider: No more following video posts to load after ${retryAttempt + 1} attempts');
+      } else {
+        _followingVideoPosts = [];
+        _setError(e.toString());
+      }
+      _setLoading(false);
+    }
+  }
+
   Future<void> loadHashtagPosts(String hashtag, {bool refresh = false}) async {
     try {
       if (refresh) {
@@ -366,6 +430,7 @@ class PostsProvider extends ChangeNotifier {
       _updatePostLikeStatus(_hashtagPosts, postId, result['isLiked'], result['likesCount']);
       _updatePostLikeStatus(_mentionedPosts, postId, result['isLiked'], result['likesCount']);
       _updatePostLikeStatus(_videoPosts, postId, result['isLiked'], result['likesCount']);
+      _updatePostLikeStatus(_followingVideoPosts, postId, result['isLiked'], result['likesCount']);
       
       notifyListeners();
       print('PostsProvider: Post state updated, listeners notified');
@@ -407,6 +472,7 @@ class PostsProvider extends ChangeNotifier {
     _updatePostCommentsCountInList(_hashtagPosts, postId, delta);
     _updatePostCommentsCountInList(_mentionedPosts, postId, delta);
     _updatePostCommentsCountInList(_videoPosts, postId, delta);
+    _updatePostCommentsCountInList(_followingVideoPosts, postId, delta);
     notifyListeners();
   }
 
@@ -429,6 +495,7 @@ class PostsProvider extends ChangeNotifier {
     _setPostCommentsCountInList(_hashtagPosts, postId, count);
     _setPostCommentsCountInList(_mentionedPosts, postId, count);
     _setPostCommentsCountInList(_videoPosts, postId, count);
+    _setPostCommentsCountInList(_followingVideoPosts, postId, count);
     notifyListeners();
   }
 
@@ -907,6 +974,7 @@ class PostsProvider extends ChangeNotifier {
       _hashtagPosts.removeWhere((post) => post.id == postId);
       _mentionedPosts.removeWhere((post) => post.id == postId);
       _userPosts.removeWhere((post) => post.id == postId);
+      _followingVideoPosts.removeWhere((post) => post.id == postId);
 
       _setLoading(false);
       notifyListeners();

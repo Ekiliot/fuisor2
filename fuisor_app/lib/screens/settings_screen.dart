@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'privacy_settings_screen.dart';
+import 'storage_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,9 +14,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool notificationsEnabled = true;
   bool autoplayVideos = true;
   bool useCellularData = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(String title, String subtitle) {
+    if (_searchQuery.isEmpty) return true;
+    final query = _searchQuery.toLowerCase();
+    return title.toLowerCase().contains(query) || 
+           subtitle.toLowerCase().contains(query);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasSearchQuery = _searchQuery.isNotEmpty;
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
@@ -25,74 +43,265 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: ListView(
-        children: [
-          const _SectionHeader(title: 'General'),
-          _SwitchTile(
-            icon: EvaIcons.bellOutline,
-            title: 'Notifications',
-            subtitle: 'Receive activity and system notifications',
-            value: notificationsEnabled,
-            onChanged: (v) => setState(() => notificationsEnabled = v),
-          ),
-          _SwitchTile(
-            icon: EvaIcons.playCircleOutline,
-            title: 'Autoplay videos',
-            subtitle: 'Automatically play videos in the feed',
-            value: autoplayVideos,
-            onChanged: (v) => setState(() => autoplayVideos = v),
-          ),
-          _SwitchTile(
-            icon: EvaIcons.wifiOff,
-            title: 'Use cellular data',
-            subtitle: 'Allow media loading on mobile data',
-            value: useCellularData,
-            onChanged: (v) => setState(() => useCellularData = v),
-          ),
-
-          const _Divider(),
-          const _SectionHeader(title: 'Privacy'),
-          _NavTile(
-            icon: EvaIcons.lockOutline,
-            title: 'Blocked accounts',
-            subtitle: 'Manage the users you have blocked',
-            onTap: () {},
-          ),
-          _NavTile(
-            icon: EvaIcons.shieldOutline,
-            title: 'Privacy Settings',
-            subtitle: 'Control who can see your content and interact with you',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const PrivacySettingsScreen(),
+        title: hasSearchQuery
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Search settings...',
+                  hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                  border: InputBorder.none,
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(EvaIcons.closeCircle, color: Colors.white, size: 20),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
                 ),
-              );
-            },
-          ),
-
-          const _Divider(),
-          const _SectionHeader(title: 'About'),
-          _NavTile(
-            icon: EvaIcons.infoOutline,
-            title: 'About Fuisor',
-            subtitle: 'Version, licenses and legal',
-            onTap: () {},
-          ),
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
+                },
+              )
+            : const Text(
+                'Settings',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+        centerTitle: !hasSearchQuery,
+        actions: [
+          if (!hasSearchQuery)
+            IconButton(
+              icon: const Icon(EvaIcons.searchOutline, color: Colors.white),
+              onPressed: () {
+                setState(() => _searchQuery = ' ');
+                _searchController.text = '';
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted) {
+                    FocusScope.of(context).requestFocus(FocusNode());
+                  }
+                });
+              },
+            ),
         ],
       ),
+      body: _buildSettingsList(hasSearchQuery),
     );
   }
+
+  Widget _buildSettingsList(bool hasSearchQuery) {
+    final widgets = <Widget>[];
+
+    // General section
+    final generalSettings = [
+      _SettingItem(
+        section: 'General',
+        icon: EvaIcons.bellOutline,
+        title: 'Notifications',
+        subtitle: 'Receive activity and system notifications',
+        type: _SettingType.switch_,
+        switchValue: notificationsEnabled,
+        onSwitchChanged: (v) => setState(() => notificationsEnabled = v),
+      ),
+      _SettingItem(
+        section: 'General',
+        icon: EvaIcons.playCircleOutline,
+        title: 'Autoplay videos',
+        subtitle: 'Automatically play videos in the feed',
+        type: _SettingType.switch_,
+        switchValue: autoplayVideos,
+        onSwitchChanged: (v) => setState(() => autoplayVideos = v),
+      ),
+      _SettingItem(
+        section: 'General',
+        icon: EvaIcons.wifiOff,
+        title: 'Use cellular data',
+        subtitle: 'Allow media loading on mobile data',
+        type: _SettingType.switch_,
+        switchValue: useCellularData,
+        onSwitchChanged: (v) => setState(() => useCellularData = v),
+      ),
+    ];
+
+    // Storage section
+    final storageSettings = [
+      _SettingItem(
+        section: 'Storage',
+        icon: EvaIcons.hardDriveOutline,
+        title: 'Storage Settings',
+        subtitle: 'Manage cache and storage data',
+        type: _SettingType.navigation,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const StorageSettingsScreen(),
+            ),
+          );
+        },
+      ),
+    ];
+
+    // Privacy section
+    final privacySettings = [
+      _SettingItem(
+        section: 'Privacy',
+        icon: EvaIcons.lockOutline,
+        title: 'Blocked accounts',
+        subtitle: 'Manage the users you have blocked',
+        type: _SettingType.navigation,
+        onTap: () {},
+      ),
+      _SettingItem(
+        section: 'Privacy',
+        icon: EvaIcons.shieldOutline,
+        title: 'Privacy Settings',
+        subtitle: 'Control who can see your content and interact with you',
+        type: _SettingType.navigation,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const PrivacySettingsScreen(),
+            ),
+          );
+        },
+      ),
+    ];
+
+    // About section
+    final aboutSettings = [
+      _SettingItem(
+        section: 'About',
+        icon: EvaIcons.infoOutline,
+        title: 'About Fuisor',
+        subtitle: 'Version, licenses and legal',
+        type: _SettingType.navigation,
+        onTap: () {},
+      ),
+    ];
+
+    // Filter settings based on search query
+    final allSettings = [
+      ...generalSettings,
+      ...storageSettings,
+      ...privacySettings,
+      ...aboutSettings,
+    ];
+
+    final filteredSettings = hasSearchQuery
+        ? allSettings.where((setting) => 
+            _matchesSearch(setting.title, setting.subtitle)).toList()
+        : allSettings;
+
+    if (hasSearchQuery && filteredSettings.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                EvaIcons.searchOutline,
+                size: 64,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No settings found',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Try searching for something else',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Group settings by section if not searching
+    if (!hasSearchQuery) {
+      String? currentSection;
+      for (final setting in filteredSettings) {
+        if (currentSection != setting.section) {
+          if (currentSection != null) {
+            widgets.add(const _Divider());
+          }
+          currentSection = setting.section;
+          widgets.add(_SectionHeader(title: setting.section));
+        }
+        widgets.add(_buildSettingWidget(setting));
+      }
+    } else {
+      // Show all filtered settings without section headers
+      for (final setting in filteredSettings) {
+        widgets.add(_buildSettingWidget(setting));
+      }
+    }
+
+    return ListView(children: widgets);
+  }
+
+  Widget _buildSettingWidget(_SettingItem item) {
+    switch (item.type) {
+      case _SettingType.switch_:
+        return _SwitchTile(
+          icon: item.icon,
+          title: item.title,
+          subtitle: item.subtitle,
+          value: item.switchValue ?? false,
+          onChanged: item.onSwitchChanged ?? (v) {},
+        );
+      case _SettingType.navigation:
+        return _NavTile(
+          icon: item.icon,
+          title: item.title,
+          subtitle: item.subtitle,
+          onTap: item.onTap ?? () {},
+        );
+    }
+  }
+}
+
+enum _SettingType {
+  switch_,
+  navigation,
+}
+
+class _SettingItem {
+  final String section;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final _SettingType type;
+  final bool? switchValue;
+  final ValueChanged<bool>? onSwitchChanged;
+  final VoidCallback? onTap;
+
+  _SettingItem({
+    required this.section,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.type,
+    this.switchValue,
+    this.onSwitchChanged,
+    this.onTap,
+  });
 }
 
 class _SectionHeader extends StatelessWidget {

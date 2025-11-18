@@ -203,6 +203,39 @@ class ApiService {
     }
   }
 
+  Future<List<Post>> getFollowingVideoPosts({int page = 1, int limit = 10}) async {
+    print('ApiService: Getting following video posts...');
+    print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
+    
+    final response = await http.get(
+      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit'),
+      headers: _headers,
+    );
+
+    print('ApiService: Following video posts response status: ${response.statusCode}');
+
+    // Проверяем ошибки аутентификации
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      print('ApiService: Authentication error in following video posts request');
+      await _handleAuthError(response);
+      throw Exception('Authentication failed - token may be expired');
+    }
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final allPosts = (data['posts'] as List)
+          .map((post) => Post.fromJson(post))
+          .toList();
+      
+      // Фильтруем только видео посты от подписок
+      final videoPosts = allPosts.where((post) => post.mediaType == 'video').toList();
+      print('ApiService: Loaded ${videoPosts.length} following video posts');
+      return videoPosts;
+    } else {
+      throw Exception('Failed to load following video posts');
+    }
+  }
+
   Future<Post> getPost(String postId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/posts/$postId'),
