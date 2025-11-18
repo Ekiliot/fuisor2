@@ -245,6 +245,16 @@ class ServerManager {
       await this.hotRestart();
     });
 
+    // Stop server
+    this.screen.key(['s', 'S'], async () => {
+      await this.stopServer();
+    });
+
+    // Automatic push to GitHub
+    this.screen.key(['p', 'P'], async () => {
+      await this.autoPush();
+    });
+
     // Clear logs
     this.screen.key(['c', 'C'], () => {
       logger.clear();
@@ -286,6 +296,7 @@ class ServerManager {
 
 {white-fg}ДЕЙСТВИЯ{/white-fg}
 {yellow-fg}R{/yellow-fg}Перезагр {yellow-fg}Alt+R{/yellow-fg}Hot
+{yellow-fg}S{/yellow-fg}Остановить {yellow-fg}P{/yellow-fg}Автопуш
 {yellow-fg}C{/yellow-fg}Очистить {yellow-fg}Q{/yellow-fg}Выход`;
 
     this.menuBox.setContent(menu);
@@ -623,6 +634,100 @@ class ServerManager {
       await this.startServer();
       logger.server('Сервер перезагружен');
     }, 1000);
+  }
+
+  async stopServer() {
+    if (!this.serverProcess && !this.isServerRunning) {
+      logger.server('Сервер уже остановлен');
+      return;
+    }
+
+    logger.server('Остановка сервера...');
+    
+    if (this.serverProcess) {
+      try {
+        this.serverProcess.kill('SIGTERM');
+        
+        // Ждем завершения процесса
+        await new Promise((resolve) => {
+          if (this.serverProcess) {
+            const timeout = setTimeout(() => {
+              // Если процесс не завершился, принудительно убиваем
+              if (this.serverProcess) {
+                try {
+                  this.serverProcess.kill('SIGKILL');
+                } catch (e) {
+                  // Игнорируем ошибки
+                }
+              }
+              resolve();
+            }, 3000);
+
+            this.serverProcess.once('close', () => {
+              clearTimeout(timeout);
+              resolve();
+            });
+          } else {
+            resolve();
+          }
+        });
+      } catch (error) {
+        logger.serverError(`Ошибка при остановке сервера: ${error.message}`);
+      }
+      
+      this.serverProcess = null;
+    }
+
+    this.isServerRunning = false;
+    this.isServerStarting = false;
+    this.updateMenu();
+    this.updateStats();
+    logger.server('Сервер остановлен');
+  }
+
+  async autoPush() {
+    logger.server('🚀 Запуск автоматического пуша в GitHub (ekiliot/fuisor2)...');
+    
+    try {
+      const autoPushPath = path.join(__dirname, 'auto-push.js');
+      const rootDir = path.join(__dirname, '..', '..');
+      
+      // Запускаем скрипт автоматического пуша
+      const pushProcess = spawn('node', [autoPushPath], {
+        cwd: rootDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true
+      });
+
+      // Логируем вывод скрипта
+      pushProcess.stdout.on('data', (data) => {
+        const message = data.toString().trim();
+        if (message) {
+          logger.server(`[AUTO-PUSH] ${message}`);
+        }
+      });
+
+      pushProcess.stderr.on('data', (data) => {
+        const message = data.toString().trim();
+        if (message) {
+          logger.serverError(`[AUTO-PUSH] ${message}`);
+        }
+      });
+
+      pushProcess.on('close', (code) => {
+        if (code === 0) {
+          logger.server('✅ Автоматический пуш успешно завершен');
+        } else {
+          logger.serverError(`❌ Автоматический пуш завершился с кодом ${code}`);
+        }
+      });
+
+      pushProcess.on('error', (error) => {
+        logger.serverError(`Ошибка при запуске автоматического пуша: ${error.message}`);
+      });
+    } catch (error) {
+      logger.serverError(`Ошибка при выполнении автоматического пуша: ${error.message}`);
+    }
   }
 }
 
