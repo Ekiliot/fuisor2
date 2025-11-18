@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../widgets/post_grid_widget.dart';
@@ -14,7 +13,7 @@ class SavedPostsScreen extends StatefulWidget {
 
 class _SavedPostsScreenState extends State<SavedPostsScreen> {
   List<Post> _savedPosts = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool _hasMore = true;
   int _currentPage = 1;
   final ApiService _apiService = ApiService();
@@ -22,11 +21,14 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedPosts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSavedPosts(refresh: true);
+    });
   }
 
   Future<void> _loadSavedPosts({bool refresh = false}) async {
     if (!refresh && !_hasMore) return;
+    if (_isLoading) return;
 
     setState(() {
       if (refresh) {
@@ -85,63 +87,13 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: _isLoading && _savedPosts.isEmpty
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF0095F6),
-              ),
-            )
-          : _savedPosts.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        EvaIcons.bookmarkOutline,
-                        size: 64,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'No saved posts',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Posts you save will appear here',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification is ScrollEndNotification) {
-                      if (notification.metrics.pixels >=
-                          notification.metrics.maxScrollExtent * 0.8) {
-                        _loadSavedPosts();
-                      }
-                    }
-                    return false;
-                  },
-                  child: SingleChildScrollView(
-                    child: PostGridWidget(
+    // Работаем так же, как вкладка с постами - просто возвращаем PostGridWidget
+    // PostGridWidget сам обрабатывает пустое состояние и загрузку
+    return PostGridWidget(
                       posts: _savedPosts,
                       isLoading: _isLoading,
                       hasMorePosts: _hasMore,
                       onLoadMore: () => _loadSavedPosts(),
-                    ),
-                  ),
-                ),
     );
   }
 }

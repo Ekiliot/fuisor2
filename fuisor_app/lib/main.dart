@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/notifications_provider.dart';
+import 'providers/online_status_provider.dart';
 import 'services/api_service.dart';
 import 'utils/themes.dart';
 import 'screens/login_screen.dart';
@@ -25,6 +27,7 @@ class FuisorApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => PostsProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsProvider(apiService)),
+        ChangeNotifierProvider(create: (_) => OnlineStatusProvider()),
       ],
       child: MaterialApp(
         title: 'Fuisor',
@@ -55,8 +58,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
-      builder: (context, authProvider, child) {
+    return Consumer2<AuthProvider, OnlineStatusProvider>(
+      builder: (context, authProvider, onlineStatusProvider, child) {
         // Показываем загрузку пока не инициализирован
         if (!authProvider.isInitialized) {
           return const Scaffold(
@@ -71,8 +74,19 @@ class _AuthWrapperState extends State<AuthWrapper> {
         
         // После инициализации показываем соответствующий экран
         if (authProvider.isAuthenticated) {
+          // Запускаем heartbeat если пользователь авторизован
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            final prefs = await SharedPreferences.getInstance();
+            final accessToken = prefs.getString('access_token');
+            if (accessToken != null) {
+              onlineStatusProvider.startHeartbeat(accessToken);
+            }
+          });
+          
           return const MainScreen();
         } else {
+          // Останавливаем heartbeat если пользователь вышел
+          onlineStatusProvider.stopHeartbeat();
           return const LoginScreen();
         }
       },

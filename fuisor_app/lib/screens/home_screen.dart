@@ -10,6 +10,7 @@ import '../widgets/post_card.dart';
 import '../widgets/stories_widget.dart';
 import '../widgets/skeleton_post_card.dart';
 import 'activity_screen.dart';
+import 'chats_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +22,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final RefreshController _refreshController = RefreshController(initialRefresh: false);
+  double? _savedScrollPosition; // Сохранение позиции скролла при refresh
 
   @override
   void initState() {
@@ -58,12 +60,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _onRefresh() async {
     try {
+      // Сохраняем позицию скролла перед refresh
+      if (_scrollController.hasClients) {
+        _savedScrollPosition = _scrollController.position.pixels;
+      }
+      
       final postsProvider = context.read<PostsProvider>();
       final accessToken = await _getAccessTokenFromAuthProvider();
       await postsProvider.loadFeed(refresh: true, accessToken: accessToken);
       
       if (mounted) {
         _refreshController.refreshCompleted();
+        
+        // Восстанавливаем позицию скролла после обновления UI
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && 
+              _scrollController.hasClients && 
+              _savedScrollPosition != null &&
+              _savedScrollPosition! > 0) {
+            // Плавно прокручиваем к сохраненной позиции
+            _scrollController.animateTo(
+              _savedScrollPosition!,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        });
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -112,6 +134,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          // Messages icon
+          IconButton(
+            icon: const Icon(EvaIcons.paperPlaneOutline, size: 28),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ChatsListScreen(),
+                ),
+              );
+            },
+          ),
           Consumer<NotificationsProvider>(
             builder: (context, notificationsProvider, child) {
               return Stack(
@@ -160,16 +193,33 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(EvaIcons.paperPlaneOutline, size: 28),
-            onPressed: () {},
-          ),
         ],
       ),
-      body: Consumer<PostsProvider>(
-        builder: (context, postsProvider, child) {
-          // Показываем скелетон только при первой загрузке
-          if (postsProvider.isInitialLoading) {
+      body: Selector<PostsProvider, Map<String, dynamic>>(
+        selector: (_, provider) => {
+          'feedPosts': provider.feedPosts,
+          'isInitialLoading': provider.isInitialLoading,
+          'isLoading': provider.isLoading,
+          'isRefreshing': provider.isRefreshing,
+          'error': provider.error,
+        },
+        shouldRebuild: (prev, next) {
+          // Перестраиваем только если изменились важные данные
+          return prev['feedPosts'] != next['feedPosts'] ||
+                 prev['isInitialLoading'] != next['isInitialLoading'] ||
+                 prev['isLoading'] != next['isLoading'] ||
+                 prev['isRefreshing'] != next['isRefreshing'] ||
+                 prev['error'] != next['error'];
+        },
+        builder: (context, data, child) {
+          final feedPosts = data['feedPosts'] as List;
+          final isInitialLoading = data['isInitialLoading'] as bool;
+          final isLoading = data['isLoading'] as bool;
+          final isRefreshing = data['isRefreshing'] as bool;
+          final error = data['error'] as String?;
+          
+          // Показываем скелетон только при ПЕРВОЙ загрузке И пустом списке
+          if (isInitialLoading && feedPosts.isEmpty) {
             return ListView.builder(
               itemCount: 3, // Показываем 3 скелетона
               itemBuilder: (context, index) {
@@ -182,7 +232,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           // При ошибке показываем пустой экран с инструкцией pull-to-refresh
-          if (postsProvider.error != null && postsProvider.feedPosts.isEmpty && !postsProvider.isInitialLoading) {
+          // Только если не идет загрузка и список пустой
+          if (error != null && feedPosts.isEmpty && !isLoading && !isRefreshing) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -203,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    postsProvider.error!,
+                    error,
                     style: const TextStyle(
                       color: Colors.grey,
                       fontSize: 14,
@@ -215,7 +266,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          if (postsProvider.feedPosts.isEmpty) {
+          // Пустой список (только если не идет загрузка)
+          if (feedPosts.isEmpty && !isLoading && !isRefreshing) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -247,6 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
+          // Основной контент - показываем даже если идет загрузка (для плавности)
+          final postsProvider = context.read<PostsProvider>();
           return SmartRefresher(
             controller: _refreshController,
             onRefresh: _onRefresh,
@@ -267,15 +321,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: ListView.builder(
               controller: _scrollController,
-              itemCount: postsProvider.feedPosts.length + 1,
+              itemCount: feedPosts.length + 1,
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const StoriesWidget();
                 }
                 
                 final postIndex = index - 1;
-                if (postIndex >= postsProvider.feedPosts.length) {
-                  return postsProvider.isLoading
+                if (postIndex >= feedPosts.length) {
+                  return isLoading && !isRefreshing
                       ? const Padding(
                           padding: EdgeInsets.all(16),
                           child: Center(
@@ -288,13 +342,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
 
                 return PostCard(
-                  post: postsProvider.feedPosts[postIndex],
+                  post: feedPosts[postIndex],
                   onLike: () => postsProvider.likePost(
-                    postsProvider.feedPosts[postIndex].id,
+                    feedPosts[postIndex].id,
                   ),
                   onComment: (content, parentCommentId) =>
                       postsProvider.addComment(
-                    postsProvider.feedPosts[postIndex].id,
+                    feedPosts[postIndex].id,
                     content,
                     parentCommentId: parentCommentId,
                   ),

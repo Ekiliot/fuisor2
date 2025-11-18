@@ -20,14 +20,22 @@ export const validateSignup = [
     .withMessage('Valid email is required'),
   body('password')
     .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
+    .withMessage('Password must be at least 6 characters long')
+    .matches(/[a-zA-Z]/)
+    .withMessage('Password must contain at least one letter')
+    .matches(/[0-9]/)
+    .withMessage('Password must contain at least one number')
+    .matches(/^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};:"|,.<>\/?~`]+$/)
+    .withMessage('Password contains invalid characters'),
   body('username')
     .isLength({ min: 3, max: 30 })
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('Username must be 3-30 characters long and contain only letters, numbers, and underscores'),
   body('name')
     .isLength({ min: 1, max: 50 })
-    .withMessage('Name must be 1-50 characters long'),
+    .withMessage('Name must be 1-50 characters long')
+    .matches(/^[a-zA-Z0-9._\-]+$/)
+    .withMessage('Name can only contain letters, numbers, dots, underscores, and hyphens'),
   validateRequest
 ];
 

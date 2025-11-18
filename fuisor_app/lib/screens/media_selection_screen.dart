@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'create_post_screen.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
@@ -59,45 +60,121 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> {
 
   Future<void> _pickVideoFromGallery() async {
     try {
+      print('MediaSelectionScreen: Starting video pick...');
       setState(() {
         _isLoading = true;
       });
 
+      print('MediaSelectionScreen: Calling pickVideo...');
       final XFile? video = await _picker.pickVideo(
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
 
+      print('MediaSelectionScreen: Video picked: ${video != null}');
       if (video != null) {
-        _videoController?.dispose();
-        _videoController = VideoPlayerController.file(File(video.path));
-        await _videoController!.initialize();
+        print('MediaSelectionScreen: Video path: ${video.path}');
+        print('MediaSelectionScreen: Video name: ${video.name}');
+        print('MediaSelectionScreen: Video size: ${video.length} bytes');
         
-        setState(() {
-          _selectedFile = video;
-          _selectedImageBytes = null;
-        });
+        _videoController?.dispose();
+        
+        // Используем условную компиляцию для разных платформ
+        if (kIsWeb) {
+          print('MediaSelectionScreen: Web platform detected');
+          // Для веб просто сохраняем файл без инициализации видео контроллера
+          setState(() {
+            _selectedFile = video;
+            _selectedImageBytes = null;
+            _videoController = null;
+          });
+          print('MediaSelectionScreen: Video file saved for web');
+        } else {
+          print('MediaSelectionScreen: Mobile platform detected');
+          // Для мобильных платформ используем File
+          try {
+            print('MediaSelectionScreen: Checking if file exists...');
+            final file = File(video.path);
+            final exists = await file.exists();
+            print('MediaSelectionScreen: File exists: $exists');
+            
+            if (exists) {
+              print('MediaSelectionScreen: Initializing video controller...');
+              _videoController = VideoPlayerController.file(file);
+              await _videoController!.initialize();
+              print('MediaSelectionScreen: Video controller initialized');
+              
+              setState(() {
+                _selectedFile = video;
+                _selectedImageBytes = null;
+              });
+              print('MediaSelectionScreen: Video file saved');
+            } else {
+              print('MediaSelectionScreen: File does not exist at path: ${video.path}');
+              throw Exception('Video file does not exist');
+            }
+          } catch (fileError) {
+            print('MediaSelectionScreen: Error initializing video controller: $fileError');
+            // Если не удалось инициализировать контроллер, все равно сохраняем файл
+            setState(() {
+              _selectedFile = video;
+              _selectedImageBytes = null;
+              _videoController = null;
+            });
+            print('MediaSelectionScreen: Video file saved without controller');
+          }
+        }
+      } else {
+        print('MediaSelectionScreen: No video selected');
       }
     } catch (e) {
-      print('Error picking video: $e');
+      print('MediaSelectionScreen: Error picking video: $e');
+      print('MediaSelectionScreen: Error stack: ${StackTrace.current}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking video: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        print('MediaSelectionScreen: Loading state set to false');
+      }
     }
   }
 
   void _proceedToEdit() {
+    print('MediaSelectionScreen: _proceedToEdit called');
+    print('MediaSelectionScreen: _selectedFile is null: ${_selectedFile == null}');
+    
     if (_selectedFile != null) {
+      print('MediaSelectionScreen: Navigating to CreatePostScreen');
+      print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
+      print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
+      print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
+      print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
+      
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => CreatePostScreen(
-            selectedFile: _selectedFile!,
-            selectedImageBytes: _selectedImageBytes,
-            videoController: _videoController,
-          ),
+          builder: (context) {
+            print('MediaSelectionScreen: Building CreatePostScreen');
+            return CreatePostScreen(
+              selectedFile: _selectedFile!,
+              selectedImageBytes: _selectedImageBytes,
+              videoController: _videoController,
+            );
+          },
         ),
-      );
+      ).then((_) {
+        print('MediaSelectionScreen: Returned from CreatePostScreen');
+      });
+    } else {
+      print('MediaSelectionScreen: ERROR - Cannot proceed, no file selected');
     }
   }
 

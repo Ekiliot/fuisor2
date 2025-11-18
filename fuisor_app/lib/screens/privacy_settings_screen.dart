@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -16,9 +18,125 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool allowTags = true;
   bool allowStoryReplies = true;
   bool hideFromSearchEngines = false;
+  
+  bool _isLoading = true;
+  bool _isSavingActivityStatus = false;
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      _apiService.setAccessToken(accessToken);
+      
+      setState(() {
+        showActivityStatus = true; // По умолчанию
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading settings: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _updateActivityStatus(bool value) async {
+    setState(() {
+      _isSavingActivityStatus = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        throw Exception('No access token');
+      }
+
+      _apiService.setAccessToken(accessToken);
+      await _apiService.updateOnlineStatusSetting(value);
+
+      setState(() {
+        showActivityStatus = value;
+        _isSavingActivityStatus = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value 
+                ? 'Статус активности включен' 
+                : 'Статус активности отключен',
+            ),
+            backgroundColor: const Color(0xFF262626),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error updating activity status: $e');
+      setState(() {
+        _isSavingActivityStatus = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось обновить настройку'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF000000),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF000000),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text(
+            'Privacy Settings',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF0095F6),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
@@ -51,9 +169,12 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           _SwitchTile(
             icon: EvaIcons.eyeOutline,
             title: 'Show Activity Status',
-            subtitle: 'Let people see when you were last active',
+            subtitle: _isSavingActivityStatus 
+              ? 'Сохранение...'
+              : 'Позволить другим видеть когда вы активны. Если отключено, вы не сможете видеть точное время активности других.',
             value: showActivityStatus,
-            onChanged: (v) => setState(() => showActivityStatus = v),
+            onChanged: _isSavingActivityStatus ? null : _updateActivityStatus,
+            isLoading: _isSavingActivityStatus,
           ),
 
           const _Divider(),
@@ -202,7 +323,8 @@ class _SwitchTile extends StatelessWidget {
   final String title;
   final String? subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
+  final bool isLoading;
 
   const _SwitchTile({
     required this.icon,
@@ -210,6 +332,7 @@ class _SwitchTile extends StatelessWidget {
     this.subtitle,
     required this.value,
     required this.onChanged,
+    this.isLoading = false,
   });
 
   @override
@@ -226,7 +349,10 @@ class _SwitchTile extends StatelessWidget {
             ? null
             : Text(
                 subtitle!,
-                style: const TextStyle(color: Color(0xFF8E8E8E), fontSize: 12),
+                style: TextStyle(
+                  color: isLoading ? const Color(0xFF0095F6) : const Color(0xFF8E8E8E),
+                  fontSize: 12,
+                ),
               ),
         trailing: Switch(
           value: value,

@@ -522,34 +522,87 @@ class ServerManager {
   async hotRestart() {
     logger.server('🔥 Hot restart сервера...');
     
-    if (this.serverProcess) {
-      this.serverProcess.kill('SIGTERM');
-      this.serverProcess = null;
-      this.isServerRunning = false;
-      this.isServerStarting = true;
-      this.updateMenu();
+    // Если сервер не запущен, просто запускаем его
+    if (!this.serverProcess || !this.isServerRunning) {
+      logger.server('Сервер не запущен, запускаю...');
+      await this.startServer();
+      return;
     }
 
-    // Быстрый перезапуск без освобождения порта
-    setTimeout(async () => {
-      const serverPath = path.join(__dirname, '..', 'index.js');
-      this.serverProcess = spawn('node', [serverPath], {
-        cwd: path.join(__dirname, '..', '..'),
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: true,
-        env: { ...process.env, PORT: this.port }
-      });
+    // Устанавливаем статус "запускается" сразу
+    this.isServerStarting = true;
+    this.isServerRunning = false;
+    this.updateMenu();
 
-      this.setupEventListeners();
-      
-      setTimeout(() => {
-        this.isServerStarting = false;
-        this.isServerRunning = true;
-        this.updateMenu();
-        this.updateStats();
-        logger.server('🔥 Сервер hot restarted');
-      }, 300);
-    }, 300);
+    // Ждем завершения процесса перед запуском нового
+    return new Promise((resolve) => {
+      if (this.serverProcess) {
+        // Удаляем старые обработчики, чтобы избежать конфликтов
+        this.serverProcess.removeAllListeners('close');
+        
+        // Добавляем обработчик завершения
+        const onClose = () => {
+          this.serverProcess = null;
+          
+          // Небольшая задержка перед запуском нового процесса
+          setTimeout(async () => {
+            try {
+              const serverPath = path.join(__dirname, '..', 'index.js');
+              this.serverProcess = spawn('node', [serverPath], {
+                cwd: path.join(__dirname, '..', '..'),
+                stdio: ['ignore', 'pipe', 'pipe'],
+                shell: true,
+                env: { ...process.env, PORT: this.port }
+              });
+
+              this.setupEventListeners();
+              
+              // Ждем немного перед установкой статуса "запущен"
+              setTimeout(() => {
+                this.isServerStarting = false;
+                this.isServerRunning = true;
+                this.updateMenu();
+                this.updateStats();
+                logger.server('🔥 Сервер hot restarted');
+                resolve();
+              }, 500);
+            } catch (error) {
+              logger.serverError(`Ошибка при hot restart: ${error.message}`);
+              this.isServerStarting = false;
+              this.isServerRunning = false;
+              this.updateMenu();
+              resolve();
+            }
+          }, 200);
+        };
+
+        this.serverProcess.once('close', onClose);
+        
+        // Отправляем сигнал завершения
+        try {
+          this.serverProcess.kill('SIGTERM');
+        } catch (error) {
+          // Процесс уже завершен
+          onClose();
+        }
+
+        // Таймаут на случай, если процесс не завершится
+        setTimeout(() => {
+          if (this.serverProcess) {
+            try {
+              this.serverProcess.kill('SIGKILL');
+            } catch (e) {
+              // Игнорируем ошибки
+            }
+            this.serverProcess = null;
+            onClose();
+          }
+        }, 2000);
+      } else {
+        // Если процесса нет, просто запускаем сервер
+        this.startServer().then(resolve);
+      }
+    });
   }
 
   async restartServer() {

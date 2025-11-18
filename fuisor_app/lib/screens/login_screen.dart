@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/animated_login_button.dart';
+import '../widgets/animated_text_field.dart';
+import '../widgets/error_message_widget.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
 
@@ -62,16 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   children: [
                     // Email/Username Field
-                    TextFormField(
+                    AnimatedTextField(
                       controller: _emailController,
-                      decoration: const InputDecoration(
                         labelText: 'Email or Username',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
+                      keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter email or username';
@@ -79,31 +76,25 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     // Password Field
-                    TextFormField(
+                    AnimatedTextField(
                       controller: _passwordController,
+                      labelText: 'Password',
                       obscureText: !_isPasswordVisible,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
                                 ? Icons.visibility
                                 : Icons.visibility_off,
+                          color: Colors.grey,
                           ),
                           onPressed: () {
                             setState(() {
                               _isPasswordVisible = !_isPasswordVisible;
                             });
                           },
-                        ),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -117,13 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Login Button
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
-                        return SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton(
-                            onPressed: authProvider.isLoading
-                                ? null
-                                : () async {
+                        return AnimatedLoginButton(
+                          state: authProvider.loginButtonState,
+                          onPressed: () async {
                                     if (_formKey.currentState!.validate()) {
                                       final success = await authProvider.login(
                                         _emailController.text.trim(),
@@ -131,6 +118,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       );
 
                                       if (success && mounted) {
+                                // Небольшая задержка для показа успешного состояния
+                                await Future.delayed(const Duration(milliseconds: 500));
+                                if (mounted) {
                                         Navigator.of(context).pushReplacement(
                                           MaterialPageRoute(
                                             builder: (context) => const MainScreen(),
@@ -138,52 +128,52 @@ class _LoginScreenState extends State<LoginScreen> {
                                         );
                                       }
                                     }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0095F6),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: authProvider.isLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Log In',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
+                            }
+                          },
                         );
                       },
                     ),
 
-                    // Error Message
+                    // Error Message (показывается только после завершения анимации)
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
-                        if (authProvider.error != null) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: Text(
-                              authProvider.error!,
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
+                        return AnimatedSize(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeInOut,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 400),
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, -0.2),
+                                    end: Offset.zero,
+                                  ).animate(CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  )),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: authProvider.shouldShowError
+                                ? ErrorMessageWidget(
+                                    key: ValueKey(authProvider.error),
+                                    message: authProvider.error!,
+                                    onForgotPassword: () {
+                                      // TODO: Implement forgot password functionality
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Forgot password feature coming soon!'),
+                                          backgroundColor: Color(0xFF0095F6),
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : const SizedBox.shrink(key: ValueKey('empty')),
+                          ),
+                        );
                       },
                     ),
                   ],

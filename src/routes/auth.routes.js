@@ -6,6 +6,120 @@ import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 
+// Check username availability
+router.get('/check-username', async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username || username.trim().length === 0) {
+      return res.status(400).json({ 
+        available: false, 
+        message: 'Username is required' 
+      });
+    }
+
+    // Validate username format (3-30 characters, letters, numbers, dots, underscores)
+    const usernameRegex = /^[a-zA-Z0-9._]+$/;
+    if (!usernameRegex.test(username) || username.length < 3 || username.length > 30) {
+      return res.status(400).json({ 
+        available: false, 
+        message: 'Invalid username format' 
+      });
+    }
+
+    // Check if username exists
+    const { data: existingUser, error: searchError } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', username.trim())
+      .single();
+
+    // If user found, username is taken
+    if (existingUser) {
+      logger.auth('Username check - already taken', { username });
+      return res.json({ available: false });
+    }
+
+    // If error is "not found" (PGRST116), username is available
+    if (searchError && searchError.code === 'PGRST116') {
+      logger.auth('Username check - available', { username });
+      return res.json({ available: true });
+    }
+
+    // Other errors
+    if (searchError) {
+      logger.authError('Username check error', searchError);
+      // In case of error, assume available to not block registration
+      return res.json({ available: true });
+    }
+
+    // No user found, username is available
+    logger.auth('Username check - available', { username });
+    res.json({ available: true });
+  } catch (error) {
+    logger.authError('Username check error', error);
+    // In case of error, assume available to not block registration
+    res.json({ available: true });
+  }
+});
+
+// Check email availability
+router.get('/check-email', async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email || email.trim().length === 0) {
+      return res.status(400).json({ 
+        available: false, 
+        message: 'Email is required' 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        available: false, 
+        message: 'Invalid email format' 
+      });
+    }
+
+    // Check if email exists
+    const { data: existingUser, error: searchError } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('email', email.trim())
+      .single();
+
+    // If user found, email is taken
+    if (existingUser) {
+      logger.auth('Email check - already taken', { email });
+      return res.json({ available: false });
+    }
+
+    // If error is "not found" (PGRST116), email is available
+    if (searchError && searchError.code === 'PGRST116') {
+      logger.auth('Email check - available', { email });
+      return res.json({ available: true });
+    }
+
+    // Other errors
+    if (searchError) {
+      logger.authError('Email check error', searchError);
+      // In case of error, assume available to not block registration
+      return res.json({ available: true });
+    }
+
+    // No user found, email is available
+    logger.auth('Email check - available', { email });
+    res.json({ available: true });
+  } catch (error) {
+    logger.authError('Email check error', error);
+    // In case of error, assume available to not block registration
+    res.json({ available: true });
+  }
+});
+
 // Sign up
 router.post('/signup', validateSignup, async (req, res) => {
   try {

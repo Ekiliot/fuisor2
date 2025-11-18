@@ -424,6 +424,10 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
         chat_id,
         sender_id,
         content,
+        message_type,
+        media_url,
+        media_duration,
+        media_size,
         is_read,
         read_at,
         created_at,
@@ -774,6 +778,67 @@ router.delete('/chats/:chatId/messages/:messageId', validateAuth, validateChatId
     res.json({ message: 'Message deleted successfully', deleted: true });
   } catch (error) {
     console.error('Error in DELETE /api/messages/chats/:chatId/messages/:messageId:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// 8. GET /api/messages/chats/:chatId/media/signed-url?path=...
+// Получить signed URL для приватного медиа файла
+// ==============================================
+router.get('/chats/:chatId/media/signed-url', validateAuth, validateChatId, async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    const userId = req.user.id;
+    // Получаем путь к файлу из query параметра
+    const mediaPath = req.query.path;
+    
+    console.log('GET /chats/:chatId/media/signed-url - Request:', {
+      chatId,
+      userId,
+      mediaPath,
+    });
+
+    if (!mediaPath) {
+      return res.status(400).json({ error: 'Media path is required' });
+    }
+
+    // Проверка участия в чате
+    const isParticipant = await checkChatParticipant(chatId, userId);
+    if (!isParticipant) {
+      await new Promise(r => setTimeout(r, Math.random() * 100));
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Проверяем, что путь к файлу соответствует структуре userId/chatId/...
+    const pathParts = mediaPath.split('/');
+    if (pathParts.length < 3) {
+      return res.status(400).json({ error: 'Invalid media path format' });
+    }
+
+    // Проверяем, что chatId в пути соответствует запрошенному chatId
+    if (pathParts[1] !== chatId) {
+      return res.status(403).json({ error: 'Media path does not match chat ID' });
+    }
+
+    // Создаем signed URL (действителен 1 час = 3600 секунд)
+    const { data, error } = await supabaseAdmin.storage
+      .from('dm_media')
+      .createSignedUrl(mediaPath, 3600);
+
+    if (error) {
+      console.error('Error creating signed URL:', error);
+      return res.status(500).json({ error: 'Failed to create signed URL' });
+    }
+
+    console.log('GET /chats/:chatId/media/signed-url - Success:', {
+      mediaPath,
+      hasSignedUrl: !!data?.signedUrl,
+    });
+
+    res.json({ signedUrl: data.signedUrl });
+  } catch (error) {
+    console.error('Error in GET /api/messages/chats/:chatId/media/signed-url:', error);
     res.status(500).json({ error: error.message });
   }
 });

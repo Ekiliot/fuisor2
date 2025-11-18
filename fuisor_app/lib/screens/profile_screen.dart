@@ -14,6 +14,7 @@ import '../models/user.dart';
 import 'edit_profile_screen.dart';
 import 'followers_list_screen.dart';
 import 'saved_posts_screen.dart';
+import 'chat_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? userId;
@@ -26,11 +27,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   final RefreshController _refreshController = RefreshController(initialRefresh: false);
+  final ScrollController _scrollController = ScrollController();
   User? _viewingUser;
   bool _isLoadingUser = false;
+  bool _isLoadingUserData = false; // Защита от параллельных запросов
   bool _isFollowing = false;
   bool _isCheckingFollowStatus = false;
   late TabController _tabController;
+  double? _savedScrollPosition; // Сохранение позиции скролла при refresh
 
   @override
   void initState() {
@@ -59,35 +63,30 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         
         print('ProfileScreen: Loading posts for user: $targetUserId');
         
+        // Загружаем пользователя и посты параллельно
+        final futures = <Future>[];
+        
         // Load the user's profile if viewing another user
         if (widget.userId != null && widget.userId != authProvider.currentUser?.id) {
-          setState(() {
-            _isLoadingUser = true;
-          });
-          
-          try {
-            final apiService = ApiService();
-            final user = await apiService.getUser(widget.userId!);
+          if (!_isLoadingUserData) {
+            _isLoadingUserData = true;
             setState(() {
-              _viewingUser = user;
-              _isLoadingUser = false;
+              _isLoadingUser = true;
             });
             
-            // Check if current user is following this user
-            await _checkFollowStatus(widget.userId!);
-          } catch (e) {
-            print('ProfileScreen: Error loading user: $e');
-            setState(() {
-              _isLoadingUser = false;
-            });
+            futures.add(_loadUserData(widget.userId!));
           }
         }
         
-        await postsProvider.loadUserPosts(
+        // Загружаем посты параллельно с данными пользователя
+        futures.add(postsProvider.loadUserPosts(
           userId: targetUserId,
           refresh: true,
           accessToken: accessToken,
-        );
+        ));
+        
+        // Ждем завершения всех загрузок
+        await Future.wait(futures);
       } else {
         print('ProfileScreen: No current user found or user ID is empty');
         // Попробуем загрузить профиль
@@ -136,6 +135,62 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     });
   }
 
+  // Загрузить данные пользователя
+  Future<void> _loadUserData(String userId) async {
+    try {
+      final apiService = ApiService();
+      final user = await apiService.getUser(userId);
+      
+      if (mounted) {
+        setState(() {
+          _viewingUser = user;
+          _isLoadingUser = false;
+        });
+        
+        // Check if current user is following this user
+        await _checkFollowStatus(userId);
+      }
+    } catch (e) {
+      print('ProfileScreen: Error loading user: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingUser = false;
+        });
+      }
+    } finally {
+      _isLoadingUserData = false;
+    }
+  }
+
+  // Загрузить данные пользователя с обработкой ошибок и восстановлением старых данных
+  Future<void> _loadUserDataWithErrorHandling(String userId, User? oldUser) async {
+    try {
+      final apiService = ApiService();
+      final user = await apiService.getUser(userId);
+      
+      if (mounted) {
+        setState(() {
+          _viewingUser = user; // Заменяем только после успешной загрузки
+          _isLoadingUser = false;
+        });
+      }
+    } catch (e) {
+      print('ProfileScreen: Error refreshing user: $e');
+      // При ошибке восстанавливаем старые данные
+      if (mounted) {
+        setState(() {
+          if (oldUser != null) {
+            _viewingUser = oldUser; // Восстанавливаем старые данные
+            print('ProfileScreen: User refresh failed, restored old user data');
+          }
+          _isLoadingUser = false;
+        });
+      }
+    } finally {
+      _isLoadingUserData = false;
+    }
+  }
+
   // Ждать инициализации AuthProvider
   Future<void> _waitForAuthProvider() async {
     int attempts = 0;
@@ -160,11 +215,17 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void dispose() {
     _refreshController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _onRefresh() async {
     try {
+      // Сохраняем позицию скролла перед refresh
+      if (_scrollController.hasClients) {
+        _savedScrollPosition = _scrollController.position.pixels;
+      }
+      
       final authProvider = context.read<AuthProvider>();
       final postsProvider = context.read<PostsProvider>();
       
@@ -176,44 +237,62 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         return;
       }
       
+      // Сохраняем старые данные для восстановления при ошибке
+      User? oldUser;
+      if (widget.userId != null && widget.userId != authProvider.currentUser?.id) {
+        oldUser = _viewingUser; // Сохраняем старые данные
+      }
+      
+      // Загружаем пользователя и посты параллельно
+      final futures = <Future>[];
+      
       // Reload user data if viewing another user's profile
       if (widget.userId != null && widget.userId != authProvider.currentUser?.id) {
-        setState(() {
-          _isLoadingUser = true;
-        });
-        
-        try {
-          final apiService = ApiService();
-          final user = await apiService.getUser(widget.userId!);
+        if (!_isLoadingUserData) {
+          _isLoadingUserData = true;
           setState(() {
-            _viewingUser = user;
-            _isLoadingUser = false;
+            _isLoadingUser = true;
           });
-        } catch (e) {
-          print('ProfileScreen: Error refreshing user: $e');
-          setState(() {
-            _isLoadingUser = false;
-          });
+          
+          futures.add(_loadUserDataWithErrorHandling(widget.userId!, oldUser));
         }
       } else {
         // Refresh current user's profile
-        await authProvider.refreshProfile();
+        futures.add(authProvider.refreshProfile());
       }
       
-      // Загружаем посты пользователя
+      // Загружаем посты пользователя параллельно
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
       
       print('ProfileScreen: Refreshing posts for user: $targetUserId');
       
-      await postsProvider.loadUserPosts(
+      futures.add(postsProvider.loadUserPosts(
         userId: targetUserId,
         refresh: true,
         accessToken: accessToken,
-      );
+      ));
+      
+      // Ждем завершения всех загрузок
+      await Future.wait(futures);
       
       if (mounted) {
         _refreshController.refreshCompleted();
+        
+        // Восстанавливаем позицию скролла после обновления UI
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && 
+              _scrollController.hasClients && 
+              _savedScrollPosition != null &&
+              _savedScrollPosition! > 0) {
+            // Плавно прокручиваем к сохраненной позиции
+            _scrollController.animateTo(
+              _savedScrollPosition!,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        });
         
         // Показываем уведомление об успешном обновлении
         ScaffoldMessenger.of(context).showSnackBar(
@@ -268,6 +347,64 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       setState(() {
         _isCheckingFollowStatus = false;
       });
+    }
+  }
+
+  Future<void> _startChat(String userId) async {
+    try {
+      final authProvider = context.read<AuthProvider>();
+      if (authProvider.currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please login to send messages'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (userId == authProvider.currentUser!.id) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot start chat with yourself'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Get access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      if (accessToken == null) {
+        throw Exception('No access token');
+      }
+
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+
+      // Создаем или получаем существующий чат
+      final chat = await apiService.createChat(userId);
+
+      if (mounted) {
+        // Открываем экран чата
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(chat: chat),
+          ),
+        );
+      }
+    } catch (e) {
+      print('ProfileScreen: Error starting chat: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start chat: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -361,9 +498,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             ),
         ],
       ),
-      body: Consumer<AuthProvider>(
-        builder: (context, authProvider, child) {
-          if (authProvider.currentUser == null && _viewingUser == null) {
+      body: Selector<AuthProvider, User?>(
+        selector: (_, provider) => provider.currentUser,
+        builder: (context, currentUser, child) {
+          // Определяем, открыт ли чужой профиль
+          final isViewingOtherUser = widget.userId != null && 
+                                     widget.userId != currentUser?.id;
+          
+          // Показываем ошибку только если нет ни текущего пользователя, ни просматриваемого
+          if (currentUser == null && _viewingUser == null && !_isLoadingUser) {
             return const Center(
               child: Text(
                 'Please log in',
@@ -372,13 +515,41 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             );
           }
 
-          // Use _viewingUser if viewing another user's profile, otherwise use current user
-          final user = _viewingUser ?? authProvider.currentUser!;
-          
-          if (_isLoadingUser) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          // Если открыт чужой профиль, НЕ показываем данные текущего пользователя
+          // Показываем только данные чужого пользователя или скелетон
+          User? user;
+          if (isViewingOtherUser) {
+            // Для чужого профиля показываем только _viewingUser, не currentUser
+            user = _viewingUser;
+            
+            // Если данные еще не загружены, показываем скелетон
+            if (user == null && _isLoadingUser) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+            
+            // Если данные не загружены и загрузка не идет, показываем ошибку
+            if (user == null) {
+              return const Center(
+                child: Text(
+                  'User not found',
+                  style: TextStyle(color: Colors.white),
+                ),
+              );
+            }
+          } else {
+            // Для своего профиля показываем currentUser
+            user = currentUser;
+            
+            if (user == null) {
+              return const Center(
+                child: Text(
+                  'Please log in',
+                  style: TextStyle(color: Colors.white),
+                ),
+              );
+            }
           }
 
           return SmartRefresher(
@@ -400,6 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               ),
             ),
             child: SingleChildScrollView(
+            controller: _scrollController,
             child: Column(
               children: [
                 // Profile Header
@@ -410,24 +582,64 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       // Name and Profile Picture Row
                       Row(
                         children: [
-                          // Profile Picture
-                          SafeAvatar(
-                            imageUrl: user.avatarUrl,
-                            radius: 40,
-                            backgroundColor: const Color(0xFF262626),
-                            fallbackIcon: EvaIcons.personOutline,
-                            iconColor: Colors.white,
+                          // Profile Picture with loading indicator
+                          Stack(
+                            children: [
+                              SafeAvatar(
+                                imageUrl: user.avatarUrl,
+                                radius: 40,
+                                backgroundColor: const Color(0xFF262626),
+                                fallbackIcon: EvaIcons.personOutline,
+                                iconColor: Colors.white,
+                              ),
+                              if (_isLoadingUser)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(width: 20),
                           // Name next to profile picture
                           Expanded(
-                            child: Text(
-                              user.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 18, // Increased from 16 to 18
-                                color: Colors.white,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                if (_isLoadingUser)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 4),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0095F6)),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -442,10 +654,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             'Followers',
                             user.followersCount,
                             onTap: () {
+                              final userId = user!.id; // user гарантированно не null здесь
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (context) => FollowersListScreen(
-                                    userId: user.id,
+                                    userId: userId,
                                     title: 'Followers',
                                     isFollowers: true,
                                   ),
@@ -457,10 +670,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             'Following',
                             user.followingCount,
                             onTap: () {
+                              final userId = user!.id; // user гарантированно не null здесь
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (context) => FollowersListScreen(
-                                    userId: user.id,
+                                    userId: userId,
                                     title: 'Following',
                                     isFollowers: false,
                                   ),
@@ -504,14 +718,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           );
                           if (result == true && mounted) {
                             // Refresh profile data after editing
+                            final authProvider = context.read<AuthProvider>();
                             await authProvider.refreshProfile();
                             // Also refresh user posts
                             final postsProvider = context.read<PostsProvider>();
                             final prefs = await SharedPreferences.getInstance();
                             final accessToken = prefs.getString('access_token');
-                            if (user.id.isNotEmpty) {
+                            final userId = user!.id; // user гарантированно не null здесь
+                            if (userId.isNotEmpty) {
                               await postsProvider.loadUserPosts(
-                                userId: user.id,
+                                userId: userId,
                                 refresh: true,
                                 accessToken: accessToken,
                               );
@@ -536,131 +752,221 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
 
-                // Follow/Unfollow Button (only for other users' profiles)
-                if (widget.userId != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isCheckingFollowStatus
-                            ? null
-                            : () => _toggleFollow(widget.userId!),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isFollowing
-                              ? const Color(0xFF262626)
-                              : const Color(0xFF0095F6),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isCheckingFollowStatus
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                // Message and Follow/Unfollow Buttons (only for other users' profiles)
+                Builder(
+                  builder: (context) {
+                    final authProvider = context.read<AuthProvider>();
+                    if (widget.userId != null && widget.userId != authProvider.currentUser?.id) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            // Message button
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _startChat(widget.userId!),
+                                icon: const Icon(
+                                  EvaIcons.paperPlaneOutline,
+                                  size: 18,
+                                  color: Color(0xFF0095F6),
                                 ),
-                              )
-                            : Text(
-                                _isFollowing ? 'Unfollow' : 'Follow',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
+                                label: const Text(
+                                  'Message',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: Color(0xFF0095F6),
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Color(0xFF262626)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
                                 ),
                               ),
-                      ),
-                    ),
-                  ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Follow/Unfollow button
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isCheckingFollowStatus
+                                    ? null
+                                    : () => _toggleFollow(widget.userId!),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isFollowing
+                                      ? const Color(0xFF262626)
+                                      : const Color(0xFF0095F6),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                child: _isCheckingFollowStatus
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Text(
+                                        _isFollowing ? 'Unfollow' : 'Follow',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
 
                 const SizedBox(height: 20),
 
                 // Tabs (only for own profile)
-                if (widget.userId == null || widget.userId == authProvider.currentUser?.id)
-                  Column(
-                    children: [
-                      TabBar(
-                        controller: _tabController,
-                        indicatorColor: Colors.white,
-                        labelColor: Colors.white,
-                        unselectedLabelColor: Colors.grey,
-                        tabs: const [
-                          Tab(
-                            icon: Icon(EvaIcons.gridOutline),
+                Builder(
+                  builder: (context) {
+                    final authProvider = context.read<AuthProvider>();
+                    if (widget.userId == null || widget.userId == authProvider.currentUser?.id) {
+                      return Column(
+                        children: [
+                          TabBar(
+                            controller: _tabController,
+                            indicatorColor: Colors.white,
+                            labelColor: Colors.white,
+                            unselectedLabelColor: Colors.grey,
+                            tabs: const [
+                              Tab(
+                                icon: Icon(EvaIcons.gridOutline),
+                              ),
+                              Tab(
+                                icon: Icon(EvaIcons.bookmarkOutline),
+                              ),
+                            ],
                           ),
-                          Tab(
-                            icon: Icon(EvaIcons.bookmarkOutline),
-                          ),
+                          const SizedBox(height: 20),
                         ],
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
 
-                // Tab View
-                if (widget.userId == null || widget.userId == authProvider.currentUser?.id)
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // Posts Tab
-                        Consumer<PostsProvider>(
-                          builder: (context, postsProvider, child) {
-                            return PostGridWidget(
-                              posts: postsProvider.userPosts,
-                              isLoading: postsProvider.isLoading,
-                              hasMorePosts: postsProvider.hasMoreUserPosts,
-                              onLoadMore: () async {
-                                await _waitForAuthProvider();
-                                
-                                if (authProvider.currentUser != null && authProvider.currentUser!.id.isNotEmpty) {
-                                  final prefs = await SharedPreferences.getInstance();
-                                  final accessToken = prefs.getString('access_token');
-                                  
-                                  await postsProvider.loadUserPosts(
-                                    userId: authProvider.currentUser!.id,
-                                    refresh: false,
-                                    accessToken: accessToken,
-                                  );
-                                }
+                // Tab View and Posts Grid
+                Builder(
+                  builder: (context) {
+                    final authProvider = context.read<AuthProvider>();
+                    // Own profile - show tabs
+                    if (widget.userId == null || widget.userId == authProvider.currentUser?.id) {
+                      return SizedBox(
+                        height: MediaQuery.of(context).size.height,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            // Posts Tab
+                            Selector<PostsProvider, Map<String, dynamic>>(
+                              selector: (_, provider) => {
+                                'userPosts': provider.userPosts,
+                                'isLoading': provider.isLoading,
+                                'isRefreshingUserPosts': provider.isRefreshingUserPosts,
+                                'hasMoreUserPosts': provider.hasMoreUserPosts,
                               },
-                            );
-                          },
+                              shouldRebuild: (prev, next) {
+                                return prev['userPosts'] != next['userPosts'] ||
+                                       prev['isLoading'] != next['isLoading'] ||
+                                       prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
+                                       prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
+                              },
+                              builder: (context, data, child) {
+                                final userPosts = (data['userPosts'] as List).cast<Post>();
+                                final isLoading = data['isLoading'] as bool;
+                                final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
+                                final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
+                                
+                                final postsProvider = context.read<PostsProvider>();
+                                return PostGridWidget(
+                                  posts: userPosts,
+                                  isLoading: isLoading && !isRefreshingUserPosts,
+                                  hasMorePosts: hasMoreUserPosts,
+                                  onLoadMore: () async {
+                                    await _waitForAuthProvider();
+                                    
+                                    final authProvider = context.read<AuthProvider>();
+                                    if (authProvider.currentUser != null && authProvider.currentUser!.id.isNotEmpty) {
+                                      final prefs = await SharedPreferences.getInstance();
+                                      final accessToken = prefs.getString('access_token');
+                                      
+                                      await postsProvider.loadUserPosts(
+                                        userId: authProvider.currentUser!.id,
+                                        refresh: false,
+                                        accessToken: accessToken,
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                            // Saved Posts Tab
+                            const SavedPostsScreen(),
+                          ],
                         ),
-                        // Saved Posts Tab
-                        const SavedPostsScreen(),
-                      ],
-                    ),
-                  )
-                else
-                  // Posts Grid for other users
-                  Consumer<PostsProvider>(
-                    builder: (context, postsProvider, child) {
-                      return PostGridWidget(
-                        posts: postsProvider.userPosts,
-                        isLoading: postsProvider.isLoading,
-                        hasMorePosts: postsProvider.hasMoreUserPosts,
-                        onLoadMore: () async {
-                          await _waitForAuthProvider();
+                      );
+                    } else {
+                      // Other user's profile - show posts grid
+                      return Selector<PostsProvider, Map<String, dynamic>>(
+                        selector: (_, provider) => {
+                          'userPosts': provider.userPosts,
+                          'isLoading': provider.isLoading,
+                          'isRefreshingUserPosts': provider.isRefreshingUserPosts,
+                          'hasMoreUserPosts': provider.hasMoreUserPosts,
+                        },
+                        shouldRebuild: (prev, next) {
+                          return prev['userPosts'] != next['userPosts'] ||
+                                 prev['isLoading'] != next['isLoading'] ||
+                                 prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
+                                 prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
+                        },
+                        builder: (context, data, child) {
+                          final userPosts = (data['userPosts'] as List).cast<Post>();
+                          final isLoading = data['isLoading'] as bool;
+                          final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
+                          final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
                           
-                          if (widget.userId != null) {
-                            final prefs = await SharedPreferences.getInstance();
-                            final accessToken = prefs.getString('access_token');
-                            
-                            await postsProvider.loadUserPosts(
-                              userId: widget.userId!,
-                              refresh: false,
-                              accessToken: accessToken,
-                            );
-                          }
+                          final postsProvider = context.read<PostsProvider>();
+                          return PostGridWidget(
+                            posts: userPosts,
+                            isLoading: isLoading && !isRefreshingUserPosts,
+                            hasMorePosts: hasMoreUserPosts,
+                            onLoadMore: () async {
+                              await _waitForAuthProvider();
+                              
+                              if (widget.userId != null) {
+                                final prefs = await SharedPreferences.getInstance();
+                                final accessToken = prefs.getString('access_token');
+                                
+                                await postsProvider.loadUserPosts(
+                                  userId: widget.userId!,
+                                  refresh: false,
+                                  accessToken: accessToken,
+                                );
+                              }
+                            },
+                          );
                         },
                       );
-                    },
-                  ),
+                    }
+                  },
+                ),
               ],
             ),
             ),

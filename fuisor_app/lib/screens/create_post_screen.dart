@@ -4,11 +4,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import 'dart:typed_data';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
-import '../utils/hashtag_utils.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -30,10 +30,59 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final TextEditingController _captionController = TextEditingController();
   bool _isLoading = false;
   String? _error;
+  VideoPlayerController? _webVideoController;
+
+  @override
+  void initState() {
+    super.initState();
+    print('CreatePostScreen: initState called');
+    print('CreatePostScreen: selectedFile is null: ${widget.selectedFile == null}');
+    if (widget.selectedFile != null) {
+      print('CreatePostScreen: File path: ${widget.selectedFile!.path}');
+      print('CreatePostScreen: File name: ${widget.selectedFile!.name}');
+      print('CreatePostScreen: Has image bytes: ${widget.selectedImageBytes != null}');
+      print('CreatePostScreen: Has video controller: ${widget.videoController != null}');
+      
+      // Для веб-платформы создаем видеоплеер из blob URL
+      if (kIsWeb && widget.videoController == null && widget.selectedFile != null) {
+        final fileName = widget.selectedFile!.name.toLowerCase();
+        final isVideo = fileName.contains('.mp4') ||
+            fileName.contains('.mov') ||
+            fileName.contains('.avi') ||
+            fileName.contains('.webm') ||
+            fileName.contains('.quicktime');
+        
+        if (isVideo && widget.selectedFile!.path.startsWith('blob:')) {
+          print('CreatePostScreen: Creating web video controller for blob URL');
+          _initializeWebVideoController();
+        }
+      }
+    }
+  }
+
+  Future<void> _initializeWebVideoController() async {
+    try {
+      print('CreatePostScreen: Initializing web video controller...');
+      _webVideoController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.selectedFile!.path),
+      );
+      await _webVideoController!.initialize();
+      print('CreatePostScreen: Web video controller initialized');
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('CreatePostScreen: Error initializing web video controller: $e');
+      _webVideoController?.dispose();
+      _webVideoController = null;
+    }
+  }
 
   @override
   void dispose() {
+    print('CreatePostScreen: dispose called');
     _captionController.dispose();
+    _webVideoController?.dispose();
     super.dispose();
   }
 
@@ -49,42 +98,112 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _createPost() async {
-    if (widget.selectedFile == null) return;
+    print('CreatePostScreen: _createPost called');
+    
+    if (widget.selectedFile == null) {
+      print('CreatePostScreen: ERROR - No file selected!');
+      return;
+    }
 
+    print('CreatePostScreen: Setting loading state...');
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
+      print('CreatePostScreen: Getting providers...');
       final postsProvider = context.read<PostsProvider>();
       final authProvider = context.read<AuthProvider>();
 
       if (authProvider.currentUser == null) {
+        print('CreatePostScreen: ERROR - User not authenticated');
         throw Exception('User not authenticated');
       }
 
-      print('Creating post for user: ${authProvider.currentUser!.username}');
-      print('Selected file: ${widget.selectedFile!.path}');
-      print('File name: ${widget.selectedFile!.name}');
+      print('CreatePostScreen: User authenticated: ${authProvider.currentUser!.username}');
+      print('CreatePostScreen: Selected file path: ${widget.selectedFile!.path}');
+      print('CreatePostScreen: Selected file name: ${widget.selectedFile!.name}');
+      print('CreatePostScreen: Has image bytes: ${widget.selectedImageBytes != null}');
+      print('CreatePostScreen: Has video controller: ${widget.videoController != null}');
 
       String mediaType = 'image';
       Uint8List? mediaBytes = widget.selectedImageBytes;
       String mediaFileName = 'post_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       // Определяем тип медиа по расширению файла
-      if (widget.selectedFile!.path.toLowerCase().contains('.mp4') ||
-          widget.selectedFile!.path.toLowerCase().contains('.mov') ||
-          widget.selectedFile!.path.toLowerCase().contains('.avi')) {
+      // На веб-платформе path может быть blob URL, поэтому проверяем имя файла
+      final fileName = widget.selectedFile!.name.toLowerCase();
+      final filePath = widget.selectedFile!.path.toLowerCase();
+      print('CreatePostScreen: File path: ${widget.selectedFile!.path}');
+      print('CreatePostScreen: File name: ${widget.selectedFile!.name}');
+      
+      // Проверяем расширение в имени файла (более надежно для веб)
+      final isVideo = fileName.contains('.mp4') ||
+          fileName.contains('.mov') ||
+          fileName.contains('.avi') ||
+          fileName.contains('.webm') ||
+          fileName.contains('.quicktime') ||
+          // Также проверяем путь на случай, если там есть расширение
+          filePath.contains('.mp4') ||
+          filePath.contains('.mov') ||
+          filePath.contains('.avi') ||
+          filePath.contains('.webm') ||
+          filePath.contains('.quicktime');
+      
+      if (isVideo) {
         mediaType = 'video';
         mediaFileName = 'post_${DateTime.now().millisecondsSinceEpoch}.mp4';
         
+        print('CreatePostScreen: Detected video file');
+        print('CreatePostScreen: Reading video file as bytes...');
+        
         // Для видео читаем файл как байты
+        try {
+          print('CreatePostScreen: Attempting to read video file...');
+          print('CreatePostScreen: File path: ${widget.selectedFile!.path}');
+          print('CreatePostScreen: Is web platform: $kIsWeb');
+          
+          // На веб-платформе используем только XFile.readAsBytes()
+          // На мобильных платформах тоже используем XFile.readAsBytes() как основной метод
+          if (kIsWeb) {
+            print('CreatePostScreen: Web platform - using XFile.readAsBytes()...');
+            mediaBytes = await widget.selectedFile!.readAsBytes();
+            print('CreatePostScreen: Video file read via XFile.readAsBytes() successfully');
+            print('CreatePostScreen: Video file size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+          } else {
+            // На мобильных платформах пробуем XFile.readAsBytes() сначала
+            try {
+              print('CreatePostScreen: Mobile platform - trying XFile.readAsBytes()...');
+              mediaBytes = await widget.selectedFile!.readAsBytes();
+              print('CreatePostScreen: Video file read via XFile.readAsBytes() successfully');
+              print('CreatePostScreen: Video file size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+            } catch (xfileError) {
+              print('CreatePostScreen: XFile.readAsBytes() failed: $xfileError');
+              print('CreatePostScreen: Trying File.readAsBytes() as fallback...');
+              
+              // Fallback на File если XFile не работает
         final file = File(widget.selectedFile!.path);
+              final fileExists = await file.exists();
+              print('CreatePostScreen: File exists: $fileExists');
+              
+              if (!fileExists) {
+                throw Exception('Video file does not exist at path: ${widget.selectedFile!.path}');
+              }
+              
         mediaBytes = await file.readAsBytes();
-        print('Video file size: ${mediaBytes.length} bytes');
+              print('CreatePostScreen: Video file read via File.readAsBytes() successfully');
+              print('CreatePostScreen: Video file size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+            }
+          }
+        } catch (fileError) {
+          print('CreatePostScreen: Error reading video file: $fileError');
+          print('CreatePostScreen: Error type: ${fileError.runtimeType}');
+          throw Exception('Failed to read video file: $fileError');
+        }
       } else {
-        print('Image file size: ${mediaBytes?.length ?? 0} bytes');
+        print('CreatePostScreen: Detected image file');
+        print('CreatePostScreen: Image file size: ${mediaBytes?.length ?? 0} bytes');
       }
 
       if (mediaBytes == null) {
@@ -102,7 +221,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Hashtags are stored directly in the caption text
       final captionText = _captionController.text.trim();
       
-      print('CreatePostScreen: Creating post with caption: $captionText');
+      print('CreatePostScreen: About to call postsProvider.createPost');
+      print('CreatePostScreen: Caption: $captionText');
+      print('CreatePostScreen: Media type: $mediaType');
+      print('CreatePostScreen: Media filename: $mediaFileName');
+      print('CreatePostScreen: Media bytes length: ${mediaBytes.length}');
+      print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       await postsProvider.createPost(
         caption: captionText,
@@ -112,7 +236,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         accessToken: accessToken,
       );
 
-      print('Post created successfully!');
+      print('CreatePostScreen: Post created successfully!');
 
       if (mounted) {
         // Закрываем все экраны создания поста и возвращаемся к главному экрану
@@ -125,15 +249,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         );
       }
-    } catch (e) {
-      print('Error creating post: $e');
+    } catch (e, stackTrace) {
+      print('CreatePostScreen: ERROR creating post: $e');
+      print('CreatePostScreen: Stack trace: $stackTrace');
+      if (mounted) {
       setState(() {
         _error = e.toString();
+          _isLoading = false;
       });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating post: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
+      if (mounted) {
       setState(() {
         _isLoading = false;
       });
+        print('CreatePostScreen: Loading state set to false');
+      }
     }
   }
 
@@ -158,7 +297,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : _createPost,
+            onPressed: _isLoading ? null : () {
+              print('CreatePostScreen: Share button pressed');
+              print('CreatePostScreen: _isLoading: $_isLoading');
+              print('CreatePostScreen: selectedFile is null: ${widget.selectedFile == null}');
+              _createPost();
+            },
             child: _isLoading
                 ? const SizedBox(
                     width: 20,
@@ -256,18 +400,65 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildMediaPreview() {
     if (widget.selectedFile == null) return const SizedBox();
 
+    // Изображение
     if (widget.selectedImageBytes != null) {
       return Image.memory(
         widget.selectedImageBytes!,
         fit: BoxFit.cover,
       );
-    } else if (widget.videoController != null) {
+    }
+    
+    // Видео с контроллером (мобильная платформа)
+    if (widget.videoController != null) {
       return AspectRatio(
         aspectRatio: widget.videoController!.value.aspectRatio,
         child: VideoPlayer(widget.videoController!),
       );
     }
 
+    // Видео для веб-платформы
+    if (_webVideoController != null && _webVideoController!.value.isInitialized) {
+      return AspectRatio(
+        aspectRatio: _webVideoController!.value.aspectRatio,
+        child: VideoPlayer(_webVideoController!),
+      );
+    }
+    
+    // Проверяем, является ли файл видео (для веб)
+    if (kIsWeb && widget.selectedFile != null) {
+      final fileName = widget.selectedFile!.name.toLowerCase();
+      final isVideo = fileName.contains('.mp4') ||
+          fileName.contains('.mov') ||
+          fileName.contains('.avi') ||
+          fileName.contains('.webm') ||
+          fileName.contains('.quicktime');
+      
+      if (isVideo) {
+        // Показываем placeholder для видео, пока загружается
+        return Container(
+          color: Colors.black,
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  EvaIcons.videoOutline,
+                  color: Colors.white,
+                  size: 48,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Video preview loading...',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // Загрузка
     return const Center(
       child: CircularProgressIndicator(
         color: Color(0xFF0095F6),

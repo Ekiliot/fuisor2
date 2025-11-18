@@ -28,12 +28,30 @@ class User {
       id: json['id'] ?? '',
       username: json['username'] ?? '',
       name: json['name'] ?? '',
-      email: json['email'] ?? '',
+      email: json['email'] ?? '', // Email может отсутствовать для некоторых запросов
       avatarUrl: json['avatar_url'],
       bio: json['bio'],
       followersCount: json['followers_count'] ?? 0,
       followingCount: json['following_count'] ?? 0,
       postsCount: json['posts_count'] ?? 0,
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+    );
+  }
+
+  // Фабрика для создания User из профиля (без email и других опциональных полей)
+  factory User.fromProfileJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      name: json['name'] ?? '',
+      email: '', // Email не требуется для профилей
+      avatarUrl: json['avatar_url'],
+      bio: json['bio'],
+      followersCount: 0, // Могут отсутствовать для участников чата
+      followingCount: 0,
+      postsCount: 0,
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at']) 
           : DateTime.now(),
@@ -99,7 +117,8 @@ class Post {
       mediaUrl: json['media_url'] ?? '',
       mediaType: json['media_type'] ?? 'image',
       likesCount: json['likes_count'] ?? 0,
-      commentsCount: json['comments']?.length ?? 0,
+      // Используем comments_count из API, если есть, иначе считаем из массива comments
+      commentsCount: json['comments_count'] ?? json['comments']?.length ?? 0,
       mentions: List<String>.from(json['mentions'] ?? []),
       hashtags: List<String>.from(json['hashtags'] ?? []),
       createdAt: json['created_at'] != null 

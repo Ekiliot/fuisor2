@@ -518,29 +518,15 @@ class _PostCardState extends State<PostCard> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [
-                      // Current user avatar (larger to match input field height)
-                      Consumer<AuthProvider>(
-                        builder: (context, authProvider, child) {
-                          final currentUser = authProvider.currentUser;
-                          return SafeAvatar(
-                            imageUrl: currentUser?.avatarUrl,
-                            radius: 20, // Increased from 16 to 20
-                            backgroundColor: const Color(0xFF262626),
-                            fallbackIcon: EvaIcons.personOutline,
-                            iconColor: Colors.white,
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      // More rounded comment input field
+                      // Rounded comment input field matching AnimatedTextField style
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF262626),
-                            borderRadius: BorderRadius.circular(30), // Increased from 25 to 30 for more rounded corners
+                            color: const Color(0xFF1A1A1A), // Same as AnimatedTextField
+                            borderRadius: BorderRadius.circular(20), // Same as AnimatedTextField
                             border: Border.all(
-                              color: const Color(0xFF404040),
-                              width: 0.5,
+                              color: Colors.grey.withOpacity(0.3), // Same as AnimatedTextField enabledBorder
+                              width: 1,
                             ),
                           ),
                           child: TextField(
@@ -549,8 +535,8 @@ class _PostCardState extends State<PostCard> {
                               hintText: 'Add a comment...',
                               border: InputBorder.none,
                               contentPadding: EdgeInsets.symmetric(
-                                horizontal: 18, // Increased from 16 to 18
-                                vertical: 14, // Increased from 12 to 14
+                                horizontal: 16, // Reduced padding
+                                vertical: 12, // Reduced padding
                               ),
                               hintStyle: TextStyle(
                                 color: Color(0xFF8E8E8E),
@@ -567,6 +553,30 @@ class _PostCardState extends State<PostCard> {
                                 _commentController.clear(); // Clear the field after submitting
                               }
                             },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Send button
+                      GestureDetector(
+                        onTap: () {
+                          final value = _commentController.text.trim();
+                          if (value.isNotEmpty) {
+                            widget.onComment(value, null);
+                            _commentController.clear();
+                          }
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0095F6),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            EvaIcons.paperPlaneOutline,
+                            color: Colors.white,
+                            size: 20,
                           ),
                         ),
                       ),

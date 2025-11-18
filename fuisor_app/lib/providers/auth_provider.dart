@@ -6,12 +6,21 @@ import '../models/user.dart';
 import '../services/api_service.dart';
 import '../utils/image_cache_utils.dart';
 
+enum LoginButtonState {
+  normal,
+  loading,
+  success,
+  error,
+}
+
 class AuthProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   User? _currentUser;
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  LoginButtonState _loginButtonState = LoginButtonState.normal;
+  bool _showErrorAfterAnimation = false;
 
   // Ключи для SharedPreferences
   static const String _accessTokenKey = 'access_token';
@@ -23,6 +32,8 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isAuthenticated => _currentUser != null;
   bool get isInitialized => _isInitialized;
+  LoginButtonState get loginButtonState => _loginButtonState;
+  bool get shouldShowError => _showErrorAfterAnimation && _error != null;
 
   void _setLoading(bool loading) {
     _isLoading = loading;
@@ -112,10 +123,49 @@ class AuthProvider extends ChangeNotifier {
     await _loadSession();
   }
 
+  void _setLoginButtonState(LoginButtonState state) {
+    _loginButtonState = state;
+    notifyListeners();
+  }
+
+  String _parseLoginError(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    
+    // Проверяем различные типы ошибок
+    if (errorString.contains('invalid username or password') ||
+        errorString.contains('invalid email or password') ||
+        errorString.contains('invalid credentials') ||
+        errorString.contains('неверн')) {
+      return 'Invalid email or password. Please check your credentials and try again.';
+    }
+    
+    if (errorString.contains('user not found') ||
+        errorString.contains('user does not exist')) {
+      return 'User not found. Please check your email or username.';
+    }
+    
+    if (errorString.contains('network') ||
+        errorString.contains('connection') ||
+        errorString.contains('timeout')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
+    
+    if (errorString.contains('server') ||
+        errorString.contains('500') ||
+        errorString.contains('internal')) {
+      return 'Server error. Please try again later.';
+    }
+    
+    // Возвращаем общее сообщение об ошибке
+    return 'Unable to sign in. Please check your credentials and try again.';
+  }
+
   Future<bool> login(String emailOrUsername, String password) async {
     try {
       _setLoading(true);
       _setError(null);
+      _showErrorAfterAnimation = false;
+      _setLoginButtonState(LoginButtonState.loading);
 
       final authResponse = await _apiService.login(emailOrUsername, password);
       _currentUser = authResponse.profile ?? authResponse.user;
@@ -128,10 +178,33 @@ class AuthProvider extends ChangeNotifier {
       );
 
       _setLoading(false);
+      _setLoginButtonState(LoginButtonState.success);
+      
+      // Через 1 секунду сбрасываем состояние для следующего использования
+      Future.delayed(const Duration(seconds: 1), () {
+        if (_loginButtonState == LoginButtonState.success) {
+          _setLoginButtonState(LoginButtonState.normal);
+        }
+      });
+      
       return true;
     } catch (e) {
-      _setError(e.toString());
+      final errorMessage = _parseLoginError(e);
+      _setError(errorMessage);
       _setLoading(false);
+      _showErrorAfterAnimation = false; // Скрываем ошибку во время анимации
+      _setLoginButtonState(LoginButtonState.error);
+      
+      // Через 2 секунды возвращаем к нормальному состоянию и показываем ошибку
+      Future.delayed(const Duration(seconds: 2), () {
+        if (_loginButtonState == LoginButtonState.error) {
+          _setLoginButtonState(LoginButtonState.normal);
+          // Показываем ошибку только после завершения анимации
+          _showErrorAfterAnimation = true;
+          notifyListeners();
+        }
+      });
+      
       return false;
     }
   }
@@ -333,5 +406,7 @@ class AuthProvider extends ChangeNotifier {
 
   void clearError() {
     _setError(null);
+    _showErrorAfterAnimation = false;
+    _setLoginButtonState(LoginButtonState.normal);
   }
 }

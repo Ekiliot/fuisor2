@@ -15,17 +15,19 @@ class ProfileMenuSheet extends StatelessWidget {
       builder: (context, authProvider, child) {
         final user = authProvider.currentUser;
         
-        return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+        return SafeArea(
+          top: false,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               // Handle bar
               Container(
                 margin: const EdgeInsets.only(top: 12),
@@ -183,6 +185,7 @@ class ProfileMenuSheet extends StatelessWidget {
               const SizedBox(height: 20),
             ],
           ),
+        ),
         );
       },
     );

@@ -91,7 +91,7 @@ lib/
 - Flutter SDK 3.9.2 or higher
 - Dart SDK
 - Android Studio / VS Code
-- Backend API running on `http://localhost:3000`
+- Backend API deployed at `https://fuisor2.vercel.app` (or local development server)
 
 ### Installation
 
@@ -136,7 +136,8 @@ lib/
 
 The app connects to the Fuisor backend API:
 
-- **Base URL**: `http://localhost:3000/api`
+- **Production Base URL**: `https://fuisor2.vercel.app/api`
+- **Local Development**: `http://localhost:3000/api` (configure in `lib/services/api_service.dart`)
 - **Authentication**: JWT tokens
 - **Endpoints**: All REST API endpoints supported
 
