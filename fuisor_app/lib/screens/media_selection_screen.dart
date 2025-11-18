@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'create_post_screen.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
@@ -17,7 +18,7 @@ class MediaSelectionScreen extends StatefulWidget {
   State<MediaSelectionScreen> createState() => _MediaSelectionScreenState();
 }
 
-class _MediaSelectionScreenState extends State<MediaSelectionScreen> with SingleTickerProviderStateMixin {
+class _MediaSelectionScreenState extends State<MediaSelectionScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedFile;
   Uint8List? _selectedImageBytes;
@@ -38,6 +39,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging && _tabController.index != _currentTabIndex) {
@@ -52,15 +54,143 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       }
     });
     if (!kIsWeb) {
-      _requestPermissionAndLoadMedia();
+      _checkPermissionAndLoadMedia();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _videoController?.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Проверяем разрешения при возврате в приложение (например, из настроек)
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      _checkPermissionAndLoadMedia();
+    }
+  }
+
+  // Проверяем текущий статус разрешений без запроса
+  Future<void> _checkPermissionAndLoadMedia() async {
+    try {
+      Permission permission;
+      
+      // Определяем какое разрешение проверять в зависимости от платформы и версии
+      if (Platform.isAndroid) {
+        try {
+          final deviceInfo = DeviceInfoPlugin();
+          final androidInfo = await deviceInfo.androidInfo;
+          
+          if (androidInfo.version.sdkInt >= 33) {
+            permission = Permission.photos;
+          } else {
+            permission = Permission.storage;
+          }
+        } catch (e) {
+          permission = Permission.storage;
+        }
+      } else if (Platform.isIOS) {
+        permission = Permission.photos;
+      } else {
+        // Для других платформ проверяем через photo_manager
+        final photoStatus = await PhotoManager.requestPermissionExtend();
+        if (photoStatus == PermissionState.authorized) {
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+            });
+            await _loadMedia();
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _hasPermission = false;
+            });
+          }
+        }
+        return;
+      }
+      
+      // Проверяем статус разрешения
+      final status = await permission.status;
+      print('Permission status: $status');
+      
+      if (status.isGranted) {
+        // Разрешение дано - проверяем через photo_manager
+        print('Permission granted, checking photo_manager...');
+        final photoStatus = await PhotoManager.requestPermissionExtend();
+        print('PhotoManager status: $photoStatus');
+        
+        if (photoStatus == PermissionState.authorized) {
+          print('Both permissions granted, loading media...');
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+            });
+            await _loadMedia();
+          }
+        } else {
+          // permission_handler говорит что дано, но photo_manager не видит
+          // Попробуем запросить еще раз через photo_manager (может быть ограниченный доступ)
+          print('PhotoManager not authorized, requesting again...');
+          final retryStatus = await PhotoManager.requestPermissionExtend();
+          print('PhotoManager retry status: $retryStatus');
+          
+          if (retryStatus == PermissionState.authorized || retryStatus == PermissionState.limited) {
+            // Ограниченный доступ тоже подходит
+            print('PhotoManager authorized (limited), loading media...');
+            if (mounted) {
+              setState(() {
+                _hasPermission = true;
+              });
+              await _loadMedia();
+            }
+          } else {
+            if (mounted) {
+              setState(() {
+                _hasPermission = false;
+              });
+            }
+          }
+        }
+      } else {
+        // Разрешение не дано - запрашиваем
+        print('Permission not granted, requesting...');
+        await _requestPermissionAndLoadMedia();
+      }
+    } catch (e) {
+      print('Error checking permission: $e');
+      // Fallback - проверяем через photo_manager
+      try {
+        final photoStatus = await PhotoManager.requestPermissionExtend();
+        if (photoStatus == PermissionState.authorized || photoStatus == PermissionState.limited) {
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+            });
+            await _loadMedia();
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _hasPermission = false;
+            });
+          }
+        }
+      } catch (e2) {
+        print('Error with photo_manager check: $e2');
+        if (mounted) {
+          setState(() {
+            _hasPermission = false;
+          });
+        }
+      }
+    }
   }
 
   Future<void> _requestPermissionAndLoadMedia() async {
@@ -110,15 +240,22 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       if (status.isGranted) {
         // Также запрашиваем через photo_manager для совместимости
         final photoStatus = await PhotoManager.requestPermissionExtend();
-        if (photoStatus == PermissionState.authorized) {
-          setState(() {
-            _hasPermission = true;
-          });
-          await _loadMedia();
+        print('After request - PhotoManager status: $photoStatus');
+        
+        // Поддерживаем как полный, так и ограниченный доступ
+        if (photoStatus == PermissionState.authorized || photoStatus == PermissionState.limited) {
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+            });
+            await _loadMedia();
+          }
         } else {
-          setState(() {
-            _hasPermission = false;
-          });
+          if (mounted) {
+            setState(() {
+              _hasPermission = false;
+            });
+          }
         }
       } else if (status.isPermanentlyDenied) {
         // Разрешение отклонено навсегда - открываем настройки
@@ -137,22 +274,28 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       // Fallback на photo_manager если что-то пошло не так
       try {
         final PermissionState status = await PhotoManager.requestPermissionExtend();
-        if (status == PermissionState.authorized) {
-          setState(() {
-            _hasPermission = true;
-          });
-          await _loadMedia();
+        if (status == PermissionState.authorized || status == PermissionState.limited) {
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+            });
+            await _loadMedia();
+          }
         } else {
-          setState(() {
-            _hasPermission = false;
-          });
+          if (mounted) {
+            setState(() {
+              _hasPermission = false;
+            });
+          }
           PhotoManager.openSetting();
         }
       } catch (e2) {
         print('Error with photo_manager fallback: $e2');
-        setState(() {
-          _hasPermission = false;
-        });
+        if (mounted) {
+          setState(() {
+            _hasPermission = false;
+          });
+        }
       }
     }
   }
@@ -165,10 +308,11 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     });
 
     try {
-      // Определяем тип медиа для фильтрации
+      // Для видео используем RequestType.common и фильтруем потом
+      // так как RequestType.video может не работать на некоторых устройствах
       final RequestType requestType = _currentTabIndex == 0 
           ? RequestType.image 
-          : RequestType.video;
+          : RequestType.common; // Используем common для видео и фильтруем
 
       // Получаем все альбомы с фильтром по типу
       final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
@@ -187,11 +331,83 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       // Используем первый альбом (обычно это "All Photos" или "Camera Roll")
       final AssetPathEntity recentAlbum = albums.first;
 
+      // Получаем общее количество медиа в альбоме
+      int totalCount;
+      try {
+        totalCount = await recentAlbum.assetCountAsync;
+      } catch (e) {
+        print('Error getting asset count: $e');
+        // Если не удалось получить количество, используем большой номер
+        // и будем загружать пока не вернется пустой список
+        totalCount = 999999;
+      }
+      
+      final int currentCount = loadMore ? _mediaAssets.length : 0;
+      
+      print('Total media count: $totalCount, Current loaded: $currentCount');
+
+      // Если totalCount = 0, значит альбом пустой
+      if (totalCount == 0) {
+        setState(() {
+          _hasMore = false;
+          _isLoadingMedia = false;
+          if (!loadMore) {
+            _mediaAssets = [];
+          }
+        });
+        return;
+      }
+
+      // Проверяем, есть ли еще медиа для загрузки
+      if (currentCount >= totalCount) {
+        setState(() {
+          _hasMore = false;
+          _isLoadingMedia = false;
+        });
+        return;
+      }
+
       // Загружаем медиа с пагинацией
-      final List<AssetEntity> assets = await recentAlbum.getAssetListRange(
-        start: loadMore ? _mediaAssets.length : 0,
-        end: loadMore ? _mediaAssets.length + _pageSize : _pageSize,
+      // Для видео загружаем больше, так как будем фильтровать
+      final int loadCount = _currentTabIndex == 1 ? _pageSize * 2 : _pageSize;
+      final int actualEndIndex = (currentCount + loadCount).clamp(0, totalCount);
+      
+      List<AssetEntity> assets = await recentAlbum.getAssetListRange(
+        start: currentCount,
+        end: actualEndIndex,
       );
+
+      // Если это вкладка видео, фильтруем только видео
+      if (_currentTabIndex == 1) {
+        final originalCount = assets.length;
+        assets = assets.where((asset) => asset.type == AssetType.video).toList();
+        print('Filtered to ${assets.length} videos from $originalCount assets');
+        
+        // Если после фильтрации получилось мало видео, но мы еще не достигли конца,
+        // продолжаем загрузку (но ограничиваем количество попыток)
+        if (assets.length < _pageSize && actualEndIndex < totalCount && loadMore) {
+          // Пробуем загрузить еще одну порцию
+          final int nextEndIndex = (actualEndIndex + loadCount).clamp(0, totalCount);
+          final List<AssetEntity> moreAssets = await recentAlbum.getAssetListRange(
+            start: actualEndIndex,
+            end: nextEndIndex,
+          );
+          final List<AssetEntity> moreVideos = moreAssets.where((asset) => asset.type == AssetType.video).toList();
+          assets.addAll(moreVideos);
+          print('Loaded additional ${moreVideos.length} videos (total: ${assets.length})');
+        }
+      }
+
+      print('Loaded ${assets.length} assets (from $currentCount to $actualEndIndex)');
+
+      // Если загрузили 0 элементов, значит это конец
+      if (assets.isEmpty) {
+        setState(() {
+          _hasMore = false;
+          _isLoadingMedia = false;
+        });
+        return;
+      }
 
       setState(() {
         if (loadMore) {
@@ -199,13 +415,24 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         } else {
           _mediaAssets = assets;
         }
-        _hasMore = assets.length == _pageSize;
+        // Проверяем, есть ли еще медиа для загрузки
+        // Если totalCount = 999999 (fallback), проверяем по количеству загруженных
+        if (totalCount == 999999) {
+          // Для видео проверяем по actualEndIndex, для фото по количеству
+          _hasMore = _currentTabIndex == 1 
+              ? actualEndIndex < 999999 // Продолжаем пока не достигли конца
+              : assets.length == _pageSize; // Если загрузили полную страницу, возможно есть еще
+        } else {
+          // Проверяем, достигли ли мы конца альбома
+          _hasMore = actualEndIndex < totalCount;
+        }
         _isLoadingMedia = false;
       });
     } catch (e) {
       print('Error loading media: $e');
       setState(() {
         _isLoadingMedia = false;
+        _hasMore = false; // Останавливаем загрузку при ошибке
       });
     }
   }
@@ -419,6 +646,73 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     }
   }
 
+  Future<void> _cropImage() async {
+    if (_selectedFile == null || _selectedImageBytes == null || kIsWeb) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: _selectedFile!.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Image',
+            toolbarColor: const Color(0xFF000000),
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+            ],
+            backgroundColor: const Color(0xFF000000),
+            activeControlsWidgetColor: const Color(0xFF0095F6),
+            dimmedLayerColor: Colors.black.withOpacity(0.8),
+            cropFrameColor: Colors.white,
+            cropGridColor: Colors.white.withOpacity(0.3),
+            cropFrameStrokeWidth: 2,
+            cropGridStrokeWidth: 1,
+          ),
+          IOSUiSettings(
+            title: 'Crop Image',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+            ],
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            hidesNavigationBar: false,
+          ),
+        ],
+      );
+
+      if (croppedFile != null) {
+        final bytes = await croppedFile.readAsBytes();
+        setState(() {
+          _selectedFile = XFile(croppedFile.path);
+          _selectedImageBytes = bytes;
+        });
+      }
+    } catch (e) {
+      print('Error cropping image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error cropping image: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   void _proceedToEdit() {
     print('MediaSelectionScreen: _proceedToEdit called');
     print('MediaSelectionScreen: _selectedFile is null: ${_selectedFile == null}');
@@ -482,8 +776,95 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
               ),
             ),
         ],
-        bottom: !kIsWeb && _hasPermission
-            ? TabBar(
+      ),
+      body: Column(
+        children: [
+          // Предпросмотр выбранного медиа
+          if (_selectedFile != null)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: 400,
+              width: double.infinity,
+              color: const Color(0xFF1A1A1A),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF0095F6),
+                      ),
+                    )
+                  : Stack(
+                      children: [
+                        _buildPreview(),
+                        // Кнопки управления
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Row(
+                            children: [
+                              // Кнопка обрезки (только для фото)
+                              if (_selectedImageBytes != null && !kIsWeb)
+                                IconButton(
+                                  icon: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.6),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      EvaIcons.cropOutline,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  onPressed: _isLoading ? null : _cropImage,
+                                ),
+                            ],
+                          ),
+                        ),
+                        // Кнопка закрытия предпросмотра
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: IconButton(
+                            icon: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                EvaIcons.close,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _selectedFile = null;
+                                _selectedImageBytes = null;
+                                _videoController?.dispose();
+                                _videoController = null;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          
+          // Вкладки (под предпросмотром)
+          if (!kIsWeb && _hasPermission)
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Color(0xFF262626),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: TabBar(
                 controller: _tabController,
                 indicatorColor: const Color(0xFF0095F6),
                 labelColor: Colors.white,
@@ -506,48 +887,6 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                     text: 'Videos',
                   ),
                 ],
-              )
-            : null,
-      ),
-      body: Column(
-        children: [
-          // Предпросмотр выбранного медиа
-          if (_selectedFile != null)
-            Container(
-              height: 300,
-              width: double.infinity,
-              color: const Color(0xFF1A1A1A),
-              child: Stack(
-                children: [
-                  _buildPreview(),
-                  // Кнопка закрытия предпросмотра
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton(
-                      icon: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          EvaIcons.close,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _selectedFile = null;
-                          _selectedImageBytes = null;
-                          _videoController?.dispose();
-                          _videoController = null;
-                        });
-                      },
-                    ),
-                  ),
-                ],
               ),
             ),
           
@@ -564,14 +903,21 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     if (_selectedFile == null) return const SizedBox();
 
     if (_selectedImageBytes != null) {
-      return Image.memory(
-        _selectedImageBytes!,
-        fit: BoxFit.cover,
+      // Для фото - центрируем и показываем полностью
+      return Center(
+        child: Image.memory(
+          _selectedImageBytes!,
+          fit: BoxFit.contain, // Показываем фото полностью, центрируем
+          alignment: Alignment.center,
+        ),
       );
     } else if (_videoController != null) {
-      return AspectRatio(
-        aspectRatio: _videoController!.value.aspectRatio,
-        child: VideoPlayer(_videoController!),
+      // Для видео - используем AspectRatio
+      return Center(
+        child: AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+          child: VideoPlayer(_videoController!),
+        ),
       );
     }
 
@@ -692,7 +1038,13 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             ),
             const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: _requestPermissionAndLoadMedia,
+              onPressed: () async {
+                // Открываем настройки
+                await openAppSettings();
+                // Ждем немного и проверяем разрешения снова
+                await Future.delayed(const Duration(milliseconds: 500));
+                _checkPermissionAndLoadMedia();
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0095F6),
                 foregroundColor: Colors.white,
@@ -756,40 +1108,59 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
 
     return GridView.builder(
       padding: const EdgeInsets.all(2),
+      // Оптимизация производительности
+      cacheExtent: 500, // Ограничиваем область кеширования
+      addAutomaticKeepAlives: false, // Отключаем автоматическое сохранение состояния
+      addRepaintBoundaries: true, // Включаем границы перерисовки
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 2,
         mainAxisSpacing: 2,
       ),
-      itemCount: _mediaAssets.length + (_hasMore ? 1 : 0),
+      itemCount: _mediaAssets.length + (_hasMore && !_isLoadingMedia ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == _mediaAssets.length) {
-          // Загружаем больше при достижении конца
-          _loadMedia(loadMore: true);
+          // Загружаем больше при достижении конца (только если не загружается уже)
+          if (!_isLoadingMedia) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _loadMedia(loadMore: true);
+            });
+          }
           return const Center(
-            child: CircularProgressIndicator(
-              color: Color(0xFF0095F6),
-              strokeWidth: 2,
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(
+                color: Color(0xFF0095F6),
+                strokeWidth: 2,
+              ),
             ),
           );
         }
 
         final asset = _mediaAssets[index];
-        return _buildMediaThumbnail(asset);
+        // Используем key для оптимизации перерисовок
+        return RepaintBoundary(
+          key: ValueKey(asset.id),
+          child: _buildMediaThumbnail(asset),
+        );
       },
     );
   }
 
   Widget _buildMediaThumbnail(AssetEntity asset) {
+    // Вычисляем размер thumbnail на основе размера экрана для оптимизации
+    final screenWidth = MediaQuery.of(context).size.width;
+    final thumbnailSize = (screenWidth / 3).round(); // Размер одной ячейки grid
+    
     return GestureDetector(
       onTap: () => _selectMedia(asset),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Thumbnail изображения/видео
+          // Thumbnail изображения/видео - используем меньший размер для производительности
           FutureBuilder<Uint8List?>(
             future: asset.thumbnailDataWithSize(
-              const ThumbnailSize(200, 200),
+              ThumbnailSize(thumbnailSize, thumbnailSize), // Адаптивный размер
             ),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.done &&
@@ -797,6 +1168,9 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                 return Image.memory(
                   snapshot.data!,
                   fit: BoxFit.cover,
+                  // Оптимизация изображения
+                  gaplessPlayback: true, // Плавная замена изображений
+                  filterQuality: FilterQuality.low, // Низкое качество фильтрации для производительности
                 );
               }
               return Container(

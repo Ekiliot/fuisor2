@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.fuisor.app.fuisor_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36  // Требуется для image_cropper и других плагинов
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -24,8 +24,8 @@ android {
         applicationId = "com.fuisor.app.fuisor_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = flutter.minSdkVersion  // Минимальная версия для image_cropper
+        targetSdk = 36  // Обновлено для совместимости с плагинами
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
