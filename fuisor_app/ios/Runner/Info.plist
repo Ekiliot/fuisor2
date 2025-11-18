@@ -47,5 +47,9 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need access to your microphone to record voice messages</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to your photo library to select photos and videos for your posts</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need access to save photos and videos to your library</string>
 </dict>
 </plist>

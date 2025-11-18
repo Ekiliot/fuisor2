@@ -5,6 +5,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:photo_manager/photo_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'create_post_screen.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
@@ -14,17 +17,285 @@ class MediaSelectionScreen extends StatefulWidget {
   State<MediaSelectionScreen> createState() => _MediaSelectionScreenState();
 }
 
-class _MediaSelectionScreenState extends State<MediaSelectionScreen> {
+class _MediaSelectionScreenState extends State<MediaSelectionScreen> with SingleTickerProviderStateMixin {
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedFile;
   Uint8List? _selectedImageBytes;
   VideoPlayerController? _videoController;
   bool _isLoading = false;
+  
+  // Для grid медиа
+  List<AssetEntity> _mediaAssets = [];
+  bool _isLoadingMedia = false;
+  bool _hasPermission = false;
+  static const int _pageSize = 50;
+  bool _hasMore = true;
+  
+  // Для вкладок
+  late TabController _tabController;
+  int _currentTabIndex = 0; // 0 = Фото, 1 = Видео
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging && _tabController.index != _currentTabIndex) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+          _mediaAssets = [];
+          _hasMore = true;
+        });
+        if (_hasPermission) {
+          _loadMedia();
+        }
+      }
+    });
+    if (!kIsWeb) {
+      _requestPermissionAndLoadMedia();
+    }
+  }
 
   @override
   void dispose() {
     _videoController?.dispose();
+    _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _requestPermissionAndLoadMedia() async {
+    try {
+      Permission permission;
+      
+      // Определяем какое разрешение запрашивать в зависимости от платформы и версии
+      if (Platform.isAndroid) {
+        try {
+          final deviceInfo = DeviceInfoPlugin();
+          final androidInfo = await deviceInfo.androidInfo;
+          
+          if (androidInfo.version.sdkInt >= 33) {
+            // Android 13+ (API 33+) - используем READ_MEDIA_IMAGES и READ_MEDIA_VIDEO
+            permission = Permission.photos;
+          } else {
+            // Android < 13 - используем READ_EXTERNAL_STORAGE
+            permission = Permission.storage;
+          }
+        } catch (e) {
+          // Если не удалось определить версию, используем storage для совместимости
+          permission = Permission.storage;
+        }
+      } else if (Platform.isIOS) {
+        // iOS - используем Permission.photos
+        permission = Permission.photos;
+      } else {
+        // Для других платформ используем photo_manager напрямую
+        final PermissionState status = await PhotoManager.requestPermissionExtend();
+        if (status == PermissionState.authorized) {
+          setState(() {
+            _hasPermission = true;
+          });
+          await _loadMedia();
+        } else {
+          setState(() {
+            _hasPermission = false;
+          });
+          PhotoManager.openSetting();
+        }
+        return;
+      }
+      
+      // Запрашиваем разрешение через permission_handler
+      final status = await permission.request();
+      
+      if (status.isGranted) {
+        // Также запрашиваем через photo_manager для совместимости
+        final photoStatus = await PhotoManager.requestPermissionExtend();
+        if (photoStatus == PermissionState.authorized) {
+          setState(() {
+            _hasPermission = true;
+          });
+          await _loadMedia();
+        } else {
+          setState(() {
+            _hasPermission = false;
+          });
+        }
+      } else if (status.isPermanentlyDenied) {
+        // Разрешение отклонено навсегда - открываем настройки
+        setState(() {
+          _hasPermission = false;
+        });
+        await openAppSettings();
+      } else {
+        // Разрешение отклонено временно
+        setState(() {
+          _hasPermission = false;
+        });
+      }
+    } catch (e) {
+      print('Error requesting permission: $e');
+      // Fallback на photo_manager если что-то пошло не так
+      try {
+        final PermissionState status = await PhotoManager.requestPermissionExtend();
+        if (status == PermissionState.authorized) {
+          setState(() {
+            _hasPermission = true;
+          });
+          await _loadMedia();
+        } else {
+          setState(() {
+            _hasPermission = false;
+          });
+          PhotoManager.openSetting();
+        }
+      } catch (e2) {
+        print('Error with photo_manager fallback: $e2');
+        setState(() {
+          _hasPermission = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMedia({bool loadMore = false}) async {
+    if (!_hasPermission || _isLoadingMedia) return;
+
+    setState(() {
+      _isLoadingMedia = true;
+    });
+
+    try {
+      // Определяем тип медиа для фильтрации
+      final RequestType requestType = _currentTabIndex == 0 
+          ? RequestType.image 
+          : RequestType.video;
+
+      // Получаем все альбомы с фильтром по типу
+      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+        type: requestType,
+        hasAll: true,
+      );
+
+      if (albums.isEmpty) {
+        setState(() {
+          _isLoadingMedia = false;
+          _hasMore = false;
+        });
+        return;
+      }
+
+      // Используем первый альбом (обычно это "All Photos" или "Camera Roll")
+      final AssetPathEntity recentAlbum = albums.first;
+
+      // Загружаем медиа с пагинацией
+      final List<AssetEntity> assets = await recentAlbum.getAssetListRange(
+        start: loadMore ? _mediaAssets.length : 0,
+        end: loadMore ? _mediaAssets.length + _pageSize : _pageSize,
+      );
+
+      setState(() {
+        if (loadMore) {
+          _mediaAssets.addAll(assets);
+        } else {
+          _mediaAssets = assets;
+        }
+        _hasMore = assets.length == _pageSize;
+        _isLoadingMedia = false;
+      });
+    } catch (e) {
+      print('Error loading media: $e');
+      setState(() {
+        _isLoadingMedia = false;
+      });
+    }
+  }
+
+  Future<void> _selectMedia(AssetEntity asset) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final file = await asset.file;
+      if (file == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      if (asset.type == AssetType.image) {
+        // Для изображений
+        final bytes = await file.readAsBytes();
+        final xFile = XFile(file.path);
+        
+        setState(() {
+          _selectedFile = xFile;
+          _selectedImageBytes = bytes;
+          _videoController?.dispose();
+          _videoController = null;
+        });
+      } else if (asset.type == AssetType.video) {
+        // Для видео - проверяем длительность (до 5 минут)
+        final durationSeconds = asset.duration;
+        if (durationSeconds > 300) {
+          // Видео слишком длинное
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Video must be 5 minutes or less'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
+
+        final xFile = XFile(file.path);
+        
+        _videoController?.dispose();
+        
+        if (kIsWeb) {
+          setState(() {
+            _selectedFile = xFile;
+            _selectedImageBytes = null;
+            _videoController = null;
+          });
+        } else {
+          try {
+            final videoFile = File(file.path);
+            if (await videoFile.exists()) {
+              _videoController = VideoPlayerController.file(videoFile);
+              await _videoController!.initialize();
+              
+              setState(() {
+                _selectedFile = xFile;
+                _selectedImageBytes = null;
+              });
+            }
+          } catch (e) {
+            print('Error initializing video: $e');
+            setState(() {
+              _selectedFile = xFile;
+              _selectedImageBytes = null;
+              _videoController = null;
+            });
+          }
+        }
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error selecting media: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _pickFromGallery() async {
@@ -211,6 +482,32 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> {
               ),
             ),
         ],
+        bottom: !kIsWeb && _hasPermission
+            ? TabBar(
+                controller: _tabController,
+                indicatorColor: const Color(0xFF0095F6),
+                labelColor: Colors.white,
+                unselectedLabelColor: const Color(0xFF8E8E8E),
+                labelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                ),
+                tabs: const [
+                  Tab(
+                    icon: Icon(EvaIcons.imageOutline, size: 20),
+                    text: 'Photos',
+                  ),
+                  Tab(
+                    icon: Icon(EvaIcons.videoOutline, size: 20),
+                    text: 'Videos',
+                  ),
+                ],
+              )
+            : null,
       ),
       body: Column(
         children: [
@@ -220,7 +517,38 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> {
               height: 300,
               width: double.infinity,
               color: const Color(0xFF1A1A1A),
-              child: _buildPreview(),
+              child: Stack(
+                children: [
+                  _buildPreview(),
+                  // Кнопка закрытия предпросмотра
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          EvaIcons.close,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _selectedFile = null;
+                          _selectedImageBytes = null;
+                          _videoController?.dispose();
+                          _videoController = null;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           
           // Кнопки выбора медиа
@@ -255,78 +583,275 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> {
   }
 
   Widget _buildMediaSelection() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            EvaIcons.imageOutline,
-            size: 80,
-            color: Color(0xFF8E8E8E),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Select Media',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Choose a photo or video to share',
-            style: TextStyle(
-              fontSize: 14,
+    // Для веб используем старый способ с кнопками
+    if (kIsWeb) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              EvaIcons.imageOutline,
+              size: 80,
               color: Color(0xFF8E8E8E),
             ),
-          ),
-          const SizedBox(height: 32),
-          
-          // Кнопка выбора фото
-          SizedBox(
-            width: 200,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _pickFromGallery,
-              icon: const Icon(EvaIcons.imageOutline),
-              label: const Text('Photo'),
+            const SizedBox(height: 16),
+            const Text(
+              'Select Media',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose a photo or video to share',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF8E8E8E),
+              ),
+            ),
+            const SizedBox(height: 32),
+            
+            // Кнопка выбора фото
+            SizedBox(
+              width: 200,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _pickFromGallery,
+                icon: const Icon(EvaIcons.imageOutline),
+                label: const Text('Photo'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0095F6),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Кнопка выбора видео
+            SizedBox(
+              width: 200,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _pickVideoFromGallery,
+                icon: const Icon(EvaIcons.videoOutline),
+                label: const Text('Video'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF262626),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            
+            if (_isLoading) ...[
+              const SizedBox(height: 16),
+              const CircularProgressIndicator(
+                color: Color(0xFF0095F6),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Для мобильных - показываем grid
+    if (!_hasPermission) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              EvaIcons.lockOutline,
+              size: 80,
+              color: Color(0xFF8E8E8E),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Permission Required',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please grant access to your photos',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF8E8E8E),
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: _requestPermissionAndLoadMedia,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0095F6),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Кнопка выбора видео
-          SizedBox(
-            width: 200,
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _pickVideoFromGallery,
-              icon: const Icon(EvaIcons.videoOutline),
-              label: const Text('Video'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF262626),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-          
-          if (_isLoading) ...[
-            const SizedBox(height: 16),
-            const CircularProgressIndicator(
-              color: Color(0xFF0095F6),
+              child: const Text('Grant Permission'),
             ),
           ],
+        ),
+      );
+    }
+
+    if (_isLoadingMedia && _mediaAssets.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF0095F6),
+        ),
+      );
+    }
+
+    if (_mediaAssets.isEmpty && !_isLoadingMedia) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _currentTabIndex == 0 
+                  ? EvaIcons.imageOutline 
+                  : EvaIcons.videoOutline,
+              size: 80,
+              color: const Color(0xFF8E8E8E),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _currentTabIndex == 0 
+                  ? 'No Photos Found'
+                  : 'No Videos Found',
+              style: const TextStyle(
+                fontSize: 18,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _currentTabIndex == 0 
+                  ? 'Your gallery has no photos'
+                  : 'Your gallery has no videos',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF8E8E8E),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(2),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+      ),
+      itemCount: _mediaAssets.length + (_hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == _mediaAssets.length) {
+          // Загружаем больше при достижении конца
+          _loadMedia(loadMore: true);
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFF0095F6),
+              strokeWidth: 2,
+            ),
+          );
+        }
+
+        final asset = _mediaAssets[index];
+        return _buildMediaThumbnail(asset);
+      },
+    );
+  }
+
+  Widget _buildMediaThumbnail(AssetEntity asset) {
+    return GestureDetector(
+      onTap: () => _selectMedia(asset),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Thumbnail изображения/видео
+          FutureBuilder<Uint8List?>(
+            future: asset.thumbnailDataWithSize(
+              const ThumbnailSize(200, 200),
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.done &&
+                  snapshot.hasData) {
+                return Image.memory(
+                  snapshot.data!,
+                  fit: BoxFit.cover,
+                );
+              }
+              return Container(
+                color: const Color(0xFF262626),
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF0095F6),
+                    strokeWidth: 2,
+                  ),
+                ),
+              );
+            },
+          ),
+          // Индикатор видео
+          if (asset.type == AssetType.video)
+            Positioned(
+              bottom: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      EvaIcons.videoOutline,
+                      color: Colors.white,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 4),
+                    Builder(
+                      builder: (context) {
+                        final durationSeconds = asset.duration;
+                        if (durationSeconds > 0) {
+                          final minutes = durationSeconds ~/ 60;
+                          final seconds = durationSeconds % 60;
+                          return Text(
+                            '${minutes}:${seconds.toString().padLeft(2, '0')}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
