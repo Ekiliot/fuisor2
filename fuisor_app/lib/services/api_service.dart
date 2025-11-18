@@ -1048,6 +1048,29 @@ class ApiService {
     }
   }
 
+  /// Архивировать/разархивировать чат
+  Future<bool> archiveChat(String chatId, bool isArchived) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/messages/chats/$chatId/archive'),
+        headers: _headers,
+        body: jsonEncode({
+          'isArchived': isArchived,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['isArchived'] ?? false;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to archive chat');
+      }
+    } catch (e) {
+      throw Exception('Failed to archive chat: $e');
+    }
+  }
+
   /// Создать новый прямой чат с пользователем или получить существующий
   Future<Chat> createChat(String otherUserId) async {
     try {

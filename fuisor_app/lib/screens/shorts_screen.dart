@@ -20,7 +20,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   final PageController _pageController = PageController();
   late TabController _tabController;
   int _currentIndex = 0;
-  int _currentTabIndex = 0; // 0 = Рекомендации, 1 = Подписки
+  int _currentTabIndex = 0; // 0 = Подписки, 1 = Рекомендации
   final Map<int, VideoPlayerController> _videoControllers = {};
   final Set<int> _initializingVideos = {}; // Защита от параллельной инициализации
   final Map<int, int> _retryCounts = {}; // Счетчики попыток для retry
@@ -71,18 +71,18 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     final accessToken = prefs.getString('access_token');
     
     if (_currentTabIndex == 0) {
-      // Рекомендации
-      await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
-    } else {
       // Подписки
       await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
+    } else {
+      // Рекомендации
+      await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
     }
     
     // Инициализируем первое видео
     if (mounted && _isScreenVisible) {
       final videoPosts = _currentTabIndex == 0 
-          ? postsProvider.videoPosts 
-          : postsProvider.followingVideoPosts;
+          ? postsProvider.followingVideoPosts 
+          : postsProvider.videoPosts;
       
       if (videoPosts.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -157,9 +157,9 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     final accessToken = prefs.getString('access_token');
     
     if (_currentTabIndex == 0) {
-      await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
-    } else {
       await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
+    } else {
+      await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
     }
 
     // ВАЖНО: Устанавливаем _isScreenVisible = true, так как мы остаемся на экране Shorts
@@ -168,8 +168,8 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     // Переинициализируем первое видео только если экран видим
     if (mounted && _isScreenVisible) {
       final videoPosts = _currentTabIndex == 0 
-          ? postsProvider.videoPosts 
-          : postsProvider.followingVideoPosts;
+          ? postsProvider.followingVideoPosts 
+          : postsProvider.videoPosts;
       
       if (videoPosts.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -197,20 +197,20 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     
     // Загружаем видео для текущей вкладки
     if (_currentTabIndex == 0) {
-      if (postsProvider.videoPosts.isEmpty) {
-        await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
-      }
-    } else {
       if (postsProvider.followingVideoPosts.isEmpty) {
         await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
+      }
+    } else {
+      if (postsProvider.videoPosts.isEmpty) {
+        await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
       }
     }
     
     // Инициализируем первое видео только если посты уже загружены
     if (mounted) {
       final videoPosts = _currentTabIndex == 0 
-          ? postsProvider.videoPosts 
-          : postsProvider.followingVideoPosts;
+          ? postsProvider.followingVideoPosts 
+          : postsProvider.videoPosts;
       
       if (videoPosts.isNotEmpty && !_videoControllers.containsKey(0)) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -350,8 +350,8 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     // Предзагружаем текущее видео, если оно еще не инициализировано
     final postsProvider = context.read<PostsProvider>();
     final videoPosts = _currentTabIndex == 0 
-        ? postsProvider.videoPosts 
-        : postsProvider.followingVideoPosts;
+        ? postsProvider.followingVideoPosts 
+        : postsProvider.videoPosts;
     
     if (_currentIndex < videoPosts.length && !_videoControllers.containsKey(_currentIndex)) {
       print('ShortsScreen: Initializing current video $_currentIndex');
@@ -406,8 +406,8 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
 
     // Автоподгрузка следующей страницы при приближении к концу
     final hasMore = _currentTabIndex == 0 
-        ? postsProvider.hasMoreVideoPosts 
-        : postsProvider.hasMoreFollowingVideoPosts;
+        ? postsProvider.hasMoreFollowingVideoPosts 
+        : postsProvider.hasMoreVideoPosts;
     
     if (_currentIndex >= videoPosts.length - 3 && hasMore && !postsProvider.isLoading) {
       print('ShortsScreen: Approaching end (index: $_currentIndex, total: ${videoPosts.length}), loading more videos');
@@ -415,9 +415,9 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       final accessToken = prefs.getString('access_token');
       
       if (_currentTabIndex == 0) {
-        await postsProvider.loadVideoPosts(refresh: false, accessToken: accessToken);
-      } else {
         await postsProvider.loadFollowingVideoPosts(refresh: false, accessToken: accessToken);
+      } else {
+        await postsProvider.loadVideoPosts(refresh: false, accessToken: accessToken);
       }
     }
   }
@@ -429,23 +429,32 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       body: Consumer<PostsProvider>(
         builder: (context, postsProvider, child) {
           final videoPosts = _currentTabIndex == 0 
-              ? postsProvider.videoPosts 
-              : postsProvider.followingVideoPosts;
+              ? postsProvider.followingVideoPosts 
+              : postsProvider.videoPosts;
 
           return Column(
             children: [
-              // TabBar
-              Container(
-                color: Colors.black,
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorColor: const Color(0xFF0095F6),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.grey,
-                  tabs: const [
-                    Tab(text: 'Рекомендации'),
-                    Tab(text: 'Подписки'),
-                  ],
+              // TabBar с SafeArea для защиты от системного трея
+              SafeArea(
+                bottom: false,
+                child: Container(
+                  color: Colors.black,
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorColor: const Color(0xFF0095F6),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.grey,
+                    onTap: (index) {
+                      // Если нажали на уже активную вкладку, обновляем ленту
+                      if (index == _currentTabIndex) {
+                        refreshFeed();
+                      }
+                    },
+                    tabs: const [
+                      Tab(text: 'Подписки'),
+                      Tab(text: 'Рекомендации'),
+                    ],
+                  ),
                 ),
               ),
               // Контент
@@ -469,7 +478,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     }
 
     // Для вкладки "Подписки" показываем специальное сообщение, если видео нет
-    if (_currentTabIndex == 1 && videoPosts.isEmpty) {
+    if (_currentTabIndex == 0 && videoPosts.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -500,7 +509,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
-                _tabController.animateTo(0);
+                _tabController.animateTo(1);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0095F6),
@@ -515,7 +524,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     }
 
     // Для вкладки "Рекомендации" показываем стандартное сообщение, если видео нет
-    if (_currentTabIndex == 0 && videoPosts.isEmpty) {
+    if (_currentTabIndex == 1 && videoPosts.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

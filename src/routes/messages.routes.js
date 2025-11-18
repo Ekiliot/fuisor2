@@ -40,10 +40,20 @@ router.get('/chats', validateAuth, async (req, res) => {
     const userId = req.user.id;
 
     // Получаем все чаты где пользователь является участником
-    const { data: participantRecords, error: participantError } = await supabaseAdmin
+    // По умолчанию исключаем архивированные (можно добавить параметр includeArchived)
+    const includeArchived = req.query.includeArchived === 'true';
+    
+    let participantQuery = supabaseAdmin
       .from('chat_participants')
-      .select('chat_id, unread_count')
+      .select('chat_id, unread_count, is_archived')
       .eq('user_id', userId);
+    
+    if (!includeArchived) {
+      // Исключаем архивированные чаты (is_archived = false или null)
+      participantQuery = participantQuery.or('is_archived.is.null,is_archived.eq.false');
+    }
+    
+    const { data: participantRecords, error: participantError } = await participantQuery;
 
     if (participantError) {
       console.error('Error fetching participant records:', participantError);
@@ -68,6 +78,7 @@ router.get('/chats', validateAuth, async (req, res) => {
           user_id,
           unread_count,
           last_read_at,
+          is_archived,
           user:profiles!user_id(
             id,
             username,
@@ -140,10 +151,11 @@ router.get('/chats', validateAuth, async (req, res) => {
             created_at: chat.created_at,
             updated_at: chat.updated_at || chat.created_at,
             otherUser: otherParticipant?.user || null,
-            unreadCount: myParticipant?.unread_count ?? 0,
-            lastMessage: formattedLastMessage,
-          };
-        }
+          unreadCount: myParticipant?.unread_count ?? 0,
+          isArchived: myParticipant?.is_archived ?? false,
+          lastMessage: formattedLastMessage,
+        };
+      }
 
         // Форматируем lastMessage для правильной структуры
         let formattedLastMessage = null;
@@ -171,6 +183,7 @@ router.get('/chats', validateAuth, async (req, res) => {
             lastReadAt: p.last_read_at || null,
           })),
           unreadCount: myParticipant?.unread_count ?? 0,
+          isArchived: myParticipant?.is_archived ?? false,
           lastMessage: formattedLastMessage,
         };
       })
@@ -839,6 +852,53 @@ router.get('/chats/:chatId/media/signed-url', validateAuth, validateChatId, asyn
     res.json({ signedUrl: data.signedUrl });
   } catch (error) {
     console.error('Error in GET /api/messages/chats/:chatId/media/signed-url:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// 9. PUT /api/messages/chats/:chatId/archive
+// Архивировать/разархивировать чат
+// ==============================================
+router.put('/chats/:chatId/archive', validateAuth, validateChatId, async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    const userId = req.user.id;
+    const { isArchived } = req.body;
+
+    // Проверка участия в чате
+    const isParticipant = await checkChatParticipant(chatId, userId);
+    if (!isParticipant) {
+      await new Promise(r => setTimeout(r, Math.random() * 100));
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Обновляем статус архивирования для текущего пользователя
+    const { data: updatedParticipant, error: updateError } = await supabaseAdmin
+      .from('chat_participants')
+      .update({ is_archived: isArchived === true })
+      .eq('chat_id', chatId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating archive status:', updateError);
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    console.log('PUT /chats/:chatId/archive - Success:', {
+      chatId,
+      userId,
+      isArchived,
+    });
+
+    res.json({ 
+      success: true,
+      isArchived: updatedParticipant.is_archived 
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/messages/chats/:chatId/archive:', error);
     res.status(500).json({ error: error.message });
   }
 });

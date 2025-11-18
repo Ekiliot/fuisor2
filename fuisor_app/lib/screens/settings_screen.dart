@@ -43,53 +43,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: hasSearchQuery
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Search settings...',
-                  hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
-                  border: InputBorder.none,
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(EvaIcons.closeCircle, color: Colors.white, size: 20),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                ),
-                onChanged: (value) {
-                  setState(() => _searchQuery = value);
-                },
-              )
-            : const Text(
-                'Settings',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-        centerTitle: !hasSearchQuery,
-        actions: [
-          if (!hasSearchQuery)
-            IconButton(
-              icon: const Icon(EvaIcons.searchOutline, color: Colors.white),
-              onPressed: () {
-                setState(() => _searchQuery = ' ');
-                _searchController.text = '';
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  if (mounted) {
-                    FocusScope.of(context).requestFocus(FocusNode());
-                  }
-                });
-              },
-            ),
-        ],
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: _buildSettingsList(hasSearchQuery),
     );
@@ -97,6 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSettingsList(bool hasSearchQuery) {
     final widgets = <Widget>[];
+
+    // Search bar (в начале списка, как в списке чатов)
+    widgets.add(_buildSearchBar());
 
     // General section
     final generalSettings = [
@@ -254,6 +219,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     return ListView(children: widgets);
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.black,
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: Colors.white),
+        onChanged: (value) {
+          setState(() => _searchQuery = value);
+        },
+        decoration: InputDecoration(
+          hintText: 'Search settings...',
+          hintStyle: TextStyle(color: Colors.grey[600]),
+          prefixIcon: const Icon(
+            EvaIcons.searchOutline,
+            color: Color(0xFF8E8E8E),
+          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(
+                    EvaIcons.closeCircle,
+                    color: Color(0xFF8E8E8E),
+                  ),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: const Color(0xFF262626),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+    );
   }
 
   Widget _buildSettingWidget(_SettingItem item) {
