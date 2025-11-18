@@ -45,7 +45,7 @@ router.get('/chats', validateAuth, async (req, res) => {
     
     let participantQuery = supabaseAdmin
       .from('chat_participants')
-      .select('chat_id, unread_count, is_archived')
+      .select('chat_id, unread_count, is_archived, is_pinned')
       .eq('user_id', userId);
     
     if (!includeArchived) {
@@ -79,6 +79,7 @@ router.get('/chats', validateAuth, async (req, res) => {
           unread_count,
           last_read_at,
           is_archived,
+          is_pinned,
           user:profiles!user_id(
             id,
             username,
@@ -153,6 +154,7 @@ router.get('/chats', validateAuth, async (req, res) => {
             otherUser: otherParticipant?.user || null,
           unreadCount: myParticipant?.unread_count ?? 0,
           isArchived: myParticipant?.is_archived ?? false,
+          isPinned: myParticipant?.is_pinned ?? false,
           lastMessage: formattedLastMessage,
         };
       }
@@ -184,6 +186,7 @@ router.get('/chats', validateAuth, async (req, res) => {
           })),
           unreadCount: myParticipant?.unread_count ?? 0,
           isArchived: myParticipant?.is_archived ?? false,
+          isPinned: myParticipant?.is_pinned ?? false,
           lastMessage: formattedLastMessage,
         };
       })
@@ -857,7 +860,48 @@ router.get('/chats/:chatId/media/signed-url', validateAuth, validateChatId, asyn
 });
 
 // ==============================================
-// 9. PUT /api/messages/chats/:chatId/archive
+// PUT /api/messages/chats/:chatId/pin
+// Закрепить/открепить чат
+// ==============================================
+router.put('/chats/:chatId/pin', validateAuth, validateChatId, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+    const { isPinned } = req.body;
+
+    if (typeof isPinned !== 'boolean') {
+      return res.status(400).json({ error: 'isPinned must be a boolean' });
+    }
+
+    // Проверяем участие в чате
+    const isParticipant = await checkChatParticipant(chatId, userId);
+    if (!isParticipant) {
+      return res.status(403).json({ error: 'You are not a participant of this chat' });
+    }
+
+    // Обновляем is_pinned для текущего пользователя
+    const { data, error } = await supabaseAdmin
+      .from('chat_participants')
+      .update({ is_pinned: isPinned })
+      .eq('chat_id', chatId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating chat pin status:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ isPinned: data.is_pinned });
+  } catch (error) {
+    console.error('Error in pin chat endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// PUT /api/messages/chats/:chatId/archive
 // Архивировать/разархивировать чат
 // ==============================================
 router.put('/chats/:chatId/archive', validateAuth, validateChatId, async (req, res) => {

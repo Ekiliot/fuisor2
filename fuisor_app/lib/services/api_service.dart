@@ -1028,10 +1028,14 @@ class ApiService {
   // ==============================================
 
   /// Получить все чаты текущего пользователя
-  Future<List<Chat>> getChats() async {
+  Future<List<Chat>> getChats({bool includeArchived = false}) async {
     try {
+      final uri = includeArchived 
+          ? Uri.parse('$baseUrl/messages/chats?includeArchived=true')
+          : Uri.parse('$baseUrl/messages/chats');
+      
       final response = await http.get(
-        Uri.parse('$baseUrl/messages/chats'),
+        uri,
         headers: _headers,
       );
 
@@ -1049,6 +1053,26 @@ class ApiService {
   }
 
   /// Архивировать/разархивировать чат
+  Future<bool> pinChat(String chatId, bool isPinned) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/messages/chats/$chatId/pin'),
+        headers: _headers,
+        body: jsonEncode({ 'isPinned': isPinned }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print('ApiService: Failed to pin chat: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('ApiService: Error pinning chat: $e');
+      return false;
+    }
+  }
+
   Future<bool> archiveChat(String chatId, bool isArchived) async {
     try {
       final response = await http.put(
