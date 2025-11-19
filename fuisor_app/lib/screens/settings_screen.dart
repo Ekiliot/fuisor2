@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 
@@ -43,12 +44,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Settings',
-          style: TextStyle(
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
           ),
         ),
         centerTitle: true,

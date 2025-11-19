@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/posts_provider.dart';
@@ -8,6 +9,7 @@ import '../providers/notifications_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/post_card.dart';
 import '../widgets/stories_widget.dart';
+import '../widgets/geo_posts_widget.dart';
 import '../widgets/skeleton_post_card.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
@@ -121,16 +123,46 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Вычисляем позиции для гео-постов (через каждые 3-5 обычных постов)
+  // Возвращает виртуальные позиции (с учетом того, что Stories занимает индекс 0)
+  List<int> _calculateGeoPostsPositions(int totalPosts) {
+    if (totalPosts == 0) return [];
+    
+    final positions = <int>[];
+    final intervals = [3, 4, 5, 3, 4, 5]; // Паттерн: через 3, 4, 5, 3, 4, 5 постов
+    int postsSinceLastGeo = 0; // Счетчик постов после последнего гео-поста
+    int intervalIndex = 0;
+    int virtualIndex = 1; // Начинаем с 1, так как index 0 занят Stories
+    
+    // Проходим по всем постам
+    for (int postIndex = 0; postIndex < totalPosts; postIndex++) {
+      postsSinceLastGeo++;
+      
+      // Если прошло нужное количество постов, вставляем гео-пост
+      if (postsSinceLastGeo >= intervals[intervalIndex]) {
+        // virtualIndex уже указывает на следующую позицию после последнего поста
+        positions.add(virtualIndex);
+        virtualIndex++; // Гео-пост занимает одну позицию
+        postsSinceLastGeo = 0; // Сбрасываем счетчик
+        intervalIndex = (intervalIndex + 1) % intervals.length; // Следующий интервал
+      }
+      
+      virtualIndex++; // Обычный пост занимает одну позицию
+    }
+    
+    return positions;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Fuisor',
-          style: TextStyle(
+          style: GoogleFonts.delaGothicOne(
             fontSize: 24,
-            fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
         ),
         actions: [
@@ -221,10 +253,13 @@ class _HomeScreenState extends State<HomeScreen> {
           // Показываем скелетон только при ПЕРВОЙ загрузке И пустом списке
           if (isInitialLoading && feedPosts.isEmpty) {
             return ListView.builder(
-              itemCount: 3, // Показываем 3 скелетона
+              itemCount: 4, // Показываем Stories, GeoPosts и 2 скелетона
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const StoriesWidget();
+                }
+                if (index == 1) {
+                  return const SizedBox.shrink(); // GeoPosts не показываем при загрузке
                 }
                 return const ShimmerSkeletonPostCard();
               },
@@ -301,6 +336,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Основной контент - показываем даже если идет загрузка (для плавности)
           final postsProvider = context.read<PostsProvider>();
+          
+          // Вычисляем позиции для гео-постов (через каждые 3-5 обычных постов)
+          final geoPostsPositions = _calculateGeoPostsPositions(feedPosts.length);
+          final totalItems = 1 + feedPosts.length + geoPostsPositions.length; // Stories + Posts + GeoPosts
+          
           return SmartRefresher(
             controller: _refreshController,
             onRefresh: _onRefresh,
@@ -321,13 +361,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: ListView.builder(
               controller: _scrollController,
-              itemCount: feedPosts.length + 1,
+              itemCount: totalItems,
               itemBuilder: (context, index) {
+                // Stories всегда на первой позиции
                 if (index == 0) {
                   return const StoriesWidget();
                 }
                 
-                final postIndex = index - 1;
+                // Проверяем, является ли эта позиция гео-постом
+                final adjustedIndex = index - 1; // Убираем Stories из индекса
+                if (geoPostsPositions.contains(adjustedIndex)) {
+                  return const GeoPostsWidget();
+                }
+                
+                // Вычисляем индекс поста с учетом вставленных гео-постов
+                final postIndex = adjustedIndex - 
+                    geoPostsPositions.where((pos) => pos < adjustedIndex).length;
+                
                 if (postIndex >= feedPosts.length) {
                   return isLoading && !isRefreshing
                       ? const Padding(

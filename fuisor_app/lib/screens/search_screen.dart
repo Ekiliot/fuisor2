@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -23,14 +26,18 @@ class _SearchScreenState extends State<SearchScreen> {
   List<User> _users = [];
   List<Post> _posts = [];
   List<dynamic> _hashtags = [];
-  bool _isSearching = false;
   bool _hasSearched = false;
   String _searchQuery = '';
+  
+  // Timer для debounce поиска
+  Timer? _searchDebounceTimer;
+  String _currentSearchText = '';
 
   @override
   void initState() {
     super.initState();
     _setupApiService();
+    _searchController.addListener(_onSearchChanged);
   }
 
   Future<void> _setupApiService() async {
@@ -43,12 +50,25 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
+  void _onSearchChanged() {
+    // Отменяем предыдущий таймер
+    _searchDebounceTimer?.cancel();
+    
+    final query = _searchController.text.trim();
+    _currentSearchText = query;
+    
+    // Обновляем только suffixIcon без перестроения всего экрана
+    if (mounted) {
+      setState(() {});
+    }
+    
+    if (query.isEmpty) {
+      // Очищаем результаты только если поле пустое
       setState(() {
         _users = [];
         _posts = [];
@@ -58,32 +78,65 @@ class _SearchScreenState extends State<SearchScreen> {
       });
       return;
     }
-
-    setState(() {
-      _isSearching = true;
-      _searchQuery = query;
+    
+    // Создаем новый таймер с задержкой 500ms
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      // Проверяем, что текст не изменился за время задержки
+      if (_currentSearchText == _searchController.text.trim()) {
+        _performSearch(_currentSearchText);
+      }
     });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _users = [];
+          _posts = [];
+          _hashtags = [];
+          _hasSearched = false;
+          _searchQuery = '';
+        });
+      }
+      return;
+    }
+
+    // Сохраняем запрос, но НЕ очищаем предыдущие результаты
+    // Предыдущие результаты остаются видимыми до получения новых
+    if (mounted) {
+      setState(() {
+        _searchQuery = query;
+        // НЕ устанавливаем _isSearching = true
+        // НЕ очищаем предыдущие результаты
+      });
+    }
 
     try {
       final result = await _apiService.search(query);
       
-      setState(() {
-        _users = (result['users'] as List? ?? [])
-            .map((json) => User.fromJson(json))
-            .toList();
-        _posts = (result['posts'] as List? ?? [])
-            .map((json) => Post.fromJson(json))
-            .toList();
-        _hashtags = result['hashtags'] as List? ?? [];
-        _hasSearched = true;
-        _isSearching = false;
-      });
+      // Проверяем, что запрос все еще актуален (текст не изменился)
+      if (mounted && _searchController.text.trim() == query) {
+        setState(() {
+          // Обновляем результаты только после получения новых данных
+          // Старые результаты просто заменяются новыми
+          _users = (result['users'] as List? ?? [])
+              .map((json) => User.fromJson(json))
+              .toList();
+          _posts = (result['posts'] as List? ?? [])
+              .map((json) => Post.fromJson(json))
+              .toList();
+          _hashtags = result['hashtags'] as List? ?? [];
+          _hasSearched = true;
+        });
+      }
     } catch (e) {
       print('Error searching: $e');
-      setState(() {
-        _isSearching = false;
-        _hasSearched = true;
-      });
+      if (mounted && _searchController.text.trim() == query) {
+        setState(() {
+          _hasSearched = true;
+        });
+      }
     }
   }
 
@@ -94,117 +147,126 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFF121212),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF262626)),
-          ),
-          child: TextField(
-            controller: _searchController,
-            style: const TextStyle(color: Colors.white),
-            onChanged: (value) {
-              if (value.trim().isNotEmpty) {
-                _performSearch(value);
-              } else {
-                setState(() {
-                  _users = [];
-                  _posts = [];
-                  _hashtags = [];
-                  _hasSearched = false;
-                });
-              }
-            },
-            decoration: InputDecoration(
-              hintText: 'Search for users, posts and hashtags',
-              hintStyle: const TextStyle(color: Color(0xFF8E8E8E), fontSize: 14),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              prefixIcon: const Icon(EvaIcons.searchOutline, color: Color(0xFF8E8E8E)),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(EvaIcons.closeCircle, color: Color(0xFF8E8E8E)),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _users = [];
-                          _posts = [];
-                          _hashtags = [];
-                          _hasSearched = false;
-                        });
-                      },
-                    )
-                  : null,
-            ),
+        title: Text(
+          'Search',
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
+            color: Colors.white,
           ),
         ),
       ),
-      body: _isSearching
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF0095F6)),
-            )
-          : _hasSearched
-              ? _buildSearchResults()
-              : SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search placeholder
-            Container(
-              height: 200,
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      EvaIcons.searchOutline,
-                      size: 64,
-                      color: Color(0xFF8E8E8E),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Search for users, posts and hashtags',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Color(0xFF8E8E8E),
-                      ),
-                    ),
-                  ],
+      body: Column(
+        children: [
+          // Search field
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              onChanged: (value) {
+                // onChanged обрабатывается через listener, ничего не делаем здесь
+              },
+              decoration: InputDecoration(
+                hintText: 'Search for users, posts and hashtags',
+                hintStyle: TextStyle(color: Colors.grey[600]),
+                prefixIcon: const Icon(
+                  EvaIcons.searchOutline,
+                  color: Color(0xFF8E8E8E),
                 ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(
+                          EvaIcons.closeCircle,
+                          color: Color(0xFF8E8E8E),
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _users = [];
+                            _posts = [];
+                            _hashtags = [];
+                            _hasSearched = false;
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFF262626),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ),
-            
-            // Recommended Posts Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+          
+          // Search results or placeholder
+          Expanded(
+            child: _hasSearched
+                ? _buildSearchResults()
+                : SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Recommended Posts',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  // Search placeholder
+                  Container(
+                    height: 200,
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            EvaIcons.searchOutline,
+                            size: 64,
+                            color: Color(0xFF8E8E8E),
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Search for users, posts and hashtags',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Color(0xFF8E8E8E),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Consumer<PostsProvider>(
-                    builder: (context, postsProvider, child) {
-                      return RecommendedPostsGrid(
-                        posts: postsProvider.feedPosts.take(12).toList(), // Show first 12 posts as recommendations
-                        isLoading: postsProvider.isLoading,
-                      );
-                    },
+                  
+                  // Recommended Posts Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Recommended Posts',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Consumer<PostsProvider>(
+                          builder: (context, postsProvider, child) {
+                            return RecommendedPostsGrid(
+                              posts: postsProvider.feedPosts.take(12).toList(), // Show first 12 posts as recommendations
+                              isLoading: postsProvider.isLoading,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
+                  
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
-            
-            const SizedBox(height: 20),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -242,129 +304,199 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Users
-          if (_users.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Users',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _users.length,
-              itemBuilder: (context, index) {
-                final user = _users[index];
-                return ListTile(
-                  leading: SafeAvatar(
-                    imageUrl: user.avatarUrl,
-                    radius: 20,
-                  ),
-                  title: Text(
-                    user.username,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: user.name.isNotEmpty
-                      ? Text(
-                          user.name,
-                          style: const TextStyle(color: Color(0xFF8E8E8E)),
-                        )
-                      : null,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ProfileScreen(userId: user.id),
+    int _currentPosition = 0;
+
+    return AnimationLimiter(
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Users
+            if (_users.isNotEmpty) ...[
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Users',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-            const Divider(color: Color(0xFF262626)),
-          ],
-
-          // Posts
-          if (_posts.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Posts',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: RecommendedPostsGrid(
-                posts: _posts,
-                isLoading: false,
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Divider(color: Color(0xFF262626)),
-          ],
-
-          // Hashtags
-          if (_hashtags.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Hashtags',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _hashtags.length,
-              itemBuilder: (context, index) {
-                final hashtag = _hashtags[index];
-                return ListTile(
-                  leading: const Icon(
-                    EvaIcons.hash,
-                    color: Color(0xFF0095F6),
-                  ),
-                  title: Text(
-                    '#${hashtag['name']}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  subtitle: Text(
-                    '${hashtag['posts_count']} posts',
-                    style: const TextStyle(color: Color(0xFF8E8E8E)),
+                ),
+              ),
+              ...List.generate(_users.length, (index) {
+                final user = _users[index];
+                return AnimationConfiguration.staggeredList(
+                  position: _currentPosition++,
+                  duration: const Duration(milliseconds: 375),
+                  child: SlideAnimation(
+                    verticalOffset: 50.0,
+                    child: FadeInAnimation(
+                      child: ListTile(
+                        leading: SafeAvatar(
+                          imageUrl: user.avatarUrl,
+                          radius: 20,
+                        ),
+                        title: Text(
+                          user.username,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: user.name.isNotEmpty
+                            ? Text(
+                                user.name,
+                                style: const TextStyle(color: Color(0xFF8E8E8E)),
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ProfileScreen(userId: user.id),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                  onTap: () {
-                    // TODO: Navigate to hashtag posts
-                    print('Navigate to hashtag: ${hashtag['name']}');
-                  },
                 );
-              },
-            ),
+              }),
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: const Divider(color: Color(0xFF262626)),
+                  ),
+                ),
+              ),
+            ],
+
+            // Posts
+            if (_posts.isNotEmpty) ...[
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Posts',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: RecommendedPostsGrid(
+                        posts: _posts,
+                        isLoading: false,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: Column(
+                      children: const [
+                        SizedBox(height: 20),
+                        Divider(color: Color(0xFF262626)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            // Hashtags
+            if (_hashtags.isNotEmpty) ...[
+              AnimationConfiguration.staggeredList(
+                position: _currentPosition++,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Hashtags',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              ...List.generate(_hashtags.length, (index) {
+                final hashtag = _hashtags[index];
+                return AnimationConfiguration.staggeredList(
+                  position: _currentPosition++,
+                  duration: const Duration(milliseconds: 375),
+                  child: SlideAnimation(
+                    verticalOffset: 50.0,
+                    child: FadeInAnimation(
+                      child: ListTile(
+                        leading: const Icon(
+                          EvaIcons.hash,
+                          color: Color(0xFF0095F6),
+                        ),
+                        title: Text(
+                          '#${hashtag['name']}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${hashtag['posts_count']} posts',
+                          style: const TextStyle(color: Color(0xFF8E8E8E)),
+                        ),
+                        onTap: () {
+                          // TODO: Navigate to hashtag posts
+                          print('Navigate to hashtag: ${hashtag['name']}');
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

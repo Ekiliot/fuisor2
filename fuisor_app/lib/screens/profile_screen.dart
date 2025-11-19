@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -478,9 +479,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             final displayUser = _viewingUser ?? authProvider.currentUser;
             return Text(
               '@${displayUser?.username ?? 'Profile'}',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
+              style: GoogleFonts.delaGothicOne(
+                fontSize: 24,
                 color: Colors.white,
               ),
             );

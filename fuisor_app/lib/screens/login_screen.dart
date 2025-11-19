@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/animated_login_button.dart';
 import '../widgets/animated_text_field.dart';
@@ -39,21 +39,12 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Logo
-              const Icon(
-                EvaIcons.cameraOutline,
-                size: 80,
-                color: Colors.white,
-              ),
-              const SizedBox(height: 40),
-              
               // Title
-              const Text(
+              Text(
                 'Fuisor',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.delaGothicOne(
+                  fontSize: 42,
                   color: Colors.white,
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import '../providers/notifications_provider.dart';
@@ -64,11 +65,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Activity',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
           ),
         ),
