@@ -3,6 +3,7 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
@@ -209,9 +210,8 @@ class _FollowersListScreenState extends State<FollowersListScreen> {
         elevation: 0,
         title: Text(
           widget.title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
           ),
         ),

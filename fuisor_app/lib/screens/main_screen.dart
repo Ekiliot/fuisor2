@@ -1,24 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'dart:ui';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'create_post_screen.dart';
 import 'media_selection_screen.dart';
 import 'shorts_screen.dart';
 import 'profile_screen.dart';
+import '../models/user.dart' show Post;
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<MainScreen> createState() => MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   final GlobalKey<ShortsScreenState> _shortsScreenKey = GlobalKey<ShortsScreenState>();
   DateTime? _lastShortsTapTime;
   static const _doubleTapDelay = Duration(milliseconds: 300);
+  
+  // Метод для переключения на Shorts с конкретным постом
+  void switchToShortsWithPost(Post post) {
+    setState(() {
+      _currentIndex = 3; // Переключаемся на Shorts
+    });
+    // Передаем пост в ShortsScreen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _shortsScreenKey.currentState?.navigateToPost(post);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,18 +46,48 @@ class _MainScreenState extends State<MainScreen> {
           const ProfileScreen(),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: Color(0xFF262626),
-              width: 0.5,
-            ),
-          ),
+      extendBody: _currentIndex != 3, // Контент заезжает под navbar, кроме Shorts
+      bottomNavigationBar: RepaintBoundary(
+        child: ClipRect(
+          child: _currentIndex == 3
+              ? Container(
+                  // Без blur для Shorts, чтобы не перекрывать видео
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withOpacity(0.1),
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: _buildBottomNavigationBar(),
+                )
+              : BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4), // Оптимизированный blur
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: _buildBottomNavigationBar(),
+                  ),
+                ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) async {
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      backgroundColor: Colors.transparent,
+      onTap: (index) async {
             // Если уходим с экрана Shorts (index 3), останавливаем все видео
             if (_currentIndex == 3 && index != 3) {
               await _shortsScreenKey.currentState?.pauseAllVideos();
@@ -94,7 +137,6 @@ class _MainScreenState extends State<MainScreen> {
             }
           },
           type: BottomNavigationBarType.fixed,
-          backgroundColor: const Color(0xFF000000),
           selectedItemColor: Colors.white,
           unselectedItemColor: const Color(0xFF8E8E8E),
           selectedFontSize: 0,
@@ -127,8 +169,6 @@ class _MainScreenState extends State<MainScreen> {
               label: '',
             ),
           ],
-        ),
-      ),
     );
   }
 }

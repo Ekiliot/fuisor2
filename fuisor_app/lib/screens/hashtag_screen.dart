@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
@@ -111,10 +112,9 @@ class _HashtagScreenState extends State<HashtagScreen> {
         ),
         title: Text(
           '#${widget.hashtag}',
-          style: const TextStyle(
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
           ),
         ),
         centerTitle: true,

@@ -8,11 +8,11 @@ class StoriesWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 100,
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      margin: const EdgeInsets.only(top: 0, bottom: 8), // Stories ближе к header
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: 10, // Mock data
+        itemCount: 10, // Mock data without Geo button
         itemBuilder: (context, index) {
           if (index == 0) {
             return _buildAddStoryItem();
@@ -83,6 +83,7 @@ class StoriesWidget extends StatelessWidget {
       ),
     );
   }
+
 
   Widget _buildStoryItem(int index) {
     return Container(

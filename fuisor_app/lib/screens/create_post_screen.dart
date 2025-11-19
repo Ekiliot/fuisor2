@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import '../providers/posts_provider.dart';
@@ -203,13 +204,36 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         }
       } else {
         print('CreatePostScreen: Detected image file');
-        print('CreatePostScreen: Image file size: ${mediaBytes?.length ?? 0} bytes');
+        // Для изображений используем selectedImageBytes (обрезанное изображение)
+        // Если selectedImageBytes null, читаем файл (fallback для веб или если обрезка не была выполнена)
+        if (mediaBytes == null) {
+          print('CreatePostScreen: selectedImageBytes is null, reading file...');
+          try {
+            if (kIsWeb) {
+              mediaBytes = await widget.selectedFile!.readAsBytes();
+            } else {
+              try {
+                mediaBytes = await widget.selectedFile!.readAsBytes();
+              } catch (xfileError) {
+                final file = File(widget.selectedFile!.path);
+                if (await file.exists()) {
+                  mediaBytes = await file.readAsBytes();
+                } else {
+                  throw Exception('Image file does not exist at path: ${widget.selectedFile!.path}');
+                }
+              }
+            }
+            print('CreatePostScreen: Image file read successfully, size: ${mediaBytes.length} bytes');
+          } catch (fileError) {
+            print('CreatePostScreen: Error reading image file: $fileError');
+            throw Exception('Failed to read image file: $fileError');
+          }
+        } else {
+          print('CreatePostScreen: Using selectedImageBytes (cropped image), size: ${mediaBytes.length} bytes');
+        }
       }
 
-      if (mediaBytes == null) {
-        throw Exception('Failed to process media file');
-      }
-
+      // mediaBytes гарантированно не null после обработки выше
       print('Media type: $mediaType');
       print('Media filename: $mediaFileName');
       print('Caption: ${_captionController.text.trim()}');
@@ -283,11 +307,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: const Text(
+        title: Text(
           'New Post',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
           ),
         ),

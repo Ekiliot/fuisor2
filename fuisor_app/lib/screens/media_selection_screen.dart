@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:video_player/video_player.dart';
@@ -8,8 +9,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'dart:async';
 import 'create_post_screen.dart';
+import '../widgets/custom_image_cropper.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
   const MediaSelectionScreen({super.key});
@@ -29,6 +31,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   List<AssetEntity> _mediaAssets = [];
   bool _isLoadingMedia = false;
   bool _hasPermission = false;
+  bool _isLimitedAccess = false; // Флаг ограниченного доступа
   static const int _pageSize = 50;
   bool _hasMore = true;
   
@@ -47,6 +50,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           _currentTabIndex = _tabController.index;
           _mediaAssets = [];
           _hasMore = true;
+          _thumbnailCache.clear(); // Очищаем кеш при переключении вкладок
         });
         if (_hasPermission) {
           _loadMedia();
@@ -204,7 +208,18 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           final androidInfo = await deviceInfo.androidInfo;
           
           if (androidInfo.version.sdkInt >= 33) {
-            // Android 13+ (API 33+) - используем READ_MEDIA_IMAGES и READ_MEDIA_VIDEO
+            // Android 13+ (API 33+) - запрашиваем и фото, и видео отдельно
+            final photosStatus = await Permission.photos.request();
+            final videosStatus = await Permission.videos.request();
+            
+            print('Android 13+ permissions - Photos: $photosStatus, Videos: $videosStatus');
+            
+            // Проверяем оба разрешения
+            if (!videosStatus.isGranted) {
+              print('WARNING: Video permission denied! Videos may not be accessible.');
+            }
+            
+            // Используем photos как основной для photo_manager
             permission = Permission.photos;
           } else {
             // Android < 13 - используем READ_EXTERNAL_STORAGE
@@ -238,22 +253,42 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       final status = await permission.request();
       
       if (status.isGranted) {
-        // Также запрашиваем через photo_manager для совместимости
-        final photoStatus = await PhotoManager.requestPermissionExtend();
+        // Также запрашиваем через photo_manager с указанием RequestType.all
+        final photoStatus = await PhotoManager.requestPermissionExtend(
+          requestOption: PermissionRequestOption(
+            androidPermission: AndroidPermission(
+              type: RequestType.all, // Запрашиваем доступ ко всему
+              mediaLocation: false,
+            ),
+          ),
+        );
         print('After request - PhotoManager status: $photoStatus');
         
         // Поддерживаем как полный, так и ограниченный доступ
-        if (photoStatus == PermissionState.authorized || photoStatus == PermissionState.limited) {
+        if (photoStatus == PermissionState.authorized) {
           if (mounted) {
             setState(() {
               _hasPermission = true;
+              _isLimitedAccess = false;
             });
             await _loadMedia();
+          }
+        } else if (photoStatus == PermissionState.limited) {
+          // Ограниченный доступ - показываем предупреждение
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+              _isLimitedAccess = true;
+            });
+            await _loadMedia();
+            // Показываем предупреждение о ограниченном доступе
+            _showLimitedAccessWarning();
           }
         } else {
           if (mounted) {
             setState(() {
               _hasPermission = false;
+              _isLimitedAccess = false;
             });
           }
         }
@@ -273,18 +308,36 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       print('Error requesting permission: $e');
       // Fallback на photo_manager если что-то пошло не так
       try {
-        final PermissionState status = await PhotoManager.requestPermissionExtend();
-        if (status == PermissionState.authorized || status == PermissionState.limited) {
+        final PermissionState status = await PhotoManager.requestPermissionExtend(
+          requestOption: PermissionRequestOption(
+            androidPermission: AndroidPermission(
+              type: RequestType.all,
+              mediaLocation: false,
+            ),
+          ),
+        );
+        if (status == PermissionState.authorized) {
           if (mounted) {
             setState(() {
               _hasPermission = true;
+              _isLimitedAccess = false;
             });
             await _loadMedia();
+          }
+        } else if (status == PermissionState.limited) {
+          if (mounted) {
+            setState(() {
+              _hasPermission = true;
+              _isLimitedAccess = true;
+            });
+            await _loadMedia();
+            _showLimitedAccessWarning();
           }
         } else {
           if (mounted) {
             setState(() {
               _hasPermission = false;
+              _isLimitedAccess = false;
             });
           }
           PhotoManager.openSetting();
@@ -294,8 +347,96 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         if (mounted) {
           setState(() {
             _hasPermission = false;
+            _isLimitedAccess = false;
           });
         }
+      }
+    }
+  }
+
+  void _showLimitedAccessWarning() {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Limited access - some videos may be hidden'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Select More',
+          onPressed: () async {
+            await _requestFullAccess();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestFullAccess() async {
+    try {
+      // Показываем диалог пользователю
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Limited Access'),
+          content: const Text(
+            'The app currently has limited access to your media. '
+            'To see all videos, please grant full access in the next screen.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Grant Access'),
+            ),
+          ],
+        ),
+      );
+
+      if (result == true && mounted) {
+        // Открываем системный picker для выбора дополнительных файлов
+        await PhotoManager.presentLimited();
+        
+        // Перезагружаем медиа после выбора
+        await _loadMedia();
+        
+        // Проверяем статус разрешений снова
+        final status = await PhotoManager.requestPermissionExtend(
+          requestOption: PermissionRequestOption(
+            androidPermission: AndroidPermission(
+              type: RequestType.all,
+              mediaLocation: false,
+            ),
+          ),
+        );
+        
+        print('New permission status after selection: $status');
+        
+        if (status == PermissionState.authorized) {
+          setState(() {
+            _isLimitedAccess = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Full access granted!'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Error requesting full access: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -303,24 +444,50 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   Future<void> _loadMedia({bool loadMore = false}) async {
     if (!_hasPermission || _isLoadingMedia) return;
 
+    print('=== Loading media for tab: $_currentTabIndex ===');
+    
+    // Проверяем разрешения
+    final permissionState = await PhotoManager.requestPermissionExtend();
+    print('Permission state: $permissionState');
+
     setState(() {
       _isLoadingMedia = true;
     });
 
     try {
-      // Для видео используем RequestType.common и фильтруем потом
-      // так как RequestType.video может не работать на некоторых устройствах
-      final RequestType requestType = _currentTabIndex == 0 
-          ? RequestType.image 
-          : RequestType.common; // Используем common для видео и фильтруем
+      // Упрощенная версия для тестирования
+      RequestType requestType;
+      
+      if (_currentTabIndex == 0) {
+        requestType = RequestType.image;
+      } else {
+        // Для видео используем RequestType.video напрямую
+        requestType = RequestType.video;
+      }
 
       // Получаем все альбомы с фильтром по типу
-      final List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
         type: requestType,
         hasAll: true,
+        onlyAll: false, // Важно! Показывает все альбомы
       );
 
+      // Если для видео не нашлось альбомов, пробуем all как fallback
+      if (albums.isEmpty && _currentTabIndex == 1) {
+        print('No albums found with RequestType.video, trying RequestType.all...');
+        requestType = RequestType.all;
+        albums = await PhotoManager.getAssetPathList(
+          type: requestType,
+          hasAll: true,
+          onlyAll: false,
+        );
+        print('Found ${albums.length} albums with RequestType.all');
+      }
+      
+      print('Loading ${_currentTabIndex == 0 ? "images" : "videos"} with RequestType: $requestType, found ${albums.length} albums');
+
       if (albums.isEmpty) {
+        print('No albums found!');
         setState(() {
           _isLoadingMedia = false;
           _hasMore = false;
@@ -328,26 +495,14 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         return;
       }
 
-      // Используем первый альбом (обычно это "All Photos" или "Camera Roll")
-      final AssetPathEntity recentAlbum = albums.first;
-
-      // Получаем общее количество медиа в альбоме
-      int totalCount;
-      try {
-        totalCount = await recentAlbum.assetCountAsync;
-      } catch (e) {
-        print('Error getting asset count: $e');
-        // Если не удалось получить количество, используем большой номер
-        // и будем загружать пока не вернется пустой список
-        totalCount = 999999;
-      }
+      // Упрощенная версия: берем первый альбом (обычно "Recent" или "All")
+      AssetPathEntity recentAlbum = albums.first;
       
-      final int currentCount = loadMore ? _mediaAssets.length : 0;
-      
-      print('Total media count: $totalCount, Current loaded: $currentCount');
+      int totalCount = await recentAlbum.assetCountAsync;
+      print('Album: ${recentAlbum.name}, Asset count: $totalCount');
 
-      // Если totalCount = 0, значит альбом пустой
       if (totalCount == 0) {
+        print('Album is empty!');
         setState(() {
           _hasMore = false;
           _isLoadingMedia = false;
@@ -358,76 +513,114 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         return;
       }
 
-      // Проверяем, есть ли еще медиа для загрузки
-      if (currentCount >= totalCount) {
-        setState(() {
-          _hasMore = false;
-          _isLoadingMedia = false;
-        });
-        return;
-      }
-
-      // Загружаем медиа с пагинацией
-      // Для видео загружаем больше, так как будем фильтровать
-      final int loadCount = _currentTabIndex == 1 ? _pageSize * 2 : _pageSize;
-      final int actualEndIndex = (currentCount + loadCount).clamp(0, totalCount);
+      // Определяем начальную позицию и количество для загрузки
+      final int currentCount = loadMore ? _mediaAssets.length : 0;
+      final int pageSize = 50; // Размер страницы
+      final int startIndex = currentCount;
+      final int endIndex = (startIndex + pageSize).clamp(0, totalCount);
       
+      print('Loading media: start=$startIndex, end=$endIndex, currentCount=$currentCount, totalCount=$totalCount');
+      
+      // Загружаем следующую порцию ассетов
       List<AssetEntity> assets = await recentAlbum.getAssetListRange(
-        start: currentCount,
-        end: actualEndIndex,
+        start: startIndex,
+        end: endIndex,
       );
 
-      // Если это вкладка видео, фильтруем только видео
+      print('Loaded ${assets.length} assets from range [$startIndex, $endIndex)');
+      
+      // Для видео фильтруем только по типу
       if (_currentTabIndex == 1) {
         final originalCount = assets.length;
         assets = assets.where((asset) => asset.type == AssetType.video).toList();
         print('Filtered to ${assets.length} videos from $originalCount assets');
         
-        // Если после фильтрации получилось мало видео, но мы еще не достигли конца,
-        // продолжаем загрузку (но ограничиваем количество попыток)
-        if (assets.length < _pageSize && actualEndIndex < totalCount && loadMore) {
-          // Пробуем загрузить еще одну порцию
-          final int nextEndIndex = (actualEndIndex + loadCount).clamp(0, totalCount);
-          final List<AssetEntity> moreAssets = await recentAlbum.getAssetListRange(
-            start: actualEndIndex,
-            end: nextEndIndex,
-          );
-          final List<AssetEntity> moreVideos = moreAssets.where((asset) => asset.type == AssetType.video).toList();
-          assets.addAll(moreVideos);
-          print('Loaded additional ${moreVideos.length} videos (total: ${assets.length})');
+        // Для видео: если после фильтрации получили 0, но еще не достигли конца альбома,
+        // продолжаем загрузку (видео могут быть разбросаны)
+        if (assets.isEmpty && endIndex < totalCount) {
+          print('No videos in this batch, but more assets available. Loading next batch...');
+          // Загружаем следующую порцию сразу
+          final nextStartIndex = endIndex;
+          final nextEndIndex = (nextStartIndex + pageSize).clamp(0, totalCount);
+          
+          if (nextStartIndex < totalCount) {
+            final nextAssets = await recentAlbum.getAssetListRange(
+              start: nextStartIndex,
+              end: nextEndIndex,
+            );
+            final nextVideos = nextAssets.where((asset) => asset.type == AssetType.video).toList();
+            
+            if (nextVideos.isNotEmpty) {
+              assets = nextVideos;
+              // Обновляем endIndex для правильной проверки _hasMore
+              final updatedEndIndex = nextEndIndex;
+              setState(() {
+                if (loadMore) {
+                  _mediaAssets.addAll(assets);
+                } else {
+                  _mediaAssets = assets;
+                  _thumbnailCache.clear();
+                }
+                _hasMore = updatedEndIndex < totalCount;
+                _isLoadingMedia = false;
+              });
+              print('Loaded ${assets.length} videos from next batch, total: ${_mediaAssets.length}');
+              return;
+            }
+          }
         }
+      } else {
+        // Для фото фильтруем только изображения
+        final originalCount = assets.length;
+        assets = assets.where((asset) => asset.type == AssetType.image).toList();
+        print('Filtered to ${assets.length} images from $originalCount assets');
       }
 
-      print('Loaded ${assets.length} assets (from $currentCount to $actualEndIndex)');
-
-      // Если загрузили 0 элементов, значит это конец
-      if (assets.isEmpty) {
+      // Если загрузили 0 элементов и достигли конца альбома, значит это конец
+      if (assets.isEmpty && endIndex >= totalCount) {
+        print('No more assets found! Reached end of album.');
         setState(() {
           _hasMore = false;
           _isLoadingMedia = false;
         });
         return;
       }
+      
+      // Если загрузили 0 элементов, но еще не достигли конца (для фото)
+      if (assets.isEmpty && _currentTabIndex == 0) {
+        print('No images in this batch, but more assets available.');
+        setState(() {
+          _hasMore = endIndex < totalCount;
+          _isLoadingMedia = false;
+        });
+        return;
+      }
 
+      // Устанавливаем состояние
       setState(() {
         if (loadMore) {
-          _mediaAssets.addAll(assets);
+          // При подгрузке добавляем к существующим, избегая дубликатов
+          final existingIds = _mediaAssets.map((a) => a.id).toSet();
+          final newAssets = assets.where((a) => !existingIds.contains(a.id)).toList();
+          _mediaAssets.addAll(newAssets);
+          print('Added ${newAssets.length} new assets (${assets.length - newAssets.length} duplicates skipped)');
         } else {
+          // При первой загрузке заменяем и очищаем кеш
           _mediaAssets = assets;
+          _thumbnailCache.clear(); // Очищаем кеш при первой загрузке
         }
         // Проверяем, есть ли еще медиа для загрузки
-        // Если totalCount = 999999 (fallback), проверяем по количеству загруженных
-        if (totalCount == 999999) {
-          // Для видео проверяем по actualEndIndex, для фото по количеству
-          _hasMore = _currentTabIndex == 1 
-              ? actualEndIndex < 999999 // Продолжаем пока не достигли конца
-              : assets.length == _pageSize; // Если загрузили полную страницу, возможно есть еще
+        if (_currentTabIndex == 1) {
+          // Для видео: продолжаем пока не достигли конца альбома
+          _hasMore = endIndex < totalCount;
         } else {
-          // Проверяем, достигли ли мы конца альбома
-          _hasMore = actualEndIndex < totalCount;
+          // Для фото: если загрузили меньше чем pageSize, значит это конец
+          _hasMore = endIndex < totalCount && assets.length >= pageSize;
         }
         _isLoadingMedia = false;
       });
+      
+      print('Media loaded successfully: ${_mediaAssets.length} items total, hasMore: $_hasMore');
     } catch (e) {
       print('Error loading media: $e');
       setState(() {
@@ -646,101 +839,62 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     }
   }
 
-  Future<void> _cropImage() async {
-    if (_selectedFile == null || _selectedImageBytes == null || kIsWeb) return;
 
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: _selectedFile!.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Crop Image',
-            toolbarColor: const Color(0xFF000000),
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            aspectRatioPresets: [
-              CropAspectRatioPreset.square,
-            ],
-            backgroundColor: const Color(0xFF000000),
-            activeControlsWidgetColor: const Color(0xFF0095F6),
-            dimmedLayerColor: Colors.black.withOpacity(0.8),
-            cropFrameColor: Colors.white,
-            cropGridColor: Colors.white.withOpacity(0.3),
-            cropFrameStrokeWidth: 2,
-            cropGridStrokeWidth: 1,
-          ),
-          IOSUiSettings(
-            title: 'Crop Image',
-            aspectRatioPresets: [
-              CropAspectRatioPreset.square,
-            ],
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-            hidesNavigationBar: false,
-          ),
-        ],
-      );
-
-      if (croppedFile != null) {
-        final bytes = await croppedFile.readAsBytes();
-        setState(() {
-          _selectedFile = XFile(croppedFile.path);
-          _selectedImageBytes = bytes;
-        });
-      }
-    } catch (e) {
-      print('Error cropping image: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error cropping image: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _proceedToEdit() {
+  Future<void> _proceedToEdit() async {
     print('MediaSelectionScreen: _proceedToEdit called');
     print('MediaSelectionScreen: _selectedFile is null: ${_selectedFile == null}');
     
     if (_selectedFile != null) {
-      print('MediaSelectionScreen: Navigating to CreatePostScreen');
-      print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
-      print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
-      print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
-      print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
-      
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) {
-            print('MediaSelectionScreen: Building CreatePostScreen');
-            return CreatePostScreen(
-              selectedFile: _selectedFile!,
-              selectedImageBytes: _selectedImageBytes,
-              videoController: _videoController,
-            );
-          },
-        ),
-      ).then((_) {
-        print('MediaSelectionScreen: Returned from CreatePostScreen');
-      });
+      // Если это фото, открываем собственный кроппер
+      if (_selectedImageBytes != null && !kIsWeb) {
+        final croppedBytes = await Navigator.of(context).push<Uint8List>(
+          MaterialPageRoute(
+            builder: (context) => CustomImageCropper(
+              imageBytes: _selectedImageBytes!,
+            ),
+            fullscreenDialog: true,
+          ),
+        );
+        
+        if (croppedBytes != null && mounted) {
+          setState(() {
+            _selectedImageBytes = croppedBytes;
+          });
+          _navigateToCreatePost();
+        } else if (mounted) {
+          // Пользователь отменил обрезку, используем оригинальное изображение
+          _navigateToCreatePost();
+        }
+      } else {
+        // Для видео или веб сразу переходим
+        _navigateToCreatePost();
+      }
     } else {
       print('MediaSelectionScreen: ERROR - Cannot proceed, no file selected');
     }
+  }
+
+  void _navigateToCreatePost() {
+    print('MediaSelectionScreen: Navigating to CreatePostScreen');
+    print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
+    print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
+    print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
+    print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) {
+          print('MediaSelectionScreen: Building CreatePostScreen');
+          return CreatePostScreen(
+            selectedFile: _selectedFile!,
+            selectedImageBytes: _selectedImageBytes,
+            videoController: _videoController,
+          );
+        },
+      ),
+    ).then((_) {
+      print('MediaSelectionScreen: Returned from CreatePostScreen');
+    });
   }
 
   @override
@@ -750,11 +904,10 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: const Text(
+        title: Text(
           'New Post',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+          style: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
           ),
         ),
@@ -763,6 +916,15 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          // Кнопка для изменения доступа к медиа (если ограниченный доступ)
+          if (_isLimitedAccess)
+            IconButton(
+              icon: const Icon(EvaIcons.settingsOutline, color: Colors.white),
+              tooltip: 'Change media access',
+              onPressed: () async {
+                await _requestFullAccess();
+              },
+            ),
           if (_selectedFile != null)
             TextButton(
               onPressed: _proceedToEdit,
@@ -796,32 +958,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                   : Stack(
                       children: [
                         _buildPreview(),
-                        // Кнопки управления
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Row(
-                            children: [
-                              // Кнопка обрезки (только для фото)
-                              if (_selectedImageBytes != null && !kIsWeb)
-                                IconButton(
-                                  icon: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.6),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      EvaIcons.cropOutline,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  onPressed: _isLoading ? null : _cropImage,
-                                ),
-                            ],
-                          ),
-                        ),
+                        // Кнопки управления (кнопка обрезки убрана, кроппер встроен в предпросмотр)
                         // Кнопка закрытия предпросмотра
                         Positioned(
                           top: 8,
@@ -902,12 +1039,21 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   Widget _buildPreview() {
     if (_selectedFile == null) return const SizedBox();
 
-    if (_selectedImageBytes != null) {
-      // Для фото - центрируем и показываем полностью
+    if (_selectedImageBytes != null && !kIsWeb) {
+      // Для фото - показываем изображение с возможностью обрезки
       return Center(
         child: Image.memory(
           _selectedImageBytes!,
-          fit: BoxFit.contain, // Показываем фото полностью, центрируем
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+        ),
+      );
+    } else if (_selectedImageBytes != null && kIsWeb) {
+      // Для веб - просто показываем изображение
+      return Center(
+        child: Image.memory(
+          _selectedImageBytes!,
+          fit: BoxFit.contain,
           alignment: Alignment.center,
         ),
       );
@@ -1109,8 +1255,8 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     return GridView.builder(
       padding: const EdgeInsets.all(2),
       // Оптимизация производительности
-      cacheExtent: 500, // Ограничиваем область кеширования
-      addAutomaticKeepAlives: false, // Отключаем автоматическое сохранение состояния
+      cacheExtent: 1000, // Увеличиваем область кеширования
+      addAutomaticKeepAlives: true, // Включаем сохранение состояния для предотвращения перезагрузки
       addRepaintBoundaries: true, // Включаем границы перерисовки
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
@@ -1123,7 +1269,9 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           // Загружаем больше при достижении конца (только если не загружается уже)
           if (!_isLoadingMedia) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _loadMedia(loadMore: true);
+              if (mounted && !_isLoadingMedia) {
+                _loadMedia(loadMore: true);
+              }
             });
           }
           return const Center(
@@ -1140,28 +1288,37 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         final asset = _mediaAssets[index];
         // Используем key для оптимизации перерисовок
         return RepaintBoundary(
-          key: ValueKey(asset.id),
+          key: ValueKey('media_${asset.id}_$index'), // Добавляем index для уникальности
           child: _buildMediaThumbnail(asset),
         );
       },
     );
   }
 
+  // Кеш для thumbnail данных
+  final Map<String, Future<Uint8List?>> _thumbnailCache = {};
+
   Widget _buildMediaThumbnail(AssetEntity asset) {
     // Вычисляем размер thumbnail на основе размера экрана для оптимизации
     final screenWidth = MediaQuery.of(context).size.width;
     final thumbnailSize = (screenWidth / 3).round(); // Размер одной ячейки grid
+    
+    // Кешируем Future для предотвращения перезагрузки
+    final cacheKey = '${asset.id}_$thumbnailSize';
+    if (!_thumbnailCache.containsKey(cacheKey)) {
+      _thumbnailCache[cacheKey] = asset.thumbnailDataWithSize(
+        ThumbnailSize(thumbnailSize, thumbnailSize),
+      );
+    }
     
     return GestureDetector(
       onTap: () => _selectMedia(asset),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Thumbnail изображения/видео - используем меньший размер для производительности
+          // Thumbnail изображения/видео - используем кешированный Future
           FutureBuilder<Uint8List?>(
-            future: asset.thumbnailDataWithSize(
-              ThumbnailSize(thumbnailSize, thumbnailSize), // Адаптивный размер
-            ),
+            future: _thumbnailCache[cacheKey],
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.done &&
                   snapshot.hasData) {
@@ -1171,6 +1328,8 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                   // Оптимизация изображения
                   gaplessPlayback: true, // Плавная замена изображений
                   filterQuality: FilterQuality.low, // Низкое качество фильтрации для производительности
+                  cacheWidth: thumbnailSize, // Кеширование с правильным размером
+                  cacheHeight: thumbnailSize,
                 );
               }
               return Container(

@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
-import '../widgets/safe_avatar.dart';
 import '../screens/edit_post_screen.dart';
 import '../screens/comments_screen.dart';
 import '../screens/hashtag_screen.dart';
+import '../screens/main_screen.dart';
 import '../providers/auth_provider.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import 'hashtag_text.dart';
+import 'video_thumbnail.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,22 +30,75 @@ class PostCard extends StatefulWidget {
   State<PostCard> createState() => _PostCardState();
 }
 
-class _PostCardState extends State<PostCard> {
+class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
   bool _isLiked = false;
   bool _isSaved = false;
   bool _showComments = false;
   final TextEditingController _commentController = TextEditingController();
+  
+  // Локальные счетчики для анимации
+  int _likesCount = 0;
+  int _commentsCount = 0;
+  
+  // Контроллеры анимации для счетчиков
+  late AnimationController _likesAnimationController;
+  late AnimationController _commentsAnimationController;
+  late Animation<double> _likesScaleAnimation;
+  late Animation<double> _commentsScaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _isLiked = widget.post.isLiked;
     _isSaved = widget.post.isSaved;
+    _likesCount = widget.post.likesCount;
+    _commentsCount = widget.post.commentsCount;
+    
+    // Инициализация анимаций
+    _likesAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    _commentsAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    _likesScaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.3,
+    ).animate(CurvedAnimation(
+      parent: _likesAnimationController,
+      curve: Curves.elasticOut,
+    ));
+    
+    _commentsScaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.3,
+    ).animate(CurvedAnimation(
+      parent: _commentsAnimationController,
+      curve: Curves.elasticOut,
+    ));
+  }
+
+  @override
+  void didUpdateWidget(PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Синхронизируем счетчики с данными из виджета при обновлении
+    if (oldWidget.post.likesCount != widget.post.likesCount) {
+      _likesCount = widget.post.likesCount;
+    }
+    if (oldWidget.post.commentsCount != widget.post.commentsCount) {
+      _commentsCount = widget.post.commentsCount;
+    }
   }
 
   @override
   void dispose() {
     _commentController.dispose();
+    _likesAnimationController.dispose();
+    _commentsAnimationController.dispose();
     super.dispose();
   }
 
@@ -61,6 +115,21 @@ class _PostCardState extends State<PostCard> {
       print('PostCard: Navigation completed');
     } catch (e) {
       print('PostCard: Navigation error: $e');
+    }
+  }
+
+  void _navigateToShorts(Post post) {
+    print('PostCard: Navigating to Shorts with post: ${post.id}');
+    try {
+      // Ищем MainScreenState в дереве виджетов
+      final mainScreenState = context.findAncestorStateOfType<MainScreenState>();
+      if (mainScreenState != null) {
+        mainScreenState.switchToShortsWithPost(post);
+      } else {
+        print('PostCard: MainScreenState not found in widget tree');
+      }
+    } catch (e) {
+      print('PostCard: Error navigating to Shorts: $e');
     }
   }
 
@@ -134,7 +203,26 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 1),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -143,20 +231,56 @@ class _PostCardState extends State<PostCard> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                SafeAvatar(
-                  imageUrl: widget.post.user?.avatarUrl,
-                  radius: 18,
-                  backgroundColor: const Color(0xFF262626),
-                  fallbackIcon: EvaIcons.personOutline,
-                  iconColor: Colors.white,
+                // Square avatar with rounded corners
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    color: const Color(0xFF262626),
+                    child: widget.post.user?.avatarUrl != null && widget.post.user!.avatarUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: widget.post.user!.avatarUrl!,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              width: 48,
+                              height: 48,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: 48,
+                              height: 48,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            EvaIcons.personOutline,
+                            size: 24,
+                            color: Colors.white,
+                          ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Name above username
+                      if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty)
                       Text(
-                        widget.post.user?.name ?? widget.post.user?.username ?? 'Unknown',
+                          widget.post.user!.name,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
@@ -328,23 +452,35 @@ class _PostCardState extends State<PostCard> {
             ),
           ),
 
-          // Media
-          AspectRatio(
-            aspectRatio: 1,
+          // Media - строго 1:1
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    width: width,
+                    height: width, // Строго 1:1
             child: widget.post.mediaType == 'video'
-                ? Container(
-                    color: Colors.black,
-                    child: const Center(
-                      child: Icon(
-                        EvaIcons.playCircleOutline,
-                        color: Colors.white,
-                        size: 64,
-                      ),
-                    ),
-                  )
+                        ? GestureDetector(
+                            onTap: () {
+                              // Переключаемся на Shorts с этим видео
+                              _navigateToShorts(widget.post);
+                            },
+                            child: VideoThumbnail(
+                              videoUrl: widget.post.mediaUrl,
+                              width: width,
+                              height: width,
+                              fit: BoxFit.cover,
+                            ),
+                          )
                 : CachedNetworkImage(
                     imageUrl: widget.post.mediaUrl,
                     fit: BoxFit.cover,
+                            width: width,
+                            height: width,
                     placeholder: (context, url) => Container(
                       color: Colors.grey[200],
                       child: const Center(
@@ -357,12 +493,16 @@ class _PostCardState extends State<PostCard> {
                         child: Icon(Icons.error),
                       ),
                     ),
+                          ),
+                  ),
+                );
+              },
                   ),
           ),
 
           // Actions
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -372,6 +512,16 @@ class _PostCardState extends State<PostCard> {
                       onTap: () {
                         setState(() {
                           _isLiked = !_isLiked;
+                          // Обновляем счетчик лайков
+                          if (_isLiked) {
+                            _likesCount++;
+                          } else {
+                            _likesCount = _likesCount > 0 ? _likesCount - 1 : 0;
+                          }
+                          // Запускаем анимацию
+                          _likesAnimationController.forward(from: 0.0).then((_) {
+                            _likesAnimationController.reverse();
+                          });
                         });
                         widget.onLike();
                       },
@@ -381,6 +531,26 @@ class _PostCardState extends State<PostCard> {
                         size: 28,
                       ),
                     ),
+                    // Анимированный счетчик лайков справа от иконки
+                    if (_likesCount > 0) ...[
+                      const SizedBox(width: 8),
+                      AnimatedBuilder(
+                        animation: _likesScaleAnimation,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _likesScaleAnimation.value,
+                            child: Text(
+                              '$_likesCount',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(width: 20),
                     GestureDetector(
                       onTap: () {
@@ -391,7 +561,15 @@ class _PostCardState extends State<PostCard> {
                               post: widget.post,
                             ),
                           ),
-                        );
+                        ).then((_) {
+                          // Обновляем счетчик комментариев после возврата
+                          setState(() {
+                            _commentsCount = widget.post.commentsCount;
+                            _commentsAnimationController.forward(from: 0.0).then((_) {
+                              _commentsAnimationController.reverse();
+                            });
+                          });
+                        });
                       },
                       child: const Icon(
                         EvaIcons.messageCircleOutline,
@@ -399,6 +577,26 @@ class _PostCardState extends State<PostCard> {
                         color: Colors.white,
                       ),
                     ),
+                    // Анимированный счетчик комментариев справа от иконки
+                    if (_commentsCount > 0) ...[
+                      const SizedBox(width: 8),
+                      AnimatedBuilder(
+                        animation: _commentsScaleAnimation,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _commentsScaleAnimation.value,
+                            child: Text(
+                              '$_commentsCount',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(width: 20),
                     const Icon(
                       EvaIcons.paperPlaneOutline,
@@ -421,20 +619,6 @@ class _PostCardState extends State<PostCard> {
                   ],
                 ),
                 const SizedBox(height: 8),
-
-                // Likes count
-                if (widget.post.likesCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '${widget.post.likesCount} ${widget.post.likesCount == 1 ? 'like' : 'likes'}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
 
                 // Caption
                 if (widget.post.caption.isNotEmpty)
@@ -465,8 +649,8 @@ class _PostCardState extends State<PostCard> {
                     ),
                   ),
 
-                // Comments count
-                if (widget.post.commentsCount > 0)
+                // View all comments
+                if (_commentsCount > 0)
                   GestureDetector(
                     onTap: () {
                       setState(() {
@@ -474,7 +658,7 @@ class _PostCardState extends State<PostCard> {
                       });
                     },
                     child: Text(
-                      'View all ${widget.post.commentsCount} comments',
+                      'View all $_commentsCount ${_commentsCount == 1 ? 'comment' : 'comments'}',
                       style: const TextStyle(
                         color: Color(0xFF8E8E8E),
                         fontSize: 14,
@@ -518,65 +702,70 @@ class _PostCardState extends State<PostCard> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [
-                      // Rounded comment input field matching AnimatedTextField style
+                      // Comment input field matching search field in messages
                       Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A1A), // Same as AnimatedTextField
-                            borderRadius: BorderRadius.circular(20), // Same as AnimatedTextField
-                            border: Border.all(
-                              color: Colors.grey.withOpacity(0.3), // Same as AnimatedTextField enabledBorder
-                              width: 1,
-                            ),
-                          ),
                           child: TextField(
                             controller: _commentController,
-                            decoration: const InputDecoration(
+                          style: const TextStyle(color: Colors.white),
+                          onChanged: (value) {
+                            setState(() {}); // Обновляем state для обновления кнопки
+                          },
+                          decoration: InputDecoration(
                               hintText: 'Add a comment...',
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 16, // Reduced padding
-                                vertical: 12, // Reduced padding
-                              ),
-                              hintStyle: TextStyle(
-                                color: Color(0xFF8E8E8E),
-                                fontSize: 14,
-                              ),
+                            hintStyle: TextStyle(color: Colors.grey[600]),
+                            filled: true,
+                            fillColor: const Color(0xFF262626),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             ),
                             onSubmitted: (value) {
                               if (value.trim().isNotEmpty) {
                                 widget.onComment(value.trim(), null);
                                 _commentController.clear(); // Clear the field after submitting
+                              setState(() {}); // Обновляем state после очистки
+                              // Обновляем счетчик комментариев и запускаем анимацию
+                              setState(() {
+                                _commentsCount++;
+                                _commentsAnimationController.forward(from: 0.0).then((_) {
+                                  _commentsAnimationController.reverse();
+                                });
+                              });
                               }
                             },
-                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Send button
+                      // Square send button with fill icon (matching input field style)
                       GestureDetector(
                         onTap: () {
                           final value = _commentController.text.trim();
                           if (value.isNotEmpty) {
                             widget.onComment(value, null);
                             _commentController.clear();
+                            setState(() {}); // Обновляем state после очистки
+                            // Обновляем счетчик комментариев и запускаем анимацию
+                            setState(() {
+                              _commentsCount++;
+                              _commentsAnimationController.forward(from: 0.0).then((_) {
+                                _commentsAnimationController.reverse();
+                              });
+                            });
                           }
                         },
                         child: Container(
-                          width: 40,
-                          height: 40,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
                             color: const Color(0xFF0095F6),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(12), // Квадратная с закругленными углами как поле ввода
                           ),
                           child: const Icon(
-                            EvaIcons.paperPlaneOutline,
+                            EvaIcons.paperPlane, // Fill иконка (залитая)
                             color: Colors.white,
-                            size: 20,
+                            size: 22,
                           ),
                         ),
                       ),
@@ -587,6 +776,7 @@ class _PostCardState extends State<PostCard> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

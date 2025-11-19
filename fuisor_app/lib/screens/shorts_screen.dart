@@ -31,8 +31,11 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _tabController = TabController(length: 2, vsync: this);
+    // Инициализируем TabController с начальным индексом 0 (Подписки)
+    _tabController = TabController(initialIndex: 0, length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
+    // Устанавливаем начальную вкладку на Подписки
+    _currentTabIndex = 0;
   }
 
   @override
@@ -61,34 +64,56 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       }
     });
 
+    // ВАЖНО: Устанавливаем _isScreenVisible = true перед загрузкой видео
+    // так как мы остаемся на экране Shorts, просто переключаем вкладки
+    _isScreenVisible = true;
+
     // Загружаем соответствующие видео
     _loadVideosForCurrentTab();
   }
 
   Future<void> _loadVideosForCurrentTab() async {
+    print('ShortsScreen: _loadVideosForCurrentTab called, tabIndex: $_currentTabIndex, isScreenVisible: $_isScreenVisible');
     final postsProvider = context.read<PostsProvider>();
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString('access_token');
     
     if (_currentTabIndex == 0) {
       // Подписки
+      print('ShortsScreen: Loading following video posts');
       await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
+      print('ShortsScreen: Loaded ${postsProvider.followingVideoPosts.length} following video posts');
     } else {
       // Рекомендации
+      print('ShortsScreen: Loading recommended video posts');
       await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
+      print('ShortsScreen: Loaded ${postsProvider.videoPosts.length} recommended video posts');
     }
     
     // Инициализируем первое видео
+    // ВАЖНО: Проверяем mounted и _isScreenVisible, но также убеждаемся, что данные загружены
     if (mounted && _isScreenVisible) {
       final videoPosts = _currentTabIndex == 0 
           ? postsProvider.followingVideoPosts 
           : postsProvider.videoPosts;
       
+      print('ShortsScreen: Video posts count: ${videoPosts.length}, initializing first video');
+      
       if (videoPosts.isNotEmpty) {
+        // Используем addPostFrameCallback для гарантии, что UI обновлен
         WidgetsBinding.instance.addPostFrameCallback((_) async {
-          await _initializeVideo(0, videoPosts[0], autoPlay: true);
+          if (mounted && _isScreenVisible) {
+            print('ShortsScreen: Initializing video 0 in post-frame callback');
+            await _initializeVideo(0, videoPosts[0], autoPlay: true);
+          } else {
+            print('ShortsScreen: Skipping video initialization in callback - mounted: $mounted, isScreenVisible: $_isScreenVisible');
+          }
         });
+      } else {
+        print('ShortsScreen: No video posts available to initialize');
       }
+    } else {
+      print('ShortsScreen: Skipping video initialization - mounted: $mounted, isScreenVisible: $_isScreenVisible');
     }
   }
 
@@ -181,15 +206,90 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
 
   bool _isScreenVisible = false;
 
+  // Метод для навигации к конкретному посту
+  Future<void> navigateToPost(Post targetPost) async {
+    print('ShortsScreen: Navigating to post: ${targetPost.id}');
+    
+    final postsProvider = context.read<PostsProvider>();
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString('access_token');
+    
+    // Загружаем видео посты, если они еще не загружены
+    if (postsProvider.followingVideoPosts.isEmpty) {
+      await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
+    }
+    if (postsProvider.videoPosts.isEmpty) {
+      await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
+    }
+    
+    // Ищем пост в обеих вкладках
+    int? foundIndex;
+    int targetTabIndex = 0;
+    
+    // Проверяем вкладку "Подписки"
+    final followingIndex = postsProvider.followingVideoPosts.indexWhere((p) => p.id == targetPost.id);
+    if (followingIndex != -1) {
+      foundIndex = followingIndex;
+      targetTabIndex = 0;
+    } else {
+      // Проверяем вкладку "Рекомендации"
+      final recommendedIndex = postsProvider.videoPosts.indexWhere((p) => p.id == targetPost.id);
+      if (recommendedIndex != -1) {
+        foundIndex = recommendedIndex;
+        targetTabIndex = 1;
+      }
+    }
+    
+    if (foundIndex != null && mounted) {
+      // Переключаемся на нужную вкладку
+      if (_currentTabIndex != targetTabIndex) {
+        _tabController.animateTo(targetTabIndex);
+        await Future.delayed(const Duration(milliseconds: 300)); // Ждем переключения вкладки
+      }
+      
+      // Устанавливаем индекс и переключаемся на нужную страницу
+      setState(() {
+        _currentIndex = foundIndex!;
+        _currentTabIndex = targetTabIndex;
+        _isScreenVisible = true;
+      });
+      
+      // Переключаемся на нужную страницу в PageController
+      if (_pageController.hasClients) {
+        await _pageController.animateToPage(
+          foundIndex,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+      
+      // Инициализируем и запускаем видео
+      final videoPosts = targetTabIndex == 0 
+          ? postsProvider.followingVideoPosts 
+          : postsProvider.videoPosts;
+      
+      if (foundIndex < videoPosts.length) {
+        await _initializeVideo(foundIndex, videoPosts[foundIndex], autoPlay: true);
+      }
+    } else {
+      print('ShortsScreen: Post ${targetPost.id} not found in video posts');
+      // Если пост не найден, просто инициализируем экран
+      await initializeScreen();
+    }
+  }
+
   // Метод для инициализации экрана при первом открытии
   Future<void> initializeScreen() async {
-    if (_isScreenVisible) {
-      // Если уже видим, просто возобновляем текущее видео
+    // Устанавливаем флаг видимости экрана
+    _isScreenVisible = true;
+    
+    // Проверяем, есть ли уже инициализированное видео для текущего индекса
+    final currentController = _videoControllers[_currentIndex];
+    if (currentController != null && currentController.value.isInitialized) {
+      // Если видео уже инициализировано, просто возобновляем его
       await resumeCurrentVideo();
       return;
     }
-    
-    _isScreenVisible = true;
     
     final postsProvider = context.read<PostsProvider>();
     final prefs = await SharedPreferences.getInstance();
@@ -207,15 +307,23 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     }
     
     // Инициализируем первое видео только если посты уже загружены
-    if (mounted) {
+    if (mounted && _isScreenVisible) {
       final videoPosts = _currentTabIndex == 0 
           ? postsProvider.followingVideoPosts 
           : postsProvider.videoPosts;
       
-      if (videoPosts.isNotEmpty && !_videoControllers.containsKey(0)) {
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          await _initializeVideo(0, videoPosts[0], autoPlay: true);
-        });
+      if (videoPosts.isNotEmpty) {
+        // Проверяем, нужно ли инициализировать видео для текущего индекса
+        if (!_videoControllers.containsKey(_currentIndex)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (_currentIndex < videoPosts.length) {
+              await _initializeVideo(_currentIndex, videoPosts[_currentIndex], autoPlay: true);
+            }
+          });
+        } else {
+          // Если контроллер уже есть, просто возобновляем
+          await resumeCurrentVideo();
+        }
       }
     }
   }
@@ -426,6 +534,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false, // Видео не должно подниматься с клавиатурой
       body: Consumer<PostsProvider>(
         builder: (context, postsProvider, child) {
           final videoPosts = _currentTabIndex == 0 
@@ -484,7 +593,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(
-              EvaIcons.videoOutline,
+              EvaIcons.video,
               size: 64,
               color: Colors.grey,
             ),
@@ -530,7 +639,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(
-              EvaIcons.videoOutline,
+              EvaIcons.video,
               size: 64,
               color: Colors.grey,
             ),
@@ -578,13 +687,17 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             showModalBottomSheet(
               context: context,
               backgroundColor: Colors.transparent,
-              isScrollControlled: true,
-              builder: (context) => ShortsCommentsSheet(
-                postId: post.id,
-                post: post,
-                onCommentAdded: () {
-                  postsProvider.updatePostCommentsCount(post.id, 1);
-                },
+              isScrollControlled: true, // Для контроля высоты
+              useSafeArea: true,
+              builder: (context) => Align(
+                alignment: Alignment.bottomCenter,
+                child: ShortsCommentsSheet(
+                  postId: post.id,
+                  post: post,
+                  onCommentAdded: () {
+                    postsProvider.updatePostCommentsCount(post.id, 1);
+                  },
+                ),
               ),
             );
           },

@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
 import '../screens/post_detail_screen.dart';
+import 'video_thumbnail.dart';
 
 class PostGridWidget extends StatelessWidget {
   final List<Post> posts;
@@ -113,15 +114,9 @@ class PostGridWidget extends StatelessWidget {
                       children: [
                         // Post image/video
                         if (post.mediaType == 'video')
-                          Container(
-                            color: Colors.black,
-                            child: const Center(
-                              child: Icon(
-                                EvaIcons.playCircleOutline,
-                                color: Colors.white,
-                                size: 32,
-                              ),
-                            ),
+                          VideoThumbnail(
+                            videoUrl: post.mediaUrl,
+                            fit: BoxFit.cover,
                           )
                         else
                           CachedNetworkImage(
