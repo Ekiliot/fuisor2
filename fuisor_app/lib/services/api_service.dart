@@ -190,13 +190,11 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final allPosts = (data['posts'] as List)
+      // Сервер теперь фильтрует по media_type, поэтому все посты уже видео
+      final videoPosts = (data['posts'] as List)
           .map((post) => Post.fromJson(post))
           .toList();
-      
-      // Фильтруем только видео посты на клиенте (если сервер не поддерживает фильтрацию)
-      final videoPosts = allPosts.where((post) => post.mediaType == 'video').toList();
-      print('ApiService: Loaded ${videoPosts.length} video posts');
+      print('ApiService: Loaded ${videoPosts.length} video posts (recommendations)');
       return videoPosts;
     } else {
       throw Exception('Failed to load video posts');
@@ -207,8 +205,9 @@ class ApiService {
     print('ApiService: Getting following video posts...');
     print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
     
+    // Для подписок передаем media_type=video и following_only=true
     final response = await http.get(
-      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit'),
+      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit&media_type=video&following_only=true'),
       headers: _headers,
     );
 
@@ -223,12 +222,10 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final allPosts = (data['posts'] as List)
+      // Сервер теперь фильтрует по media_type, поэтому все посты уже видео
+      final videoPosts = (data['posts'] as List)
           .map((post) => Post.fromJson(post))
           .toList();
-      
-      // Фильтруем только видео посты от подписок
-      final videoPosts = allPosts.where((post) => post.mediaType == 'video').toList();
       print('ApiService: Loaded ${videoPosts.length} following video posts');
       return videoPosts;
     } else {

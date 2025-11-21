@@ -439,40 +439,56 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
 // Get feed posts (posts from followed users) - MUST be before /:id route
 router.get('/feed', validateAuth, async (req, res) => {
   try {
+    const { page = 1, limit = 10, media_type, following_only } = req.query;
+    
     logger.recommendations('Feed request received', {
       userId: req.user?.id,
       userEmail: req.user?.email,
       page: req.query.page,
-      limit: req.query.limit
+      limit: req.query.limit,
+      mediaType: media_type,
+      followingOnly: following_only
     });
     
-    const { page = 1, limit = 10 } = req.query;
     const from = (page - 1) * limit;
     const to = from + limit - 1;
     const userId = req.user.id;
 
-    // Get followed users
-    const { data: following, error: followingError } = await supabaseAdmin
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', userId);
+    // Определяем режим: рекомендации (все видео) или подписки (только от подписок)
+    const isRecommendations = media_type === 'video' && following_only !== 'true';
+    const isFollowingOnly = following_only === 'true' || (media_type !== 'video' && !following_only);
 
-    if (followingError) {
-      logger.recommendationsError('Error getting following users', followingError);
-      throw followingError;
-    }
-
-    const followingIds = following.map(f => f.following_id);
-    
-    // Always include own posts in feed
-    followingIds.push(userId);
-    
-    logger.recommendations('Feed preparation', {
-      followingCount: following?.length || 0,
-      totalUsers: followingIds.length
+    logger.recommendations('Feed mode', {
+      isRecommendations: isRecommendations,
+      isFollowingOnly: isFollowingOnly,
+      mediaType: media_type
     });
 
-    // If user doesn't follow anyone (new user), show all posts (discovery mode)
+    // Get followed users (только если нужен режим подписок)
+    let followingIds = [];
+    if (isFollowingOnly) {
+      const { data: following, error: followingError } = await supabaseAdmin
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
+
+      if (followingError) {
+        logger.recommendationsError('Error getting following users', followingError);
+        throw followingError;
+      }
+
+      followingIds = following.map(f => f.following_id);
+      // Always include own posts in feed when showing following
+      followingIds.push(userId);
+    }
+    
+    logger.recommendations('Feed preparation', {
+      followingCount: followingIds.length,
+      isRecommendations: isRecommendations,
+      isFollowingOnly: isFollowingOnly
+    });
+
+    // Строим запрос
     let query = supabaseAdmin
       .from('posts')
       .select(`
@@ -481,13 +497,26 @@ router.get('/feed', validateAuth, async (req, res) => {
         likes(count)
       `, { count: 'exact' });
 
-    // If following someone, filter by followed users
-    // Otherwise show all posts (discovery mode for new users)
-    if (followingIds.length > 1) { // > 1 because we always have userId
-      query = query.in('user_id', followingIds);
-      logger.recommendations('Filtered feed: showing posts from followed users');
-    } else {
-      logger.recommendations('Discovery mode: showing all posts (new user)');
+    // Фильтруем по типу медиа, если указан
+    if (media_type && (media_type === 'video' || media_type === 'image')) {
+      query = query.eq('media_type', media_type);
+      logger.recommendations(`Filtering by media_type: ${media_type}`);
+    }
+
+    // Для рекомендаций показываем ВСЕ видео (не фильтруем по подпискам)
+    // Для подписок фильтруем по подпискам
+    if (isRecommendations) {
+      // Рекомендации: показываем все видео от всех пользователей
+      logger.recommendations('Recommendations mode: showing all videos from all users');
+    } else if (isFollowingOnly) {
+      // Подписки: фильтруем по подпискам
+      if (followingIds.length > 0) {
+        query = query.in('user_id', followingIds);
+        logger.recommendations('Following mode: showing posts from followed users');
+      } else {
+        // Если нет подписок, показываем все посты (discovery mode)
+        logger.recommendations('Discovery mode: showing all posts (new user, no follows)');
+      }
     }
 
     const { data, error, count } = await query
