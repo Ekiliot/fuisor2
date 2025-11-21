@@ -1663,4 +1663,54 @@ class ApiService {
       throw Exception('Failed to get signed URL: $e');
     }
   }
+
+  /// Получить signed URL для приватного медиа файла поста
+  Future<String> getPostMediaSignedUrl({
+    required String mediaPath,
+  }) async {
+    try {
+      print('🔐 [API Post SignedURL] Запрос signed URL для медиа поста');
+      print('🔐 [API Post SignedURL] MediaPath: $mediaPath');
+      
+      // Извлекаем имя файла из полного URL или пути
+      String fileName;
+      if (mediaPath.contains('/')) {
+        // Если это полный URL, извлекаем имя файла
+        // Формат может быть: https://.../storage/v1/object/public/post-media/post_xxx.mp4
+        // или просто путь: post_xxx.mp4
+        final parts = mediaPath.split('/');
+        fileName = parts.last.split('?').first; // Убираем query параметры если есть
+      } else {
+        fileName = mediaPath;
+      }
+      
+      print('🔐 [API Post SignedURL] Извлеченное имя файла: $fileName');
+      
+      final encodedPath = Uri.encodeQueryComponent(fileName);
+      final url = '$baseUrl/posts/media/signed-url?path=$encodedPath';
+      
+      print('🔐 [API Post SignedURL] URL запроса: $url');
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _headers,
+      );
+
+      print('🔐 [API Post SignedURL] Статус ответа: ${response.statusCode}');
+      print('🔐 [API Post SignedURL] Тело ответа: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('🔐 [API Post SignedURL] ✅ Signed URL получен успешно');
+        return data['signedUrl'];
+      } else {
+        final error = jsonDecode(response.body);
+        print('🔐 [API Post SignedURL] ❌ ОШИБКА: ${error['error'] ?? 'Unknown error'}');
+        throw Exception(error['error'] ?? 'Failed to get signed URL');
+      }
+    } catch (e) {
+      print('🔐 [API Post SignedURL] ❌ ИСКЛЮЧЕНИЕ: $e');
+      throw Exception('Failed to get signed URL: $e');
+    }
+  }
 }

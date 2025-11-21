@@ -161,21 +161,18 @@ router.post('/upload-media', validateAuth, upload.single('media'), async (req, r
       return res.status(500).json({ error: 'Failed to upload media: ' + uploadError.message });
     }
 
-    // Get public URL
-    const { data: urlData } = supabaseAdmin
-      .storage
-      .from('post-media')
-      .getPublicUrl(fileName);
-
-    const mediaUrl = urlData.publicUrl;
+    // Bucket is private, so we return the file path instead of public URL
+    // Signed URL will be obtained via API when needed
+    const mediaPath = uploadData.path || fileName;
 
     logger.post('Media uploaded successfully', {
       userId: req.user.id,
       fileName,
-      mediaUrl,
+      mediaPath,
     });
 
-    res.json({ mediaUrl });
+    // Return the file path (not public URL) since bucket is private
+    res.json({ mediaUrl: mediaPath });
   } catch (error) {
     logger.postError('Error in upload-media endpoint', error);
     res.status(500).json({ error: error.message });
@@ -249,23 +246,66 @@ router.post('/upload-thumbnail', validateAuth, upload.single('thumbnail'), async
       return res.status(500).json({ error: 'Failed to upload thumbnail: ' + uploadError.message });
     }
 
-    // Get public URL
-    const { data: urlData } = supabaseAdmin
-      .storage
-      .from('post-media')
-      .getPublicUrl(fileName);
-
-    const thumbnailUrl = urlData.publicUrl;
+    // Bucket is private, so we return the file path instead of public URL
+    // Signed URL will be obtained via API when needed
+    const thumbnailPath = uploadData.path || fileName;
 
     logger.post('Thumbnail uploaded successfully', {
       userId: req.user.id,
       fileName,
-      thumbnailUrl,
+      thumbnailPath,
     });
 
-    res.json({ thumbnailUrl });
+    // Return the file path (not public URL) since bucket is private
+    res.json({ thumbnailUrl: thumbnailPath });
   } catch (error) {
     logger.postError('Error in upload-thumbnail endpoint', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/posts/media/signed-url?path=...
+// Получить signed URL для приватного медиа файла поста
+router.get('/media/signed-url', validateAuth, async (req, res) => {
+  try {
+    const { path } = req.query;
+    const userId = req.user.id;
+    
+    logger.post('Get signed URL request', {
+      userId,
+      path,
+    });
+
+    if (!path) {
+      return res.status(400).json({ error: 'Path parameter is required' });
+    }
+
+    // Проверяем, что путь валидный (начинается с post_ или thumb_)
+    const fileName = path.split('/').pop() || path;
+    if (!fileName.startsWith('post_') && !fileName.startsWith('thumb_')) {
+      logger.postError('Invalid media path', { path, userId });
+      return res.status(400).json({ error: 'Invalid media path. Must start with post_ or thumb_' });
+    }
+
+    // Создаем signed URL (действителен 1 час = 3600 секунд)
+    const { data, error } = await supabaseAdmin
+      .storage
+      .from('post-media')
+      .createSignedUrl(path, 3600);
+
+    if (error) {
+      logger.postError('Error creating signed URL', error);
+      return res.status(500).json({ error: 'Failed to create signed URL: ' + error.message });
+    }
+
+    logger.post('Signed URL created successfully', {
+      path,
+      hasSignedUrl: !!data?.signedUrl,
+    });
+
+    res.json({ signedUrl: data.signedUrl });
+  } catch (error) {
+    logger.postError('Error in GET /api/posts/media/signed-url', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -297,25 +337,33 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
 
     logger.post('Media URL received, validating...');
 
-    // Validate URL format (должен быть валидный URL)
-    try {
-      new URL(media_url);
-    } catch (urlError) {
-      logger.postError('Invalid media URL format', { media_url, userId: req.user.id });
-      return res.status(400).json({ 
-        message: 'Invalid media URL format' 
-      });
+    // Validate media_url - может быть путь к файлу (для приватного bucket) или URL
+    // Путь к файлу начинается с post_ или thumb_
+    const isFilePath = media_url.startsWith('post_') || media_url.startsWith('thumb_');
+    if (!isFilePath) {
+      // Если не путь, проверяем что это валидный URL
+      try {
+        new URL(media_url);
+      } catch (urlError) {
+        logger.postError('Invalid media URL format', { media_url, userId: req.user.id });
+        return res.status(400).json({ 
+          message: 'Invalid media URL format. Must be a valid URL or file path starting with post_ or thumb_' 
+        });
+      }
     }
 
-    // Validate thumbnail URL if provided
+    // Validate thumbnail URL if provided - аналогично
     if (thumbnail_url) {
-      try {
-        new URL(thumbnail_url);
-      } catch (urlError) {
-        logger.postError('Invalid thumbnail URL format', { thumbnail_url, userId: req.user.id });
-        return res.status(400).json({ 
-          message: 'Invalid thumbnail URL format' 
-        });
+      const isThumbnailPath = thumbnail_url.startsWith('post_') || thumbnail_url.startsWith('thumb_');
+      if (!isThumbnailPath) {
+        try {
+          new URL(thumbnail_url);
+        } catch (urlError) {
+          logger.postError('Invalid thumbnail URL format', { thumbnail_url, userId: req.user.id });
+          return res.status(400).json({ 
+            message: 'Invalid thumbnail URL format. Must be a valid URL or file path starting with post_ or thumb_' 
+          });
+        }
       }
     }
 

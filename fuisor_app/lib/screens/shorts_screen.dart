@@ -8,6 +8,7 @@ import '../providers/posts_provider.dart';
 import '../widgets/shorts_video_player.dart';
 import '../widgets/shorts_comments_sheet.dart';
 import '../widgets/share_video_sheet.dart';
+import '../services/api_service.dart';
 
 class ShortsScreen extends StatefulWidget {
   const ShortsScreen({super.key});
@@ -368,8 +369,36 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     print('ShortsScreen: Starting initialization of video $index (attempt ${retryAttempt + 1})');
 
     try {
+      // Получаем signed URL для видео
+      String videoUrl = post.mediaUrl;
+      if (post.mediaType == 'video') {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final accessToken = prefs.getString('access_token');
+          if (accessToken != null) {
+            final apiService = ApiService();
+            apiService.setAccessToken(accessToken);
+            
+            // Получаем signed URL
+            print('ShortsScreen: Getting signed URL for video $index');
+            videoUrl = await apiService.getPostMediaSignedUrl(
+              mediaPath: post.mediaUrl,
+            );
+            print('ShortsScreen: Got signed URL for video $index');
+          } else {
+            print('ShortsScreen: No access token, using original URL');
+          }
+        } catch (e) {
+          print('ShortsScreen: Error getting signed URL: $e, using original URL');
+          // Продолжаем с оригинальным URL, если не удалось получить signed URL
+        }
+      }
+
       final controller = VideoPlayerController.networkUrl(
-        Uri.parse(post.mediaUrl),
+        Uri.parse(videoUrl),
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: false,
+        ),
       );
       
       await controller.initialize();
