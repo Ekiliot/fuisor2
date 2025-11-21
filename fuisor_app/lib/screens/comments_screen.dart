@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../models/user.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
@@ -11,6 +10,7 @@ import '../widgets/safe_avatar.dart';
 import '../utils/hashtag_utils.dart';
 import '../widgets/hashtag_text.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../widgets/cached_network_image_with_signed_url.dart';
 import 'hashtag_screen.dart';
 
 class CommentsScreen extends StatefulWidget {
@@ -896,16 +896,60 @@ class _CommentsScreenState extends State<CommentsScreen> {
             width: 50,
             height: 50,
             child: post.mediaType == 'video'
-                ? Container(
-                    color: Colors.black,
-                    child: const Center(
-                      child: Icon(
-                        EvaIcons.playCircleOutline,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  )
+                ? post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImageWithSignedUrl(
+                            imageUrl: post.thumbnailUrl!,
+                            postId: post.id,
+                            fit: BoxFit.cover,
+                            width: 50,
+                            height: 50,
+                            placeholder: (context) => Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF0095F6),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: Icon(
+                                  EvaIcons.playCircleOutline,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Затемнение для лучшей видимости иконки play
+                          Container(
+                            color: Colors.black.withOpacity(0.2),
+                          ),
+                          // Иконка play поверх thumbnail
+                          const Center(
+                            child: Icon(
+                              EvaIcons.playCircleOutline,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Container(
+                        color: Colors.black,
+                        child: const Center(
+                          child: Icon(
+                            EvaIcons.playCircleOutline,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      )
                 : Image.network(
                     post.mediaUrl,
                     fit: BoxFit.cover,
@@ -1005,16 +1049,58 @@ class _CommentsScreenState extends State<CommentsScreen> {
           child: AspectRatio(
             aspectRatio: 1,
             child: post.mediaType == 'video'
-                ? Container(
-                    color: Colors.black,
-                    child: const Center(
-                      child: Icon(
-                        EvaIcons.playCircleOutline,
-                        color: Colors.white,
-                        size: 48,
-                      ),
-                    ),
-                  )
+                ? post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImageWithSignedUrl(
+                            imageUrl: post.thumbnailUrl!,
+                            postId: post.id,
+                            fit: BoxFit.cover,
+                            placeholder: (context) => Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF0095F6),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: Icon(
+                                  EvaIcons.playCircleOutline,
+                                  color: Colors.white,
+                                  size: 48,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Затемнение для лучшей видимости иконки play
+                          Container(
+                            color: Colors.black.withOpacity(0.2),
+                          ),
+                          // Иконка play поверх thumbnail
+                          const Center(
+                            child: Icon(
+                              EvaIcons.playCircleOutline,
+                              color: Colors.white,
+                              size: 48,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Container(
+                        color: Colors.black,
+                        child: const Center(
+                          child: Icon(
+                            EvaIcons.playCircleOutline,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                        ),
+                      )
                 : Image.network(
                     post.mediaUrl,
                     fit: BoxFit.cover,

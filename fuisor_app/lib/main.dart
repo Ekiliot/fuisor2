@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/notifications_provider.dart';
@@ -15,6 +16,13 @@ import 'screens/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Инициализация Mapbox с токеном доступа
+  const mapboxToken = String.fromEnvironment(
+    'MAPBOX_ACCESS_TOKEN',
+    defaultValue: 'pk.eyJ1IjoiZWtpbGlvdCIsImEiOiJjbWk0cWozY3UxdG5xMmxxejRzMzA1cmtrIn0.C82cxRLUdU-AgJ7409Uaaw',
+  );
+  MapboxOptions.setAccessToken(mapboxToken);
   
   // Инициализация Hive для кеша сообщений
   await Hive.initFlutter();

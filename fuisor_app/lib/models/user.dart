@@ -96,6 +96,8 @@ class Post {
   final bool isLiked;
   final bool isSaved;
   final String? thumbnailUrl;
+  final double? latitude; // For geo-posts
+  final double? longitude; // For geo-posts
 
   Post({
     required this.id,
@@ -114,6 +116,8 @@ class Post {
     this.isLiked = false,
     this.isSaved = false,
     this.thumbnailUrl,
+    this.latitude,
+    this.longitude,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -141,6 +145,8 @@ class Post {
       isLiked: json['is_liked'] ?? false,
       isSaved: json['is_saved'] ?? false,
       thumbnailUrl: json['thumbnail_url'],
+      latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
+      longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
     );
   }
 
@@ -162,6 +168,8 @@ class Post {
       'is_liked': isLiked,
       'is_saved': isSaved,
       'thumbnail_url': thumbnailUrl,
+      'latitude': latitude,
+      'longitude': longitude,
     };
   }
 
@@ -182,6 +190,8 @@ class Post {
     bool? isLiked,
     bool? isSaved,
     String? thumbnailUrl,
+    double? latitude,
+    double? longitude,
   }) {
     return Post(
       id: id ?? this.id,
@@ -200,6 +210,8 @@ class Post {
       isLiked: isLiked ?? this.isLiked,
       isSaved: isSaved ?? this.isSaved,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }

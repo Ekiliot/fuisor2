@@ -277,66 +277,54 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // @username • name in the same row
-                      Builder(
-                        builder: (context) {
-                          // Отладочный вывод
-                          final userName = widget.post.user?.name;
-                          final userUsername = widget.post.user?.username;
-                          print('PostCard: User name: $userName, username: $userUsername');
-                          
-                          return Row(
-                            children: [
-                              // Username
-                              Text(
-                                '@${userUsername ?? 'unknown'}',
-                                style: const TextStyle(
-                                  color: Color(0xFF8E8E8E),
-                                  fontSize: 14,
-                                ),
+                      // Name and username in the same row
+                      Row(
+                        children: [
+                          // Name
+                          if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty) ...[
+                            Text(
+                              widget.post.user!.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
                               ),
-                              // Name with dot separator
-                              if (userName != null && userName.isNotEmpty) ...[
-                                const Text(
-                                  ' • ',
-                                  style: TextStyle(
-                                    color: Color(0xFF8E8E8E),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Text(
-                                  userName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          // Username
+                          Text(
+                            '@${widget.post.user?.username ?? 'unknown'}',
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E8E),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 2),
-                      // Time below
-                      Text(
-                        _formatTimeAgo(widget.post.createdAt),
-                        style: const TextStyle(
-                          color: Color(0xFF8E8E8E),
-                          fontSize: 12,
-                        ),
-                      ),
-                      if (widget.post.createdAt != widget.post.updatedAt) ...[
-                        const SizedBox(height: 2),
-                        const Text(
-                          '• Изменено',
-                          style: TextStyle(
-                            color: Color(0xFF8E8E8E),
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
+                      Row(
+                        children: [
+                          Text(
+                            _formatTimeAgo(widget.post.createdAt),
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E8E),
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
+                          if (widget.post.createdAt != widget.post.updatedAt) ...[
+                            const SizedBox(width: 4),
+                            const Text(
+                              '• Изменено',
+                              style: TextStyle(
+                                color: Color(0xFF8E8E8E),
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),

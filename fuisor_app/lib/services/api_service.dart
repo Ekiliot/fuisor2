@@ -829,6 +829,8 @@ class ApiService {
     String? thumbnailUrl,
     List<String>? mentions,
     List<String>? hashtags,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       print('ApiService: Creating post with media URL: $mediaUrl');
@@ -847,6 +849,8 @@ class ApiService {
           'media_type': mediaType,
           if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
           if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
         }),
       );
 
@@ -1979,6 +1983,108 @@ class ApiService {
     } catch (e) {
       print('🔐 [API Post SignedURL] ❌ ИСКЛЮЧЕНИЕ: $e');
       throw Exception('Failed to get signed URL: $e');
+    }
+  }
+
+  // ==============================================
+  // Geolocation endpoints
+  // ==============================================
+
+  /// Get geo-posts within map bounds
+  Future<List<Post>> getGeoPosts({
+    required double swLat,
+    required double swLng,
+    required double neLat,
+    required double neLng,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/posts/geo/map?swLat=$swLat&swLng=$swLng&neLat=$neLat&neLng=$neLng',
+        ),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final posts = (data['posts'] as List)
+            .map((json) => Post.fromJson(json))
+            .toList();
+        return posts;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get geo posts');
+      }
+    } catch (e) {
+      print('ApiService: Error getting geo posts: $e');
+      rethrow;
+    }
+  }
+
+  /// Update user's current location
+  Future<void> updateLocation({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/location'),
+        headers: _headers,
+        body: jsonEncode({
+          'latitude': latitude,
+          'longitude': longitude,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to update location');
+      }
+    } catch (e) {
+      print('ApiService: Error updating location: $e');
+      rethrow;
+    }
+  }
+
+  /// Get friends' locations (only if location sharing is enabled)
+  Future<List<Map<String, dynamic>>> getFriendsLocations() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/friends/locations'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['friends'] ?? []);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get friends locations');
+      }
+    } catch (e) {
+      print('ApiService: Error getting friends locations: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle location sharing
+  Future<void> setLocationSharing(bool enabled) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/location/sharing'),
+        headers: _headers,
+        body: jsonEncode({
+          'enabled': enabled,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to set location sharing');
+      }
+    } catch (e) {
+      print('ApiService: Error setting location sharing: $e');
+      rethrow;
     }
   }
 }

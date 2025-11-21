@@ -16,6 +16,7 @@ import '../widgets/animated_app_bar_title.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
 import 'camera_screen.dart';
+import 'map_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -227,8 +228,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
               onTap: () {
-                // TODO: Navigate to map screen
-                print('Geo header button tapped!');
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const MapScreen(),
+                  ),
+                );
               },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),

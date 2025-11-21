@@ -38,6 +38,20 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // Решаем конфликт дублирующихся нативных библиотек (libc++_shared.so)
+            // Используем первый найденный файл из конфликтующих библиотек
+            // Это решает конфликт между Mapbox (common-ndk27) и ffmpeg-kit-full-gpl
+            pickFirsts += listOf(
+                "lib/x86/libc++_shared.so",
+                "lib/x86_64/libc++_shared.so",
+                "lib/armeabi-v7a/libc++_shared.so",
+                "lib/arm64-v8a/libc++_shared.so"
+            )
+        }
+    }
 }
 
 flutter {
