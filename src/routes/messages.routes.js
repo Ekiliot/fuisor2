@@ -971,21 +971,42 @@ router.get('/chats/:chatId/media/signed-url', validateAuth, validateChatId, asyn
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    // Нормализуем путь - убираем префикс dm_media/ если есть
+    let normalizedPath = mediaPath;
+    if (normalizedPath.startsWith('dm_media/')) {
+      normalizedPath = normalizedPath.replace(/^dm_media\//, '');
+    }
+
     // Проверяем, что путь к файлу соответствует структуре userId/chatId/...
-    const pathParts = mediaPath.split('/');
+    const pathParts = normalizedPath.split('/');
     if (pathParts.length < 3) {
+      console.error('GET /chats/:chatId/media/signed-url - Invalid path format:', {
+        originalPath: mediaPath,
+        normalizedPath,
+        pathParts,
+      });
       return res.status(400).json({ error: 'Invalid media path format' });
     }
 
     // Проверяем, что chatId в пути соответствует запрошенному chatId
+    // Структура: userId/chatId/timestamp.ext
     if (pathParts[1] !== chatId) {
+      console.error('GET /chats/:chatId/media/signed-url - Path mismatch:', {
+        expectedChatId: chatId,
+        pathChatId: pathParts[1],
+        userId: pathParts[0],
+        fullPath: normalizedPath,
+        originalPath: mediaPath,
+        pathParts,
+      });
       return res.status(403).json({ error: 'Media path does not match chat ID' });
     }
 
     // Создаем signed URL (действителен 1 час = 3600 секунд)
+    // Используем нормализованный путь без префикса bucket
     const { data, error } = await supabaseAdmin.storage
       .from('dm_media')
-      .createSignedUrl(mediaPath, 3600);
+      .createSignedUrl(normalizedPath, 3600);
 
     if (error) {
       console.error('Error creating signed URL:', error);
