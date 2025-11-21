@@ -647,6 +647,7 @@ class ApiService {
     required Uint8List? mediaBytes,
     required String mediaFileName,
     required String mediaType,
+    Uint8List? thumbnailBytes,
     List<String>? mentions,
     List<String>? hashtags,
   }) async {
@@ -654,6 +655,7 @@ class ApiService {
       print('ApiService: Creating post with filename: $mediaFileName');
       print('ApiService: Media type: $mediaType');
       print('ApiService: Media bytes length: ${mediaBytes?.length ?? 0}');
+      print('ApiService: Thumbnail bytes length: ${thumbnailBytes?.length ?? 0}');
       print('ApiService: Caption: $caption');
       print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
 
@@ -718,6 +720,24 @@ class ApiService {
         print('ApiService: Media file added to multipart request');
       } else {
         print('ApiService: WARNING - No media bytes provided!');
+      }
+
+      // Добавляем thumbnail файл (если есть)
+      if (thumbnailBytes != null && mediaType == 'video') {
+        print('ApiService: Preparing to upload thumbnail file');
+        print('ApiService: Thumbnail size: ${thumbnailBytes.length} bytes');
+        
+        final thumbnailFileName = 'thumbnail_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'thumbnail',
+            thumbnailBytes,
+            filename: thumbnailFileName,
+            contentType: MediaType.parse('image/jpeg'),
+          ),
+        );
+        print('ApiService: Thumbnail file added to multipart request');
       }
 
       print('ApiService: Sending request...');

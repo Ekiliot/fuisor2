@@ -35,7 +35,7 @@ class FuisorApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OnlineStatusProvider()),
       ],
       child: MaterialApp(
-        title: 'Fuisor',
+        title: 'Fuișor',
         debugShowCheckedModeBanner: false,
         theme: AppThemes.darkTheme,
         home: const AuthWrapper(),

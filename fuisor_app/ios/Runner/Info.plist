@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fuisor App</string>
+	<string>Fuișor</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -51,5 +51,7 @@
 	<string>We need access to your photo library to select photos and videos for your posts</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>We need access to save photos and videos to your library</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We need access to your camera to take photos and record videos</string>
 </dict>
 </plist>

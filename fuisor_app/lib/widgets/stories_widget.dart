@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import '../screens/camera_screen.dart';
 
 class StoriesWidget extends StatelessWidget {
   const StoriesWidget({super.key});
@@ -15,7 +16,7 @@ class StoriesWidget extends StatelessWidget {
         itemCount: 10, // Mock data without Geo button
         itemBuilder: (context, index) {
           if (index == 0) {
-            return _buildAddStoryItem();
+            return _buildAddStoryItem(context);
           }
           return _buildStoryItem(index);
         },
@@ -23,8 +24,16 @@ class StoriesWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildAddStoryItem() {
-    return Container(
+  Widget _buildAddStoryItem(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const CameraScreen(),
+          ),
+        );
+      },
+      child: Container(
       width: 70,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
@@ -80,6 +89,7 @@ class StoriesWidget extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+        ),
       ),
     );
   }

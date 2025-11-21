@@ -15,6 +15,7 @@ import '../widgets/geo_posts_widget.dart';
 import '../widgets/skeleton_post_card.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
+import 'camera_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -408,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         title: Text(
-          'Fuisor',
+          'Fuișor',
           style: GoogleFonts.delaGothicOne(
             fontSize: 24,
             color: Colors.white,
@@ -481,7 +482,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-      body: Selector<PostsProvider, Map<String, dynamic>>(
+      body: GestureDetector(
+        onHorizontalDragEnd: (DragEndDetails details) {
+          // Проверяем, был ли свайп вправо (положительная velocity)
+          // Открываем камеру при быстром свайпе вправо
+          if (details.primaryVelocity != null && details.primaryVelocity! > 500) {
+            Navigator.of(context).push(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const CameraScreen(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            );
+          }
+        },
+        child: Selector<PostsProvider, Map<String, dynamic>>(
         selector: (_, provider) => {
           'feedPosts': provider.feedPosts,
           'isInitialLoading': provider.isInitialLoading,
@@ -677,6 +697,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           );
         },
+        ),
       ),
     );
   }

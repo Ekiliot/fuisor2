@@ -10,7 +10,6 @@ import '../providers/auth_provider.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import 'hashtag_text.dart';
-import 'video_thumbnail.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -469,11 +468,52 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                               // Переключаемся на Shorts с этим видео
                               _navigateToShorts(widget.post);
                             },
-                            child: VideoThumbnail(
-                              videoUrl: widget.post.mediaUrl,
-                              width: width,
-                              height: width,
-                              fit: BoxFit.cover,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // Показываем thumbnail если есть, иначе placeholder
+                                widget.post.thumbnailUrl != null && widget.post.thumbnailUrl!.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: widget.post.thumbnailUrl!,
+                                        fit: BoxFit.cover,
+                                        width: width,
+                                        height: width,
+                                        placeholder: (context, url) => Container(
+                                          color: Colors.grey[200],
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
+                                        errorWidget: (context, url, error) => Container(
+                                          color: Colors.grey[200],
+                                          child: const Center(
+                                            child: Icon(Icons.error),
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: Colors.black,
+                                        child: const Center(
+                                          child: Icon(
+                                            EvaIcons.videoOutline,
+                                            color: Colors.white,
+                                            size: 48,
+                                          ),
+                                        ),
+                                      ),
+                                // Затемнение для лучшей видимости иконки play
+                                Container(
+                                  color: Colors.black.withOpacity(0.2),
+                                ),
+                                // Иконка play по центру
+                                const Center(
+                                  child: Icon(
+                                    EvaIcons.playCircleOutline,
+                                    color: Colors.white,
+                                    size: 48,
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                 : CachedNetworkImage(

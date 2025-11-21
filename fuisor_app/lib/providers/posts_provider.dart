@@ -692,6 +692,7 @@ class PostsProvider extends ChangeNotifier {
     required Uint8List? mediaBytes,
     required String mediaFileName,
     required String mediaType,
+    Uint8List? thumbnailBytes,
     List<String>? mentions,
     List<String>? hashtags,
     String? accessToken, // Добавляем токен как параметр
@@ -723,6 +724,7 @@ class PostsProvider extends ChangeNotifier {
         mediaBytes: mediaBytes,
         mediaFileName: mediaFileName,
         mediaType: mediaType,
+        thumbnailBytes: thumbnailBytes,
         mentions: mentions,
         hashtags: hashtags,
       );

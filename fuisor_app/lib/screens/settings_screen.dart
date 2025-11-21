@@ -143,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _SettingItem(
         section: 'About',
         icon: EvaIcons.infoOutline,
-        title: 'About Fuisor',
+        title: 'About Fuișor',
         subtitle: 'Version, licenses and legal',
         type: _SettingType.navigation,
         onTap: () {},

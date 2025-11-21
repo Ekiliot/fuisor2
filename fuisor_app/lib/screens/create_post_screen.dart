@@ -8,6 +8,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path_provider/path_provider.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -98,6 +101,94 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  // Создать thumbnail из видео
+  Future<Uint8List?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      print('CreatePostScreen: Generating thumbnail from video: $videoPath');
+      
+      // Получаем длительность видео для выбора случайного кадра
+      VideoPlayerController? tempController;
+      Duration? videoDuration;
+      
+      try {
+        if (kIsWeb) {
+          // Для веб используем blob URL напрямую
+          tempController = VideoPlayerController.networkUrl(Uri.parse(videoPath));
+        } else {
+          // Для мобильных платформ используем файл
+          tempController = VideoPlayerController.file(File(videoPath));
+        }
+        
+        await tempController.initialize();
+        videoDuration = tempController.value.duration;
+        await tempController.dispose();
+      } catch (e) {
+        print('CreatePostScreen: Error getting video duration: $e');
+        // Если не удалось получить длительность, используем 0
+        videoDuration = const Duration(seconds: 1);
+      }
+
+      // Выбираем случайное время (от 10% до 90% длительности, минимум 1 секунда)
+      final maxTime = videoDuration.inMilliseconds;
+      final minTime = (maxTime * 0.1).round();
+      final maxTimeForRandom = (maxTime * 0.9).round();
+      final randomTime = minTime + Random().nextInt(maxTimeForRandom - minTime);
+      
+      print('CreatePostScreen: Video duration: ${videoDuration.inSeconds}s');
+      print('CreatePostScreen: Random time selected: ${randomTime}ms');
+
+      // Генерируем thumbnail
+      String? thumbnailPath;
+      
+      if (kIsWeb) {
+        // Для веб платформы используем другой подход
+        // Создаем временный файл из blob URL
+        final videoBytes = await widget.selectedFile!.readAsBytes();
+        final tempDir = await getTemporaryDirectory();
+        final tempVideoFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4');
+        await tempVideoFile.writeAsBytes(videoBytes);
+        
+        thumbnailPath = await VideoThumbnail.thumbnailFile(
+          video: tempVideoFile.path,
+          imageFormat: ImageFormat.JPEG,
+          timeMs: randomTime,
+          quality: 75,
+        );
+        
+        // Удаляем временный файл
+        await tempVideoFile.delete();
+      } else {
+        // Для мобильных платформ
+        thumbnailPath = await VideoThumbnail.thumbnailFile(
+          video: videoPath,
+          imageFormat: ImageFormat.JPEG,
+          timeMs: randomTime,
+          quality: 75,
+        );
+      }
+
+      if (thumbnailPath == null) {
+        print('CreatePostScreen: Failed to generate thumbnail');
+        return null;
+      }
+
+      print('CreatePostScreen: Thumbnail generated at: $thumbnailPath');
+      
+      // Читаем thumbnail как байты
+      final thumbnailFile = File(thumbnailPath);
+      final thumbnailBytes = await thumbnailFile.readAsBytes();
+      
+      // Удаляем временный файл thumbnail
+      await thumbnailFile.delete();
+      
+      print('CreatePostScreen: Thumbnail size: ${thumbnailBytes.length} bytes');
+      return thumbnailBytes;
+    } catch (e) {
+      print('CreatePostScreen: Error generating thumbnail: $e');
+      return null;
+    }
+  }
+
   Future<void> _createPost() async {
     print('CreatePostScreen: _createPost called');
     
@@ -152,6 +243,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           filePath.contains('.webm') ||
           filePath.contains('.quicktime');
       
+      Uint8List? thumbnailBytes;
+      
       if (isVideo) {
         mediaType = 'video';
         mediaFileName = 'post_${DateTime.now().millisecondsSinceEpoch}.mp4';
@@ -201,6 +294,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           print('CreatePostScreen: Error reading video file: $fileError');
           print('CreatePostScreen: Error type: ${fileError.runtimeType}');
           throw Exception('Failed to read video file: $fileError');
+        }
+        
+        // Генерируем thumbnail из видео
+        print('CreatePostScreen: Generating thumbnail from video...');
+        final videoPath = kIsWeb ? widget.selectedFile!.path : widget.selectedFile!.path;
+        thumbnailBytes = await _generateVideoThumbnail(videoPath);
+        
+        if (thumbnailBytes == null) {
+          print('CreatePostScreen: WARNING - Failed to generate thumbnail, continuing without thumbnail');
+        } else {
+          print('CreatePostScreen: Thumbnail generated successfully, size: ${thumbnailBytes.length} bytes');
         }
       } else {
         print('CreatePostScreen: Detected image file');
@@ -257,6 +361,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mediaBytes: mediaBytes,
         mediaFileName: mediaFileName,
         mediaType: mediaType,
+        thumbnailBytes: thumbnailBytes,
         accessToken: accessToken,
       );
 

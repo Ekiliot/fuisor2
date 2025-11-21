@@ -8,6 +8,10 @@ import multer from 'multer';
 
 const router = express.Router();
 const upload = multer();
+const uploadFields = upload.fields([
+  { name: 'media', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]);
 
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
@@ -73,21 +77,28 @@ router.get('/', validateAuth, async (req, res) => {
 });
 
 // Create post
-router.post('/', validateAuth, upload.single('media'), validatePost, async (req, res) => {
+router.post('/', validateAuth, uploadFields, validatePost, async (req, res) => {
   try {
     logger.post('Post creation request', {
       userId: req.user.id,
       userEmail: req.user.email,
-      hasMedia: !!req.file,
-      mediaInfo: req.file ? {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size
+      hasMedia: !!req.files?.media?.[0],
+      hasThumbnail: !!req.files?.thumbnail?.[0],
+      mediaInfo: req.files?.media?.[0] ? {
+      originalname: req.files.media[0].originalname,
+      mimetype: req.files.media[0].mimetype,
+      size: req.files.media[0].size
+      } : null,
+      thumbnailInfo: req.files?.thumbnail?.[0] ? {
+      originalname: req.files.thumbnail[0].originalname,
+      mimetype: req.files.thumbnail[0].mimetype,
+      size: req.files.thumbnail[0].size
       } : null
     });
     
     const { caption, media_type, mentions, hashtags } = req.body;
-    const media = req.file;
+    const media = req.files?.media?.[0];
+    const thumbnail = req.files?.thumbnail?.[0];
 
     if (!media) {
       logger.postError('No media file provided', { userId: req.user.id });
@@ -145,13 +156,38 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
       .from('post-media')
       .getPublicUrl(fileName);
 
+    // Upload thumbnail if provided (for videos)
+    let thumbnailUrl = null;
+    if (thumbnail && detectedMediaType === 'video') {
+      logger.post('Uploading thumbnail to Supabase Storage...');
+      const thumbnailExt = thumbnail.originalname.split('.').pop() || 'jpg';
+      const thumbnailName = `thumb_${Math.random().toString(36).substring(7)}.${thumbnailExt}`;
+      
+      const { error: thumbnailUploadError } = await supabaseAdmin.storage
+        .from('post-media')
+        .upload(thumbnailName, thumbnail.buffer);
+
+      if (thumbnailUploadError) {
+        logger.postError('Thumbnail upload error', thumbnailUploadError);
+        // Не прерываем создание поста, если thumbnail не загрузился
+        logger.post('Continuing without thumbnail due to upload error');
+      } else {
+        const { data: { publicUrl: thumbnailPublicUrl } } = supabaseAdmin.storage
+          .from('post-media')
+          .getPublicUrl(thumbnailName);
+        thumbnailUrl = thumbnailPublicUrl;
+        logger.post('Thumbnail uploaded to storage successfully', { thumbnailName });
+      }
+    }
+
     // Create post record using admin client to bypass RLS
     logger.post('Creating post in database', {
       userId: req.user.id,
       caption: caption?.substring(0, 50),
       mediaType: detectedMediaType,
       hasMentions: !!mentions,
-      hasHashtags: !!hashtags
+      hasHashtags: !!hashtags,
+      hasThumbnail: !!thumbnailUrl
     });
     
     const { data, error } = await supabaseAdmin
@@ -161,7 +197,8 @@ router.post('/', validateAuth, upload.single('media'), validatePost, async (req,
           user_id: req.user.id,
           caption,
           media_url: publicUrl,
-          media_type: detectedMediaType
+          media_type: detectedMediaType,
+          thumbnail_url: thumbnailUrl
         }
       ])
       .select()

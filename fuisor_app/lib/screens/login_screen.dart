@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               // Title
               Text(
-                'Fuisor',
+                'Fuișor',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.delaGothicOne(
                   fontSize: 42,

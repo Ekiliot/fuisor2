@@ -12,6 +12,7 @@ class Post {
   final int commentsCount;
   final List<Comment> comments;
   final bool isLiked;
+  final String? thumbnailUrl;
 
   Post({
     required this.id,
@@ -27,6 +28,7 @@ class Post {
     this.commentsCount = 0,
     this.comments = const [],
     this.isLiked = false,
+    this.thumbnailUrl,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -46,6 +48,7 @@ class Post {
           ?.map((comment) => Comment.fromJson(comment))
           .toList() ?? [],
       isLiked: json['is_liked'] ?? false,
+      thumbnailUrl: json['thumbnail_url'],
     );
   }
 
@@ -64,6 +67,7 @@ class Post {
       'comments_count': commentsCount,
       'comments': comments.map((comment) => comment.toJson()).toList(),
       'is_liked': isLiked,
+      'thumbnail_url': thumbnailUrl,
     };
   }
 
@@ -84,6 +88,7 @@ class Post {
     int? commentsCount,
     List<Comment>? comments,
     bool? isLiked,
+    String? thumbnailUrl,
   }) {
     return Post(
       id: id ?? this.id,
@@ -99,6 +104,7 @@ class Post {
       commentsCount: commentsCount ?? this.commentsCount,
       comments: comments ?? this.comments,
       isLiked: isLiked ?? this.isLiked,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
     );
   }
 }
