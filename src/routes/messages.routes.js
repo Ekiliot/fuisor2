@@ -542,7 +542,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
   try {
     const chatId = req.params.chatId;
     const userId = req.user.id;
-    const { content, messageType, mediaUrl, mediaDuration, mediaSize } = req.body;
+    const { content, messageType, mediaUrl, thumbnailUrl, postId, mediaDuration, mediaSize } = req.body;
 
     console.log('POST /chats/:chatId/messages - Request:', {
       chatId,
@@ -585,6 +585,8 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
       content: content?.trim() || null,
       message_type: messageType || 'text',
       media_url: mediaUrl || null,
+      thumbnail_url: thumbnailUrl || null,
+      post_id: postId || null,
       media_duration: typeof mediaDuration === 'number' ? mediaDuration : null,
       media_size: typeof mediaSize === 'number' ? mediaSize : null,
     };
@@ -601,6 +603,8 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
         content,
         message_type,
         media_url,
+        thumbnail_url,
+        post_id,
         media_duration,
         media_size,
         is_read,

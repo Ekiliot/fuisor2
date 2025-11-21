@@ -1499,6 +1499,58 @@ class ApiService {
     }
   }
 
+  /// Отправить видео сообщение (Shorts)
+  Future<Message> sendVideoMessage({
+    required String chatId,
+    required String postId,
+    required String mediaUrl,
+    required String thumbnailUrl,
+  }) async {
+    try {
+      print('ApiService: Sending video message');
+      print('ApiService: ChatId: $chatId');
+      print('ApiService: PostId: $postId');
+      print('ApiService: MediaUrl: $mediaUrl');
+      print('ApiService: ThumbnailUrl: $thumbnailUrl');
+
+      final requestBody = {
+        'messageType': 'video',
+        'mediaUrl': mediaUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'postId': postId, // ID поста для открытия в Shorts
+      };
+
+      print('ApiService: Request body: ${jsonEncode(requestBody)}');
+      print('ApiService: Sending POST to $baseUrl/messages/chats/$chatId/messages...');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/messages/chats/$chatId/messages'),
+        headers: _headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('ApiService: Response status: ${response.statusCode}');
+      print('ApiService: Response body: ${response.body}');
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        print('ApiService: ✅ Video message sent successfully!');
+        print('ApiService: Message data: $data');
+
+        final message = Message.fromJson(data['message']);
+        print('ApiService: Created Message object');
+        return message;
+      } else {
+        final error = jsonDecode(response.body);
+        print('ApiService: ❌ Error sending video message: ${error['error'] ?? 'Unknown error'}');
+        throw Exception(error['error'] ?? 'Failed to send video message');
+      }
+    } catch (e) {
+      print('ApiService: ❌ Exception sending video message: $e');
+      throw Exception('Failed to send video message: $e');
+    }
+  }
+
   /// Отправить голосовое сообщение
   Future<Message> sendVoiceMessage({
     required String chatId,

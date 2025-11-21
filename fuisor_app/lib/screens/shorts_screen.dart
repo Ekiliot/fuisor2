@@ -7,6 +7,7 @@ import '../models/user.dart' show Post;
 import '../providers/posts_provider.dart';
 import '../widgets/shorts_video_player.dart';
 import '../widgets/shorts_comments_sheet.dart';
+import '../widgets/share_video_sheet.dart';
 
 class ShortsScreen extends StatefulWidget {
   const ShortsScreen({super.key});
@@ -706,7 +707,15 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             );
           },
           onShare: () {
-            // TODO: Поделиться видео
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              isScrollControlled: true,
+              useSafeArea: true,
+              builder: (context) => ShareVideoSheet(
+                post: post,
+              ),
+            );
           },
         );
       },
