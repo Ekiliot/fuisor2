@@ -636,7 +636,9 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
       id: message.id,
       message_type: message.message_type,
       media_url: message.media_url,
+      thumbnail_url: message.thumbnail_url,
       hasContent: !!message.content,
+      hasThumbnail: !!message.thumbnail_url,
     });
 
     // Триггеры автоматически:

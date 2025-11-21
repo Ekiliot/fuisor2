@@ -1777,9 +1777,25 @@ class ApiService {
         print('📤 [API Upload] MediaUrl: ${data['mediaUrl']}');
         return data;
       } else {
-        final error = jsonDecode(response.body);
-        print('📤 [API Upload] ❌ ОШИБКА загрузки: ${error['error'] ?? 'Unknown error'}');
-        throw Exception(error['error'] ?? 'Failed to upload media');
+        // Обрабатываем ошибки, которые могут не быть в формате JSON
+        String errorMessage = 'Failed to upload media';
+        
+        if (response.statusCode == 413 || response.statusCode == 507) {
+          // Request Entity Too Large или Insufficient Storage
+          errorMessage = 'File is too large. Please select a smaller file (max 4.5MB recommended).';
+        } else {
+          // Пытаемся распарсить JSON ошибку
+          try {
+            final error = jsonDecode(response.body);
+            errorMessage = error['error'] ?? response.body.isNotEmpty ? response.body : errorMessage;
+          } catch (e) {
+            // Если ответ не JSON, используем текст ответа или стандартное сообщение
+            errorMessage = response.body.isNotEmpty ? response.body : 'Failed to upload media (Status: ${response.statusCode})';
+          }
+        }
+        
+        print('📤 [API Upload] ❌ ОШИБКА загрузки: $errorMessage');
+        throw Exception(errorMessage);
       }
     } catch (e) {
       print('📤 [API Upload] ❌ ИСКЛЮЧЕНИЕ при загрузке: $e');
@@ -1827,6 +1843,7 @@ class ApiService {
   Future<Message> sendVideoChatMessage({
     required String chatId,
     required String mediaUrl,
+    String? thumbnailUrl,
     int? duration,
     int? size,
   }) async {
@@ -1834,10 +1851,12 @@ class ApiService {
       print('🎥 [API Send] Отправка видео сообщения');
       print('🎥 [API Send] ChatId: $chatId');
       print('🎥 [API Send] MediaUrl: $mediaUrl');
+      print('🎥 [API Send] ThumbnailUrl: $thumbnailUrl');
       
       final requestBody = {
         'messageType': 'video',
         'mediaUrl': mediaUrl,
+        if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
         if (duration != null) 'mediaDuration': duration,
         if (size != null) 'mediaSize': size,
       };
