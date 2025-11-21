@@ -1874,6 +1874,13 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print('❤️ [API Like] Данные ответа: $data');
+        
+        if (data['message'] == null) {
+          print('❤️ [API Like] ❌ ОШИБКА: Поле "message" отсутствует в ответе');
+          throw Exception('Invalid response: message field is missing');
+        }
+        
         final message = Message.fromJson(data['message']);
         print('❤️ [API Like] ✅ Лайк переключен успешно!');
         print('❤️ [API Like] isLiked: ${message.isLiked}');

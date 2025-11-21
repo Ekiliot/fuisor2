@@ -825,6 +825,12 @@ router.put('/chats/:chatId/messages/:messageId/like', validateAuth, validateChat
     }
 
     // Проверяем что сообщение существует и принадлежит этому чату
+    console.log('PUT /chats/:chatId/messages/:messageId/like - Checking message:', {
+      chatId,
+      messageId,
+      userId,
+    });
+    
     const { data: message, error: messageError } = await supabaseAdmin
       .from('messages')
       .select('id, chat_id, is_liked')
@@ -833,7 +839,18 @@ router.put('/chats/:chatId/messages/:messageId/like', validateAuth, validateChat
       .is('deleted_at', null)
       .single();
 
+    console.log('PUT /chats/:chatId/messages/:messageId/like - Message query result:', {
+      message,
+      messageError,
+      hasMessage: !!message,
+    });
+
     if (messageError || !message) {
+      console.error('PUT /chats/:chatId/messages/:messageId/like - Message not found:', {
+        messageError,
+        messageId,
+        chatId,
+      });
       return res.status(404).json({ error: 'Message not found' });
     }
 
@@ -875,6 +892,18 @@ router.put('/chats/:chatId/messages/:messageId/like', validateAuth, validateChat
       console.error('Error toggling message like:', updateError);
       return res.status(500).json({ error: updateError.message });
     }
+
+    if (!updatedMessage) {
+      console.error('Error: updatedMessage is null after update');
+      return res.status(500).json({ error: 'Failed to update message' });
+    }
+
+    console.log('PUT /chats/:chatId/messages/:messageId/like - Success:', {
+      messageId,
+      chatId,
+      isLiked: newIsLiked,
+      hasUpdatedMessage: !!updatedMessage,
+    });
 
     res.json({ message: updatedMessage, isLiked: newIsLiked });
   } catch (error) {
