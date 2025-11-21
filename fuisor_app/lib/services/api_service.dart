@@ -1353,14 +1353,20 @@ class ApiService {
   }
 
   /// Удалить сообщение (soft delete)
-  Future<void> deleteMessage(String chatId, String messageId) async {
+  Future<Message> deleteMessage(String chatId, String messageId) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/messages/chats/$chatId/messages/$messageId'),
         headers: _headers,
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['message'] != null) {
+          return Message.fromJson(data['message']);
+        }
+        throw Exception('Invalid response: message field is missing');
+      } else {
         final error = jsonDecode(response.body);
         throw Exception(error['error'] ?? 'Failed to delete message');
       }

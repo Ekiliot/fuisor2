@@ -795,7 +795,30 @@ router.delete('/chats/:chatId/messages/:messageId', validateAuth, validateChatId
         deleted_by_ids: deletedByIds,
       })
       .eq('id', messageId)
-      .select()
+      .select(`
+        id,
+        chat_id,
+        sender_id,
+        content,
+        message_type,
+        media_url,
+        thumbnail_url,
+        post_id,
+        media_duration,
+        media_size,
+        is_read,
+        is_liked,
+        deleted_at,
+        deleted_by_ids,
+        created_at,
+        updated_at,
+        sender:profiles!sender_id(
+          id,
+          username,
+          name,
+          avatar_url
+        )
+      `)
       .single();
 
     if (updateError) {
@@ -803,7 +826,7 @@ router.delete('/chats/:chatId/messages/:messageId', validateAuth, validateChatId
       return res.status(500).json({ error: updateError.message });
     }
 
-    res.json({ message: 'Message deleted successfully', deleted: true });
+    res.json({ message: updatedMessage, deleted: true });
   } catch (error) {
     console.error('Error in DELETE /api/messages/chats/:chatId/messages/:messageId:', error);
     res.status(500).json({ error: error.message });
