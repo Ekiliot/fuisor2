@@ -344,10 +344,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('Caption: ${_captionController.text.trim()}');
       print('Media size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
 
-      // Проверка размера файла (Vercel limit ~4.5MB, но оставляем запас)
-      const maxFileSize = 4 * 1024 * 1024; // 4MB
+      // Проверка размера файла
+      // Vercel limit ~4.5MB для request body, но мы загружаем через API который может обработать больше
+      // Multer на backend настроен на 100MB, но Vercel все еще имеет лимит
+      // Для видео увеличиваем лимит до 10MB с предупреждением
+      const maxFileSize = 10 * 1024 * 1024; // 10MB
+      const warningSize = 4 * 1024 * 1024; // 4MB - предупреждение
+      
       if (mediaBytes.length > maxFileSize) {
-        throw Exception('File size is too large (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB). Maximum size is 4 MB.');
+        throw Exception('File size is too large (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB). Maximum size is 10 MB.');
+      }
+      
+      // Показываем предупреждение для больших файлов, но не блокируем загрузку
+      if (mediaBytes.length > warningSize && isVideo) {
+        print('CreatePostScreen: WARNING - Large video file (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB). Upload may fail if file exceeds Vercel limits.');
       }
 
       // Получаем токен из AuthProvider
