@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../services/message_cache_service.dart';
 import '../utils/image_cache_utils.dart';
 
 enum LoginButtonState {
@@ -231,6 +232,14 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     try {
       await _apiService.logout();
+      
+      // Очищаем кеш сообщений при выходе
+      try {
+        await MessageCacheService().clearAllCache();
+        print('AuthProvider: Cleared message cache on logout');
+      } catch (e) {
+        print('AuthProvider: Error clearing message cache: $e');
+      }
       
       // Очищаем сессию
       await _clearSession();

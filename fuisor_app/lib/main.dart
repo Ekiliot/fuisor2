@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/online_status_provider.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
+import 'services/message_cache_service.dart';
 import 'utils/themes.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -14,8 +16,14 @@ import 'screens/main_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Инициализация Hive для кеша сообщений
+  await Hive.initFlutter();
+  
   // Инициализация кеша (используем синглтон)
   await CacheService().init();
+  
+  // Инициализация кеша сообщений
+  await MessageCacheService().init();
   
   runApp(const FuisorApp());
 }
