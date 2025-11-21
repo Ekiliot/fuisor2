@@ -14,6 +14,9 @@ class MainScreen extends StatefulWidget {
 
   @override
   State<MainScreen> createState() => MainScreenState();
+  
+  // Глобальный ключ для доступа к MainScreenState из других экранов
+  static final GlobalKey<MainScreenState> globalKey = GlobalKey<MainScreenState>();
 }
 
 class MainScreenState extends State<MainScreen> {
@@ -22,6 +25,11 @@ class MainScreenState extends State<MainScreen> {
   DateTime? _lastShortsTapTime;
   DateTime? _lastSearchTapTime;
   static const _doubleTapDelay = Duration(milliseconds: 300);
+  
+  @override
+  void initState() {
+    super.initState();
+  }
   
   // Метод для переключения на Shorts с конкретным постом
   void switchToShortsWithPost(Post post) {

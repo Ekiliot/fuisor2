@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'cached_network_image_with_signed_url.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/user.dart';
@@ -147,10 +148,10 @@ class RecommendedPostsGrid extends StatelessWidget {
                   if (post.mediaType == 'video')
                     // Используем thumbnailUrl для видео, как в post_card.dart
                     post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
-                        ? CachedNetworkImage(
+                        ? CachedNetworkImageWithSignedUrl(
                             imageUrl: post.thumbnailUrl!,
                       fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
+                            placeholder: (context) => Container(
                               color: Colors.grey[800],
                               child: const Center(
                                 child: CircularProgressIndicator(

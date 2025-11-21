@@ -920,12 +920,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           if (user.bio != null && user.bio!.isNotEmpty)
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: Text(
-                                user.bio!,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white,
-                                ),
+                    child: Text(
+                      user.bio!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white,
+                      ),
                                 textAlign: TextAlign.left,
                               ),
                             ),
@@ -1208,8 +1208,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                                     ? Colors.white
                                                     : Colors.white.withOpacity(0.6),
                                                 size: 20,
-                                              ),
-                                            ],
+                              ),
+                            ],
                                           ),
                                         ),
                                       ),

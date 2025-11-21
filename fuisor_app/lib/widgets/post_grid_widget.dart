@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
 import '../screens/post_detail_screen.dart';
+import 'cached_network_image_with_signed_url.dart';
 
 class PostGridWidget extends StatelessWidget {
   final List<Post> posts;
@@ -115,10 +116,10 @@ class PostGridWidget extends StatelessWidget {
                         if (post.mediaType == 'video')
                           // Используем thumbnailUrl для видео, как в post_card.dart
                           post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
-                              ? CachedNetworkImage(
+                              ? CachedNetworkImageWithSignedUrl(
                                   imageUrl: post.thumbnailUrl!,
                             fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
+                                  placeholder: (context) => Container(
                                     color: Colors.grey[800],
                                     child: const Center(
                                       child: CircularProgressIndicator(

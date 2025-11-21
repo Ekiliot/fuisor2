@@ -88,7 +88,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             }
           });
           
-          return const MainScreen();
+          return MainScreen(key: MainScreen.globalKey);
         } else {
           // Останавливаем heartbeat если пользователь вышел
           onlineStatusProvider.stopHeartbeat();

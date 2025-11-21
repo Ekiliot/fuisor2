@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'cached_network_image_with_signed_url.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
 import '../screens/edit_post_screen.dart';
@@ -473,12 +474,12 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                               children: [
                                 // Показываем thumbnail если есть, иначе placeholder
                                 widget.post.thumbnailUrl != null && widget.post.thumbnailUrl!.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: widget.post.thumbnailUrl!,
+                                        ? CachedNetworkImageWithSignedUrl(
+                                            imageUrl: widget.post.thumbnailUrl!,
                                         fit: BoxFit.cover,
                               width: width,
                               height: width,
-                                        placeholder: (context, url) => Container(
+                                        placeholder: (context) => Container(
                                           color: Colors.grey[200],
                                           child: const Center(
                                             child: CircularProgressIndicator(),
