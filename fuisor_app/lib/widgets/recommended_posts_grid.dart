@@ -150,6 +150,7 @@ class RecommendedPostsGrid extends StatelessWidget {
                     post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
                         ? CachedNetworkImageWithSignedUrl(
                             imageUrl: post.thumbnailUrl!,
+                            postId: post.id, // Передаем postId для уникального ключа кеша
                       fit: BoxFit.cover,
                             placeholder: (context) => Container(
                               color: Colors.grey[800],

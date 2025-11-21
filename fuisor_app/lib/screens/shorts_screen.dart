@@ -42,9 +42,6 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   
   // Отслеживание, начата ли предзагрузка для текущего видео
   final Map<int, bool> _preloadStartedForIndex = {};
-  
-  // Максимальное количество контроллеров в памяти (для управления памятью)
-  static const int _maxControllersInMemory = 5;
 
   @override
   void initState() {
@@ -382,11 +379,36 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         
         // Инициализируем только текущее видео
         if (!_videoControllers.containsKey(_currentIndex)) {
+          final firstPost = finalVideoPosts[_currentIndex];
+          
+          // Проверяем, есть ли видео уже в кеше (предзагружено при запуске)
+          final isCached = await _videoCacheService.isVideoCached(firstPost.id);
+          
+          if (isCached) {
+            // Если видео уже в кеше, инициализируем контроллер из кеша
+            print('ShortsScreen: First video already cached, initializing from cache');
+            await _initializeControllerFromCache(_currentIndex, firstPost.id);
+            
+            // Запускаем видео после инициализации
           WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (_currentIndex < finalVideoPosts.length) {
-              await _initializeVideo(_currentIndex, finalVideoPosts[_currentIndex], autoPlay: true);
+              if (mounted && _isScreenVisible && _currentIndex < finalVideoPosts.length) {
+                final controller = _videoControllers[_currentIndex];
+                if (controller != null && controller.value.isInitialized) {
+                  await controller.seekTo(Duration.zero);
+                  await controller.setVolume(1);
+                  await controller.play();
+                  print('ShortsScreen: Playing first video from cache');
+                }
+              }
+            });
+          } else {
+            // Если видео не в кеше, инициализируем обычным способом
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (_currentIndex < finalVideoPosts.length) {
+                await _initializeVideo(_currentIndex, finalVideoPosts[_currentIndex], autoPlay: true);
             }
           });
+          }
         } else {
           // Если контроллер уже есть, просто возобновляем
           await resumeCurrentVideo();
@@ -779,7 +801,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     if (_currentIndex < videoPosts.length) {
       final currentController = _videoControllers[_currentIndex];
       if (currentController == null || !currentController.value.isInitialized) {
-        print('ShortsScreen: Initializing current video $_currentIndex');
+      print('ShortsScreen: Initializing current video $_currentIndex');
         await _initializeVideo(_currentIndex, videoPosts[_currentIndex], autoPlay: true);
       }
     }
@@ -1263,6 +1285,97 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       }
     } catch (e) {
       print('ShortsScreen: Error saving unviewed videos: $e');
+    }
+  }
+
+  /// Предзагрузка видео при запуске приложения (в фоне)
+  /// Предзагружает первые 2-3 видео для рекомендаций, чтобы они были готовы при первом открытии Shorts
+  Future<void> preloadInitialVideos() async {
+    try {
+      print('ShortsScreen: Starting initial video preload on app start');
+      
+      // Проверяем, есть ли непросмотренные видео в очереди
+      final unviewedPosts = await _preloadQueue.loadUnviewedQueue();
+      
+      final postsProvider = context.read<PostsProvider>();
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        print('ShortsScreen: No access token, skipping initial preload');
+        return;
+      }
+      
+      // Загружаем видео для рекомендаций (если еще не загружены)
+      if (postsProvider.videoPosts.isEmpty) {
+        print('ShortsScreen: Loading video posts for recommendations');
+        await postsProvider.loadVideoPosts(refresh: false, accessToken: accessToken);
+      }
+      
+      final videoPosts = postsProvider.videoPosts;
+      if (videoPosts.isEmpty) {
+        print('ShortsScreen: No video posts available for preload');
+        return;
+      }
+      
+      // Определяем, сколько видео предзагружать (2-3 в зависимости от скорости сети)
+      final networkSpeed = await _networkSpeedDetector.getCurrentSpeed();
+      final preloadCount = networkSpeed == NetworkSpeed.fast ? 3 : 2;
+      
+      print('ShortsScreen: Preloading $preloadCount videos (network speed: $networkSpeed)');
+      
+      // Если есть непросмотренные видео, начинаем с них
+      List<Post> postsToPreload = [];
+      if (unviewedPosts.isNotEmpty) {
+        // Находим непросмотренные видео в текущем списке
+        final unviewedIds = unviewedPosts.map((p) => p.id).toSet();
+        final unviewedInList = videoPosts.where((p) => unviewedIds.contains(p.id)).toList();
+        final viewedInList = videoPosts.where((p) => !unviewedIds.contains(p.id)).toList();
+        postsToPreload = [...unviewedInList, ...viewedInList];
+      } else {
+        postsToPreload = videoPosts;
+      }
+      
+      // Предзагружаем первые видео в кеш (без инициализации контроллеров)
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+      
+      for (int i = 0; i < preloadCount && i < postsToPreload.length; i++) {
+        final post = postsToPreload[i];
+        
+        // Проверяем, не закешировано ли уже
+        final isCached = await _videoCacheService.isVideoCached(post.id);
+        if (isCached) {
+          print('ShortsScreen: Video ${i + 1} (post: ${post.id}) already cached, skipping');
+          continue;
+        }
+        
+        try {
+          // Получаем signed URL
+          final result = await apiService.getPostMediaSignedUrl(
+            mediaPath: post.mediaUrl,
+            postId: post.id,
+          );
+          final signedUrl = result['signedUrl']!;
+          
+          // Предзагружаем в кеш (без инициализации контроллера)
+          print('ShortsScreen: Preloading video ${i + 1}/${preloadCount} (post: ${post.id})');
+          await _videoCacheService.preloadVideo(post.id, signedUrl);
+          print('ShortsScreen: Successfully preloaded video ${i + 1} (post: ${post.id})');
+          
+          // Небольшая задержка между загрузками, чтобы не перегружать сеть
+          if (i < preloadCount - 1) {
+            await Future.delayed(const Duration(milliseconds: 300));
+          }
+        } catch (e) {
+          print('ShortsScreen: Error preloading video ${i + 1} (post: ${post.id}): $e');
+          // Продолжаем с следующим видео даже при ошибке
+        }
+      }
+      
+      print('ShortsScreen: Initial video preload completed');
+    } catch (e) {
+      print('ShortsScreen: Error in preloadInitialVideos: $e');
     }
   }
 }

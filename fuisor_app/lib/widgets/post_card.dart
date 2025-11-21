@@ -476,6 +476,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                                 widget.post.thumbnailUrl != null && widget.post.thumbnailUrl!.isNotEmpty
                                         ? CachedNetworkImageWithSignedUrl(
                                             imageUrl: widget.post.thumbnailUrl!,
+                                            postId: widget.post.id, // Передаем postId для уникального ключа кеша
                                         fit: BoxFit.cover,
                               width: width,
                               height: width,

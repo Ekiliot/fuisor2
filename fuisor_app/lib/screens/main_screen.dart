@@ -29,6 +29,14 @@ class MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Предзагружаем видео для Shorts при запуске приложения (в фоне)
+    // Задержка 2 секунды, чтобы приложение успело загрузиться и получить access token
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        _shortsScreenKey.currentState?.preloadInitialVideos();
+      }
+    });
   }
   
   // Метод для переключения на Shorts с конкретным постом

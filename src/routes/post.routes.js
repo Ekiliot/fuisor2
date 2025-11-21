@@ -467,19 +467,19 @@ router.get('/feed', validateAuth, async (req, res) => {
     // Get followed users (только если нужен режим подписок)
     let followingIds = [];
     if (isFollowingOnly) {
-      const { data: following, error: followingError } = await supabaseAdmin
-        .from('follows')
-        .select('following_id')
-        .eq('follower_id', userId);
+    const { data: following, error: followingError } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
 
-      if (followingError) {
-        logger.recommendationsError('Error getting following users', followingError);
-        throw followingError;
-      }
+    if (followingError) {
+      logger.recommendationsError('Error getting following users', followingError);
+      throw followingError;
+    }
 
       followingIds = following.map(f => f.following_id);
       // Always include own posts in feed when showing following
-      followingIds.push(userId);
+    followingIds.push(userId);
     }
     
     logger.recommendations('Feed preparation', {
@@ -511,9 +511,9 @@ router.get('/feed', validateAuth, async (req, res) => {
     } else if (isFollowingOnly) {
       // Подписки: фильтруем по подпискам
       if (followingIds.length > 0) {
-        query = query.in('user_id', followingIds);
+      query = query.in('user_id', followingIds);
         logger.recommendations('Following mode: showing posts from followed users');
-      } else {
+    } else {
         // Если нет подписок, показываем все посты (discovery mode)
         logger.recommendations('Discovery mode: showing all posts (new user, no follows)');
       }

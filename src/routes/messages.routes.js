@@ -448,6 +448,7 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
         media_size,
         is_read,
         read_at,
+        is_liked,
         created_at,
         updated_at,
         sender:profiles!sender_id(
@@ -610,6 +611,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
         media_duration,
         media_size,
         is_read,
+        is_liked,
         created_at,
         updated_at,
         sender:profiles!sender_id(
@@ -805,7 +807,84 @@ router.delete('/chats/:chatId/messages/:messageId', validateAuth, validateChatId
 });
 
 // ==============================================
-// 8. GET /api/messages/chats/:chatId/media/signed-url?path=...
+// 8. PUT /api/messages/chats/:chatId/messages/:messageId/like
+// Поставить/убрать лайк на сообщение
+// ==============================================
+router.put('/chats/:chatId/messages/:messageId/like', validateAuth, validateChatId, validateMessageId, async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    const messageId = req.params.messageId;
+    const userId = req.user.id;
+
+    // Проверка участия
+    const isParticipant = await checkChatParticipant(chatId, userId);
+    
+    if (!isParticipant) {
+      await new Promise(r => setTimeout(r, Math.random() * 100));
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Проверяем что сообщение существует и принадлежит этому чату
+    const { data: message, error: messageError } = await supabaseAdmin
+      .from('messages')
+      .select('id, chat_id, is_liked')
+      .eq('id', messageId)
+      .eq('chat_id', chatId)
+      .is('deleted_at', null)
+      .single();
+
+    if (messageError || !message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Переключаем лайк
+    const newIsLiked = !message.is_liked;
+
+    const { data: updatedMessage, error: updateError } = await supabaseAdmin
+      .from('messages')
+      .update({
+        is_liked: newIsLiked,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', messageId)
+      .select(`
+        id,
+        chat_id,
+        sender_id,
+        content,
+        message_type,
+        media_url,
+        thumbnail_url,
+        post_id,
+        media_duration,
+        media_size,
+        is_read,
+        is_liked,
+        created_at,
+        updated_at,
+        sender:profiles!sender_id(
+          id,
+          username,
+          name,
+          avatar_url
+        )
+      `)
+      .single();
+
+    if (updateError) {
+      console.error('Error toggling message like:', updateError);
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    res.json({ message: updatedMessage, isLiked: newIsLiked });
+  } catch (error) {
+    console.error('Error in PUT /api/messages/chats/:chatId/messages/:messageId/like:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// 9. GET /api/messages/chats/:chatId/media/signed-url?path=...
 // Получить signed URL для приватного медиа файла
 // ==============================================
 router.get('/chats/:chatId/media/signed-url', validateAuth, validateChatId, async (req, res) => {

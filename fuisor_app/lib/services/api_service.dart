@@ -1311,6 +1311,7 @@ class ApiService {
         headers: _headers,
         body: jsonEncode({
           'content': content,
+          'messageType': 'text', // Указываем тип сообщения как текст
         }),
       );
 
@@ -1679,6 +1680,212 @@ class ApiService {
     } catch (e) {
       print('🔐 [API SignedURL] ❌ ИСКЛЮЧЕНИЕ: $e');
       throw Exception('Failed to get signed URL: $e');
+    }
+  }
+
+  /// Загрузить фото или видео для сообщения
+  Future<Map<String, dynamic>> uploadChatMedia({
+    required String chatId,
+    required String filePath,
+    required String messageType, // 'image' or 'video'
+  }) async {
+    try {
+      print('📤 [API Upload] Начало загрузки медиа для сообщения');
+      print('📤 [API Upload] ChatId: $chatId');
+      print('📤 [API Upload] MessageType: $messageType');
+      print('📤 [API Upload] Путь к файлу: $filePath');
+      
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/messages/chats/$chatId/upload'),
+      );
+      
+      request.headers['Authorization'] = 'Bearer $_accessToken';
+      request.fields['messageType'] = messageType;
+      
+      // Определяем content type
+      String? contentType;
+      String fileName;
+      if (filePath.startsWith('blob:')) {
+        // Для веба - получаем данные из blob URL
+        final blobResponse = await http.get(Uri.parse(filePath));
+        final bytes = blobResponse.bodyBytes;
+        
+        // Определяем тип по первым байтам или расширению
+        if (messageType == 'image') {
+          contentType = 'image/jpeg';
+          fileName = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        } else {
+          contentType = 'video/mp4';
+          fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        }
+        
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ));
+      } else {
+        // Для мобильных - используем fromPath
+        final extension = filePath.split('.').last.toLowerCase();
+        
+        if (messageType == 'image') {
+          if (extension == 'png') {
+            contentType = 'image/png';
+          } else if (extension == 'gif') {
+            contentType = 'image/gif';
+          } else {
+            contentType = 'image/jpeg';
+          }
+          fileName = 'image_${DateTime.now().millisecondsSinceEpoch}.$extension';
+        } else {
+          if (extension == 'mov') {
+            contentType = 'video/quicktime';
+          } else if (extension == 'webm') {
+            contentType = 'video/webm';
+          } else {
+            contentType = 'video/mp4';
+          }
+          fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.$extension';
+        }
+        
+        request.files.add(await http.MultipartFile.fromPath(
+          'file',
+          filePath,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ));
+      }
+
+      print('📤 [API Upload] Отправка multipart запроса...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📤 [API Upload] Статус ответа: ${response.statusCode}');
+      print('📤 [API Upload] Тело ответа: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        print('📤 [API Upload] ✅ Загрузка успешна!');
+        print('📤 [API Upload] MediaUrl: ${data['mediaUrl']}');
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        print('📤 [API Upload] ❌ ОШИБКА загрузки: ${error['error'] ?? 'Unknown error'}');
+        throw Exception(error['error'] ?? 'Failed to upload media');
+      }
+    } catch (e) {
+      print('📤 [API Upload] ❌ ИСКЛЮЧЕНИЕ при загрузке: $e');
+      throw Exception('Failed to upload media: $e');
+    }
+  }
+
+  /// Отправить фото сообщение
+  Future<Message> sendImageMessage({
+    required String chatId,
+    required String mediaUrl,
+  }) async {
+    try {
+      print('📷 [API Send] Отправка фото сообщения');
+      print('📷 [API Send] ChatId: $chatId');
+      print('📷 [API Send] MediaUrl: $mediaUrl');
+      
+      final requestBody = {
+        'messageType': 'image',
+        'mediaUrl': mediaUrl,
+      };
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/messages/chats/$chatId/messages'),
+        headers: _headers,
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final message = Message.fromJson(data['message']);
+        print('📷 [API Send] ✅ Фото сообщение отправлено успешно!');
+        return message;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to send image message');
+      }
+    } catch (e) {
+      print('📷 [API Send] ❌ ИСКЛЮЧЕНИЕ при отправке: $e');
+      throw Exception('Failed to send image message: $e');
+    }
+  }
+
+  /// Отправить видео сообщение (не Shorts, обычное видео)
+  Future<Message> sendVideoChatMessage({
+    required String chatId,
+    required String mediaUrl,
+    int? duration,
+    int? size,
+  }) async {
+    try {
+      print('🎥 [API Send] Отправка видео сообщения');
+      print('🎥 [API Send] ChatId: $chatId');
+      print('🎥 [API Send] MediaUrl: $mediaUrl');
+      
+      final requestBody = {
+        'messageType': 'video',
+        'mediaUrl': mediaUrl,
+        if (duration != null) 'mediaDuration': duration,
+        if (size != null) 'mediaSize': size,
+      };
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/messages/chats/$chatId/messages'),
+        headers: _headers,
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final message = Message.fromJson(data['message']);
+        print('🎥 [API Send] ✅ Видео сообщение отправлено успешно!');
+        return message;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to send video message');
+      }
+    } catch (e) {
+      print('🎥 [API Send] ❌ ИСКЛЮЧЕНИЕ при отправке: $e');
+      throw Exception('Failed to send video message: $e');
+    }
+  }
+
+  /// Переключить лайк на сообщении
+  Future<Message> toggleMessageLike(String chatId, String messageId) async {
+    try {
+      print('❤️ [API Like] Переключение лайка на сообщении');
+      print('❤️ [API Like] ChatId: $chatId');
+      print('❤️ [API Like] MessageId: $messageId');
+      
+      final response = await http.put(
+        Uri.parse('$baseUrl/messages/chats/$chatId/messages/$messageId/like'),
+        headers: _headers,
+      );
+
+      print('❤️ [API Like] Статус ответа: ${response.statusCode}');
+      print('❤️ [API Like] Тело ответа: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final message = Message.fromJson(data['message']);
+        print('❤️ [API Like] ✅ Лайк переключен успешно!');
+        print('❤️ [API Like] isLiked: ${message.isLiked}');
+        return message;
+      } else {
+        final error = jsonDecode(response.body);
+        print('❤️ [API Like] ❌ ОШИБКА: ${error['error'] ?? 'Unknown error'}');
+        throw Exception(error['error'] ?? 'Failed to toggle message like');
+      }
+    } catch (e) {
+      print('❤️ [API Like] ❌ ИСКЛЮЧЕНИЕ: $e');
+      throw Exception('Failed to toggle message like: $e');
     }
   }
 
