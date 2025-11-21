@@ -13,6 +13,8 @@ import '../widgets/post_grid_widget.dart';
 import '../widgets/profile_menu_sheet.dart';
 import '../widgets/profile_skeleton.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../widgets/website_link_widget.dart';
+import '../widgets/add_website_dialog.dart';
 import '../models/user.dart';
 import 'edit_profile_screen.dart';
 import 'followers_list_screen.dart';
@@ -851,7 +853,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 ),
 
                 // Bio Section (if exists) - в карточке как статистика
-                if (user.bio != null && user.bio!.isNotEmpty)
+                if (user.bio != null && user.bio!.isNotEmpty || 
+                    user.websiteUrl != null && user.websiteUrl!.isNotEmpty ||
+                    (widget.userId == null || widget.userId == context.read<AuthProvider>().currentUser?.id))
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Container(
@@ -872,16 +876,55 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           ),
                         ],
                       ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          user.bio!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (user.bio != null && user.bio!.isNotEmpty)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                user.bio!,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
+                                textAlign: TextAlign.left,
+                              ),
+                            ),
+                          if (user.bio != null && user.bio!.isNotEmpty && 
+                              (user.websiteUrl != null && user.websiteUrl!.isNotEmpty ||
+                               widget.userId == null || widget.userId == context.read<AuthProvider>().currentUser?.id))
+                            const SizedBox(height: 12),
+                          Builder(
+                            builder: (context) {
+                              final authProvider = context.read<AuthProvider>();
+                              final isOwnProfile = widget.userId == null || widget.userId == authProvider.currentUser?.id;
+                              return WebsiteLinkWidget(
+                                websiteUrl: user.websiteUrl,
+                                isOwnProfile: isOwnProfile,
+                                onEdit: isOwnProfile ? () async {
+                                  final result = await showDialog<String>(
+                                    context: context,
+                                    builder: (context) => AddWebsiteDialog(
+                                      initialUrl: user.websiteUrl,
+                                    ),
+                                  );
+                                  
+                                  if (result != null && mounted) {
+                                    final authProvider = context.read<AuthProvider>();
+                                    final success = await authProvider.updateProfile(
+                                      websiteUrl: result.isEmpty ? null : result,
+                                    );
+                                    
+                                    if (success && mounted) {
+                                      await authProvider.refreshProfile();
+                                    }
+                                  }
+                                } : null,
+                              );
+                            },
                           ),
-                          textAlign: TextAlign.left,
-                        ),
+                        ],
                       ),
                     ),
                   ),

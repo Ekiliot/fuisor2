@@ -582,6 +582,7 @@ class ApiService {
     String? name,
     String? username,
     String? bio,
+    String? websiteUrl,
     Uint8List? avatarBytes,
     String? avatarFileName,
   }) async {
@@ -597,7 +598,8 @@ class ApiService {
       // Add text fields
       if (name != null && name.isNotEmpty) request.fields['name'] = name;
       if (username != null && username.isNotEmpty) request.fields['username'] = username;
-      if (bio != null && bio.isNotEmpty) request.fields['bio'] = bio;
+      if (bio != null) request.fields['bio'] = bio; // Allow empty bio
+      if (websiteUrl != null) request.fields['website_url'] = websiteUrl; // Allow empty website_url
 
       // Add avatar file if provided
       if (avatarBytes != null && avatarFileName != null) {

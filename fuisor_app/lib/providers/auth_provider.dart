@@ -246,6 +246,7 @@ class AuthProvider extends ChangeNotifier {
     String? name,
     String? username,
     String? bio,
+    String? websiteUrl,
     Uint8List? avatarBytes,
     String? avatarFileName,
   }) async {
@@ -257,6 +258,7 @@ class AuthProvider extends ChangeNotifier {
         name: name,
         username: username,
         bio: bio,
+        websiteUrl: websiteUrl,
         avatarBytes: avatarBytes,
         avatarFileName: avatarFileName,
       );

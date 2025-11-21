@@ -5,6 +5,7 @@ class User {
   final String email;
   final String? avatarUrl;
   final String? bio;
+  final String? websiteUrl;
   final int followersCount;
   final int followingCount;
   final int postsCount;
@@ -17,6 +18,7 @@ class User {
     required this.email,
     this.avatarUrl,
     this.bio,
+    this.websiteUrl,
     required this.followersCount,
     required this.followingCount,
     required this.postsCount,
@@ -31,6 +33,7 @@ class User {
       email: json['email'] ?? '', // Email может отсутствовать для некоторых запросов
       avatarUrl: json['avatar_url'],
       bio: json['bio'],
+      websiteUrl: json['website_url'],
       followersCount: json['followers_count'] ?? 0,
       followingCount: json['following_count'] ?? 0,
       postsCount: json['posts_count'] ?? 0,
@@ -49,6 +52,7 @@ class User {
       email: '', // Email не требуется для профилей
       avatarUrl: json['avatar_url'],
       bio: json['bio'],
+      websiteUrl: json['website_url'],
       followersCount: 0, // Могут отсутствовать для участников чата
       followingCount: 0,
       postsCount: 0,
@@ -66,6 +70,7 @@ class User {
       'email': email,
       'avatar_url': avatarUrl,
       'bio': bio,
+      'website_url': websiteUrl,
       'followers_count': followersCount,
       'following_count': followingCount,
       'posts_count': postsCount,
