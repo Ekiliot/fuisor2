@@ -1686,12 +1686,15 @@ class ApiService {
   }
 
   /// Получить signed URL для приватного медиа файла поста
-  Future<String> getPostMediaSignedUrl({
+  /// Получить signed URL для приватного медиа файла поста
+  /// Возвращает Map с signedUrl и postId
+  Future<Map<String, String?>> getPostMediaSignedUrl({
     required String mediaPath,
+    String? postId, // Добавляем опциональный postId
   }) async {
     try {
       print('🔐 [API Post SignedURL] Запрос signed URL для медиа поста');
-      print('🔐 [API Post SignedURL] MediaPath: $mediaPath');
+      print('🔐 [API Post SignedURL] MediaPath: $mediaPath, PostId: $postId');
       
       // Извлекаем имя файла из полного URL или пути
       String fileName;
@@ -1708,7 +1711,12 @@ class ApiService {
       print('🔐 [API Post SignedURL] Извлеченное имя файла: $fileName');
       
       final encodedPath = Uri.encodeQueryComponent(fileName);
-      final url = '$baseUrl/posts/media/signed-url?path=$encodedPath';
+      String url = '$baseUrl/posts/media/signed-url?path=$encodedPath';
+      
+      // Добавляем postId если передан
+      if (postId != null) {
+        url += '&postId=${Uri.encodeQueryComponent(postId)}';
+      }
       
       print('🔐 [API Post SignedURL] URL запроса: $url');
       
@@ -1723,7 +1731,10 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('🔐 [API Post SignedURL] ✅ Signed URL получен успешно');
-        return data['signedUrl'];
+        return {
+          'signedUrl': data['signedUrl'],
+          'postId': data['postId'] ?? postId ?? '', // Возвращаем postId из ответа или используем переданный
+        };
       } else {
         final error = jsonDecode(response.body);
         print('🔐 [API Post SignedURL] ❌ ОШИБКА: ${error['error'] ?? 'Unknown error'}');

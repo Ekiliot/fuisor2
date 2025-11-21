@@ -268,12 +268,13 @@ router.post('/upload-thumbnail', validateAuth, upload.single('thumbnail'), async
 // Получить signed URL для приватного медиа файла поста
 router.get('/media/signed-url', validateAuth, async (req, res) => {
   try {
-    const { path } = req.query;
+    const { path, postId } = req.query; // Добавляем postId как опциональный параметр
     const userId = req.user.id;
     
     logger.post('Get signed URL request', {
       userId,
       path,
+      postId,
     });
 
     if (!path) {
@@ -300,10 +301,15 @@ router.get('/media/signed-url', validateAuth, async (req, res) => {
 
     logger.post('Signed URL created successfully', {
       path,
+      postId,
       hasSignedUrl: !!data?.signedUrl,
     });
 
-    res.json({ signedUrl: data.signedUrl });
+    // Возвращаем signedUrl и postId (если передан)
+    res.json({ 
+      signedUrl: data.signedUrl,
+      postId: postId || null // Возвращаем postId если был передан
+    });
   } catch (error) {
     logger.postError('Error in GET /api/posts/media/signed-url', error);
     res.status(500).json({ error: error.message });
