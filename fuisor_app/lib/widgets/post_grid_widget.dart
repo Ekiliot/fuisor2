@@ -3,7 +3,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../models/user.dart';
 import '../screens/post_detail_screen.dart';
-import 'video_thumbnail.dart';
 
 class PostGridWidget extends StatelessWidget {
   final List<Post> posts;
@@ -114,9 +113,40 @@ class PostGridWidget extends StatelessWidget {
                       children: [
                         // Post image/video
                         if (post.mediaType == 'video')
-                          VideoThumbnail(
-                            videoUrl: post.mediaUrl,
+                          // Используем thumbnailUrl для видео, как в post_card.dart
+                          post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: post.thumbnailUrl!,
                             fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    color: Colors.grey[800],
+                                    child: const Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFF0095F6),
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    color: Colors.grey[800],
+                                    child: const Center(
+                                      child: Icon(
+                                        EvaIcons.videoOutline,
+                                        color: Colors.grey,
+                                        size: 32,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.grey[800],
+                                  child: const Center(
+                                    child: Icon(
+                                      EvaIcons.videoOutline,
+                                      color: Colors.grey,
+                                      size: 32,
+                                    ),
+                                  ),
                           )
                         else
                           CachedNetworkImage(

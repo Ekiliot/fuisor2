@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 
@@ -44,12 +45,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Settings',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: const AnimatedAppBarTitle(
+          text: 'Settings',
         ),
         centerTitle: true,
       ),

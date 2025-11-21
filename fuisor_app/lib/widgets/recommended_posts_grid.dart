@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/user.dart';
-import 'video_thumbnail.dart';
+import '../screens/comments_screen.dart';
+import '../screens/main_screen.dart';
 
 class RecommendedPostsGrid extends StatelessWidget {
   final List<Post> posts;
@@ -46,13 +48,11 @@ class RecommendedPostsGrid extends StatelessWidget {
             ),
             itemCount: 6,
             itemBuilder: (context, index) {
-              return Container(
+              return Shimmer.fromColors(
+                baseColor: Colors.grey[800]!,
+                highlightColor: Colors.grey[700]!,
+                child: Container(
                 color: Colors.grey[800],
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF0095F6),
-                    strokeWidth: 2,
-                  ),
                 ),
               );
             },
@@ -119,8 +119,24 @@ class RecommendedPostsGrid extends StatelessWidget {
           final post = posts[index];
           return GestureDetector(
             onTap: () {
-              // TODO: Navigate to post detail
-              print('Tapped on recommended post: ${post.id}');
+              // Видео открываются в Shorts, фото в CommentsScreen
+              if (post.mediaType == 'video') {
+                // Навигация к Shorts с этим видео
+                final mainScreenState = context.findAncestorStateOfType<MainScreenState>();
+                if (mainScreenState != null) {
+                  mainScreenState.switchToShortsWithPost(post);
+                }
+              } else {
+                // Навигация к CommentsScreen для фото
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => CommentsScreen(
+                      postId: post.id,
+                      post: post,
+                    ),
+                  ),
+                );
+              }
             },
             child: Container(
               color: Colors.grey[800],
@@ -129,9 +145,40 @@ class RecommendedPostsGrid extends StatelessWidget {
                 children: [
                   // Post image/video
                   if (post.mediaType == 'video')
-                    VideoThumbnail(
-                      videoUrl: post.mediaUrl,
+                    // Используем thumbnailUrl для видео, как в post_card.dart
+                    post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: post.thumbnailUrl!,
                       fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: Colors.grey[800],
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF0095F6),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey[800],
+                              child: const Center(
+                                child: Icon(
+                                  EvaIcons.videoOutline,
+                                  color: Colors.grey,
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: Colors.grey[800],
+                            child: const Center(
+                              child: Icon(
+                                EvaIcons.videoOutline,
+                                color: Colors.grey,
+                                size: 32,
+                              ),
+                            ),
                     )
                   else
                     CachedNetworkImage(

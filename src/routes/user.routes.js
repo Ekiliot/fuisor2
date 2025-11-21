@@ -492,6 +492,101 @@ router.get('/me/saved', validateAuth, async (req, res) => {
   }
 });
 
+// Get liked posts
+router.get('/me/liked', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20 } = req.query;
+    const from = (page - 1) * limit;
+    const to = from + parseInt(limit) - 1;
+
+    // Get liked posts with post details
+    const { data: likedPosts, error: likedError } = await supabaseAdmin
+      .from('likes')
+      .select(`
+        post_id,
+        created_at,
+        posts:post_id (
+          id,
+          user_id,
+          caption,
+          media_url,
+          media_type,
+          thumbnail_url,
+          created_at,
+          updated_at,
+          profiles:user_id (
+            id,
+            username,
+            name,
+            avatar_url
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (likedError) throw likedError;
+
+    // Get counts for each post
+    const postsWithCounts = await Promise.all(
+      (likedPosts || []).map(async (likedPost) => {
+        const post = likedPost.posts;
+        if (!post) return null;
+
+        // Get likes count
+        const { count: likesCount } = await supabaseAdmin
+          .from('likes')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', post.id);
+
+        // Get comments count
+        const { count: commentsCount } = await supabaseAdmin
+          .from('comments')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', post.id)
+          .is('parent_comment_id', null);
+
+        // Check if current user saved this post
+        const { data: userSave } = await supabaseAdmin
+          .from('saved_posts')
+          .select('id')
+          .eq('post_id', post.id)
+          .eq('user_id', userId)
+          .single();
+
+        return {
+          ...post,
+          likesCount: likesCount || 0,
+          commentsCount: commentsCount || 0,
+          isLiked: true, // Always true since these are liked posts
+          isSaved: !!userSave,
+        };
+      })
+    );
+
+    // Filter out nulls and get total count
+    const filteredPosts = postsWithCounts.filter(p => p !== null);
+
+    const { count } = await supabaseAdmin
+      .from('likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    res.json({
+      posts: filteredPosts,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total: count || 0,
+      totalPages: Math.ceil((count || 0) / limit)
+    });
+  } catch (error) {
+    console.error('Error getting liked posts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==============================================
 // Обновить статус онлайн (heartbeat)
 // ==============================================

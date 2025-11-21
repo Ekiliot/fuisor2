@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import '../providers/auth_provider.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
-import '../widgets/safe_avatar.dart';
+import 'dart:ui';
 import '../widgets/post_grid_widget.dart';
 import '../widgets/profile_menu_sheet.dart';
+import '../widgets/profile_skeleton.dart';
+import '../widgets/animated_app_bar_title.dart';
 import '../models/user.dart';
 import 'edit_profile_screen.dart';
 import 'followers_list_screen.dart';
 import 'saved_posts_screen.dart';
+import 'liked_posts_screen.dart';
 import 'chat_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -36,11 +39,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   bool _isCheckingFollowStatus = false;
   late TabController _tabController;
   double? _savedScrollPosition; // Сохранение позиции скролла при refresh
+  String? _previousUserId; // Для отслеживания изменения userId
+  bool _isSwitchingProfile = false; // Флаг переключения между профилями
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _previousUserId = widget.userId; // Сохраняем начальный userId
     // Загружаем посты пользователя при инициализации
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Ждем инициализации AuthProvider
@@ -138,6 +144,73 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         }
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Если userId изменился, показываем скелетон и перезагружаем данные
+    if (oldWidget.userId != widget.userId) {
+      _handleUserIdChange();
+    }
+  }
+
+  void _handleUserIdChange() async {
+    // Показываем скелетон при переключении профилей
+    setState(() {
+      _isSwitchingProfile = true;
+      _viewingUser = null; // Очищаем данные предыдущего пользователя
+      _previousUserId = widget.userId;
+    });
+
+    // Ждем небольшую задержку для плавной анимации
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Загружаем данные нового профиля
+    await _waitForAuthProvider();
+    
+    final authProvider = context.read<AuthProvider>();
+    final postsProvider = context.read<PostsProvider>();
+    
+    final providedUserId = (widget.userId != null && widget.userId!.isNotEmpty) 
+        ? widget.userId 
+        : null;
+    final targetUserId = providedUserId ?? authProvider.currentUser?.id;
+    
+    if (targetUserId != null && targetUserId.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      final futures = <Future>[];
+      
+      // Load the user's profile if viewing another user
+      if (providedUserId != null && providedUserId != authProvider.currentUser?.id) {
+        if (!_isLoadingUserData) {
+          _isLoadingUserData = true;
+          setState(() {
+            _isLoadingUser = true;
+          });
+          
+          futures.add(_loadUserData(providedUserId));
+        }
+      }
+      
+      // Загружаем посты параллельно с данными пользователя
+      futures.add(postsProvider.loadUserPosts(
+        userId: targetUserId,
+        refresh: true,
+        accessToken: accessToken,
+      ));
+      
+      // Ждем завершения всех загрузок
+      await Future.wait(futures);
+    }
+    
+    if (mounted) {
+      setState(() {
+        _isSwitchingProfile = false;
+      });
+    }
   }
 
   // Загрузить данные пользователя
@@ -466,23 +539,75 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF000000),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: RepaintBoundary(
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         leading: widget.userId != null
             ? IconButton(
                 icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               )
             : null,
-        title: Consumer<AuthProvider>(
-          builder: (context, authProvider, child) {
-            final displayUser = _viewingUser ?? authProvider.currentUser;
-            return Text(
-              '@${displayUser?.username ?? 'Profile'}',
-              style: GoogleFonts.delaGothicOne(
-                fontSize: 24,
-                color: Colors.white,
-              ),
+        title: Builder(
+          builder: (context) {
+            final currentUser = context.watch<AuthProvider>().currentUser;
+            // Определяем, открыт ли чужой профиль
+            final isViewingOtherUser = widget.userId != null && 
+                                       widget.userId != currentUser?.id;
+            
+            // Если идет переключение профилей, показываем скелетон в заголовке
+            if (_isSwitchingProfile) {
+              return const AnimatedAppBarTitle(
+                text: 'Loading...',
+              );
+            }
+            
+            // Для чужого профиля показываем только _viewingUser
+            if (isViewingOtherUser) {
+              if (_viewingUser != null) {
+                final displayText = _viewingUser!.name.isNotEmpty
+                    ? '@${_viewingUser!.username} • ${_viewingUser!.name}'
+                    : '@${_viewingUser!.username}';
+                return AnimatedAppBarTitle(
+                  text: displayText,
+                );
+              } else {
+                // Показываем скелетон, если данные еще не загружены
+                return const AnimatedAppBarTitle(
+                  text: 'Loading...',
+                );
+              }
+            }
+            
+            // Для своего профиля показываем currentUser
+            if (currentUser != null) {
+              final displayText = currentUser.name.isNotEmpty
+                  ? '@${currentUser.username} • ${currentUser.name}'
+                  : '@${currentUser.username}';
+              return AnimatedAppBarTitle(
+                text: displayText,
+              );
+            }
+            
+            return const AnimatedAppBarTitle(
+              text: 'Profile',
             );
           },
         ),
@@ -522,25 +647,18 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           // Если открыт чужой профиль, НЕ показываем данные текущего пользователя
           // Показываем только данные чужого пользователя или скелетон
           User? user;
-          if (isViewingOtherUser) {
+          bool shouldShowSkeleton = false;
+          
+          // Если идет переключение между профилями, всегда показываем скелетон
+          if (_isSwitchingProfile) {
+            shouldShowSkeleton = true;
+          } else if (isViewingOtherUser) {
             // Для чужого профиля показываем только _viewingUser, не currentUser
             user = _viewingUser;
             
             // Если данные еще не загружены, показываем скелетон
-            if (user == null && _isLoadingUser) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
-            
-            // Если данные не загружены и загрузка не идет, показываем ошибку
             if (user == null) {
-              return const Center(
-                child: Text(
-                  'User not found',
-                  style: TextStyle(color: Colors.white),
-                ),
-              );
+              shouldShowSkeleton = true;
             }
           } else {
             // Для своего профиля показываем currentUser
@@ -556,7 +674,49 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             }
           }
 
-          return SmartRefresher(
+          // Показываем скелетон с анимацией
+          if (shouldShowSkeleton) {
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: child,
+                );
+              },
+              child: const ProfileSkeleton(key: ValueKey('skeleton')),
+            );
+          }
+
+          // Проверяем, что user не null перед использованием
+            if (user == null) {
+              return const Center(
+                child: Text(
+                'User not found',
+                  style: TextStyle(color: Colors.white),
+                ),
+              );
+            }
+
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.0, 0.05),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOut,
+                  )),
+                  child: child,
+                ),
+              );
+            },
+            child: SmartRefresher(
+              key: ValueKey('profile_${user.id}'), // Ключ для перезапуска анимации при смене пользователя
             controller: _refreshController,
             onRefresh: _onRefresh,
             enablePullDown: true,
@@ -581,84 +741,80 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 // Profile Header
                 Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Name and Profile Picture Row
-                      Row(
-                        children: [
-                          // Profile Picture with loading indicator
-                          Stack(
-                            children: [
-                              SafeAvatar(
-                                imageUrl: user.avatarUrl,
-                                radius: 40,
-                                backgroundColor: const Color(0xFF262626),
-                                fallbackIcon: EvaIcons.personOutline,
-                                iconColor: Colors.white,
-                              ),
-                              if (_isLoadingUser)
-                                Positioned.fill(
-                                  child: Container(
+                      // Square Avatar (80x80) on the left
+                      Container(
+                        width: 80,
+                        height: 80,
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.5),
-                                      shape: BoxShape.circle,
-                                    ),
+                          borderRadius: BorderRadius.circular(12),
+                          color: const Color(0xFF262626),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: user.avatarUrl!,
+                                  width: 80,
+                                  height: 80,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: const Color(0xFF262626),
                                     child: const Center(
-                                      child: SizedBox(
-                                        width: 20,
-                                        height: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        color: Color(0xFF0095F6),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(width: 20),
-                          // Name next to profile picture
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 18,
+                                  errorWidget: (context, url, error) => const Icon(
+                                    EvaIcons.personOutline,
                                     color: Colors.white,
+                                    size: 40,
+                                  ),
+                                )
+                              : const Icon(
+                                  EvaIcons.personOutline,
+                                    color: Colors.white,
+                                  size: 40,
                                   ),
                                 ),
-                                if (_isLoadingUser)
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 4),
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0095F6)),
-                                      ),
-                                    ),
+                      ),
+                      const SizedBox(width: 16),
+                      // Stats card on the right, same height as avatar, centered vertically
+                      Expanded(
+                        child: Container(
+                          height: 80, // Same height as avatar
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A1A),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFF262626),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 10,
+                                spreadRadius: 1,
                                   ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Stats Row
-                      Row(
+                          child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          _buildStatColumn('Posts', user.postsCount),
-                          _buildStatColumn(
+                              _buildAnimatedStatColumn('Posts', user.postsCount),
+                              _buildAnimatedStatColumn(
                             'Followers',
                             user.followersCount,
                             onTap: () {
-                              final userId = user!.id; // user гарантированно не null здесь
+                                  final userId = user!.id;
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (context) => FollowersListScreen(
@@ -670,11 +826,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               );
                             },
                           ),
-                          _buildStatColumn(
+                              _buildAnimatedStatColumn(
                             'Following',
                             user.followingCount,
                             onTap: () {
-                              final userId = user!.id; // user гарантированно не null здесь
+                                  final userId = user!.id;
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (context) => FollowersListScreen(
@@ -687,20 +843,45 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             },
                           ),
                         ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
 
-                // Bio Section (if exists)
+                // Bio Section (if exists) - в карточке как статистика
                 if (user.bio != null && user.bio!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      user.bio!,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF262626),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          user.bio!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
                       ),
                     ),
                   ),
@@ -837,26 +1018,125 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
                 const SizedBox(height: 20),
 
-                // Tabs (only for own profile)
+                // Tabs (only for own profile) - стиль как в камере (person/people)
                 Builder(
                   builder: (context) {
                     final authProvider = context.read<AuthProvider>();
                     if (widget.userId == null || widget.userId == authProvider.currentUser?.id) {
                       return Column(
                         children: [
-                          TabBar(
-                            controller: _tabController,
-                            indicatorColor: Colors.white,
-                            labelColor: Colors.white,
-                            unselectedLabelColor: Colors.grey,
-                            tabs: const [
-                              Tab(
-                                icon: Icon(EvaIcons.gridOutline),
-                              ),
-                              Tab(
-                                icon: Icon(EvaIcons.bookmarkOutline),
-                              ),
-                            ],
+                          AnimatedBuilder(
+                            animation: _tabController,
+                            builder: (context, child) {
+                              return Center(
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1A1A1A),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.2),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Posts Tab (person style)
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (_tabController.index != 0) {
+                                            _tabController.animateTo(0);
+                                          }
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: _tabController.index == 0
+                                                ? Colors.white.withOpacity(0.2)
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(25),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                EvaIcons.gridOutline,
+                                                color: _tabController.index == 0
+                                                    ? Colors.white
+                                                    : Colors.white.withOpacity(0.6),
+                                                size: 20,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      // Saved Posts Tab (people style)
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (_tabController.index != 1) {
+                                            _tabController.animateTo(1);
+                                          }
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: _tabController.index == 1
+                                                ? Colors.white.withOpacity(0.2)
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(25),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                EvaIcons.bookmarkOutline,
+                                                color: _tabController.index == 1
+                                                    ? Colors.white
+                                                    : Colors.white.withOpacity(0.6),
+                                                size: 20,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      // Liked Posts Tab
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (_tabController.index != 2) {
+                                            _tabController.animateTo(2);
+                                          }
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                          decoration: BoxDecoration(
+                                            color: _tabController.index == 2
+                                                ? Colors.white.withOpacity(0.2)
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(25),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                EvaIcons.heartOutline,
+                                                color: _tabController.index == 2
+                                                    ? Colors.white
+                                                    : Colors.white.withOpacity(0.6),
+                                                size: 20,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 20),
                         ],
@@ -922,6 +1202,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             ),
                             // Saved Posts Tab
                             const SavedPostsScreen(),
+                            // Liked Posts Tab
+                            const LikedPostsScreen(),
                           ],
                         ),
                       );
@@ -974,28 +1256,40 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               ],
             ),
             ),
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildStatColumn(String label, int count, {VoidCallback? onTap}) {
+  Widget _buildAnimatedStatColumn(String label, int count, {VoidCallback? onTap}) {
     final column = Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          count.toString(),
+        TweenAnimationBuilder<int>(
+          tween: IntTween(begin: 0, end: count),
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeOut,
+          builder: (context, value, child) {
+            return Text(
+              value.toString(),
           style: const TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 18,
+                fontSize: 16,
             color: Colors.white,
+                height: 1.2,
           ),
+            );
+          },
         ),
+        const SizedBox(height: 2),
         Text(
           label,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 12,
             color: Color(0xFF8E8E8E),
+            height: 1.2,
           ),
         ),
       ],
@@ -1004,7 +1298,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (onTap != null) {
       return InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: column,
+        ),
       );
     }
 

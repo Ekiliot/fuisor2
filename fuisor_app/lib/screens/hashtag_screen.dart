@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'hashtag_feed_screen.dart';
 
 class HashtagScreen extends StatefulWidget {
@@ -110,12 +111,8 @@ class _HashtagScreenState extends State<HashtagScreen> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          '#${widget.hashtag}',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: AnimatedAppBarTitle(
+          text: '#${widget.hashtag}',
         ),
         centerTitle: true,
       ),

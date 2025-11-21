@@ -351,6 +351,25 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getLikedPosts({int page = 1, int limit = 20}) async {
+    try {
+      final url = '$baseUrl/users/me/liked?page=$page&limit=$limit';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to load liked posts');
+      }
+    } catch (e) {
+      throw Exception('Failed to load liked posts: $e');
+    }
+  }
+
   // Comment likes endpoints
   Future<Map<String, dynamic>> likeComment(String postId, String commentId) async {
     final response = await http.post(

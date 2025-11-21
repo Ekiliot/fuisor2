@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
@@ -13,6 +12,7 @@ import '../widgets/post_card.dart';
 import '../widgets/stories_widget.dart';
 import '../widgets/geo_posts_widget.dart';
 import '../widgets/skeleton_post_card.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
 import 'camera_screen.dart';
@@ -408,12 +408,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
           ),
         ),
-        title: Text(
-          'Fuișor',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: const AnimatedAppBarTitle(
+          text: 'Fuișor',
         ),
         actions: [
           // Geo button
@@ -524,8 +520,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final isRefreshing = data['isRefreshing'] as bool;
           final error = data['error'] as String?;
           
-          // Показываем скелетон только при ПЕРВОЙ загрузке И пустом списке
-          if (isInitialLoading && feedPosts.isEmpty) {
+          // Показываем скелетон пока идет загрузка (первая загрузка или обычная загрузка при пустом списке)
+          if ((isInitialLoading || isLoading) && feedPosts.isEmpty) {
             return ListView.builder(
               itemCount: 4, // Показываем Stories, GeoPosts и 2 скелетона
               itemBuilder: (context, index) {
@@ -542,7 +538,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // При ошибке показываем пустой экран с инструкцией pull-to-refresh
           // Только если не идет загрузка и список пустой
-          if (error != null && feedPosts.isEmpty && !isLoading && !isRefreshing) {
+          if (error != null && feedPosts.isEmpty && !isLoading && !isRefreshing && !isInitialLoading) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -576,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
 
           // Пустой список (только если не идет загрузка)
-          if (feedPosts.isEmpty && !isLoading && !isRefreshing) {
+          if (feedPosts.isEmpty && !isLoading && !isRefreshing && !isInitialLoading) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,

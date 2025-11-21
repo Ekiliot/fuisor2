@@ -20,6 +20,7 @@ class MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   final GlobalKey<ShortsScreenState> _shortsScreenKey = GlobalKey<ShortsScreenState>();
   DateTime? _lastShortsTapTime;
+  DateTime? _lastSearchTapTime;
   static const _doubleTapDelay = Duration(milliseconds: 300);
   
   // Метод для переключения на Shorts с конкретным постом
@@ -104,7 +105,22 @@ class MainScreenState extends State<MainScreen> {
               return;
             }
 
-            if (index == 2) {
+            if (index == 1) {
+              // Кнопка поиска - проверяем двойное нажатие
+              final now = DateTime.now();
+              if (_lastSearchTapTime != null &&
+                  now.difference(_lastSearchTapTime!) < _doubleTapDelay &&
+                  _currentIndex == 1) {
+                // Двойное нажатие на уже открытом экране поиска - ничего не делаем
+                return;
+              } else {
+                // Обычное нажатие - переключаемся на поиск
+                setState(() {
+                  _currentIndex = index;
+                });
+              }
+              _lastSearchTapTime = now;
+            } else if (index == 2) {
               // Кнопка создания поста - открываем MediaSelectionScreen
               Navigator.of(context).push(
                 MaterialPageRoute(

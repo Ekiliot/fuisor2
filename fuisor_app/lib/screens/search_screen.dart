@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/posts_provider.dart';
@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import '../models/user.dart';
 import '../widgets/recommended_posts_grid.dart';
 import '../widgets/safe_avatar.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'profile_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -145,14 +146,28 @@ class _SearchScreenState extends State<SearchScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF000000),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          'Search',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
+        flexibleSpace: RepaintBoundary(
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
+        ),
+        title: const AnimatedAppBarTitle(
+          text: 'Search',
         ),
       ),
       body: Column(

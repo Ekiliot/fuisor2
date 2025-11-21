@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../widgets/safe_avatar.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'profile_screen.dart';
 
 class FollowersListScreen extends StatefulWidget {
@@ -208,12 +209,8 @@ class _FollowersListScreenState extends State<FollowersListScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: Text(
-          widget.title,
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: AnimatedAppBarTitle(
+          text: widget.title,
         ),
         leading: IconButton(
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),

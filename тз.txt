@@ -1,44 +1,325 @@
-Проверяю статус git и настройки удаленного репозитория перед отправкой изменений:
+Изучаю текущий UI профиля, экрана сообщений и главной страницы, чтобы предложить улучшения:
 
 
-[2 tools called]
+[4 tools called]
 
 
-Добавляю изменения, создаю коммит и отправляю в `backend` (fuisor2):
+Изучаю полный UI профиля:
 
 
-[2 tools called]
+[3 tools called]
 
 
-Создаю коммит с описанием изменений:
+Предложения по улучшению UI профиля в стиле экрана сообщений и главной страницы:
 
+## Предложения по улучшению UI профиля
 
-[2 tools called]
+### 1. Blur AppBar (как в Chat Screen)
+- Добавить blur-эффект в AppBar
+- Показывать аватар в AppBar при скролле
+- Плавное появление/исчезновение элементов
 
+### 2. Улучшенный Header профиля
+- Увеличить аватар (80px вместо 40px)
+- Добавить градиентный border для аватара
+- Показывать онлайн-статус (если доступен)
+- Анимированные счетчики статистики
 
-Проблема с кодировкой в сообщении коммита. Используем английское сообщение и проверяем статус:
+### 3. Современные кнопки действий
+- Градиентные кнопки (как Geo button на Home)
+- Анимации при нажатии
+- Иконки с hover-эффектами
 
+### 4. Улучшенная секция Bio
+- Карточка с закругленными углами
+- Тень и blur-эффект
+- Анимация появления
 
-[2 tools called]
+### 5. Анимированные табы
+- Плавные переходы между табами
+- Индикатор с анимацией
+- Иконки с hover-эффектами
 
+### 6. Улучшенная сетка постов
+- Плавная загрузка постов (fade-in)
+- Hover-эффекты на превью
+- Анимация при нажатии
 
-Создаю коммит с английским сообщением:
+Вот пример кода для улучшений:
 
+```dart
+// 1. Blur AppBar с аватаром
+Widget _buildBlurAppBar() {
+  return SliverAppBar(
+    expandedHeight: 200,
+    floating: false,
+    pinned: true,
+    backgroundColor: Colors.transparent,
+    flexibleSpace: FlexibleSpaceBar(
+      background: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black,
+              Colors.black.withOpacity(0.8),
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Blur background
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(color: Colors.black.withOpacity(0.3)),
+              ),
+            ),
+            // Profile header content
+            _buildProfileHeader(),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
-[2 tools called]
+// 2. Улучшенный аватар с градиентным border
+Widget _buildEnhancedAvatar(String? avatarUrl, {double radius = 40}) {
+  return Container(
+    width: radius * 2,
+    height: radius * 2,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: LinearGradient(
+        colors: [
+          const Color(0xFF0095F6),
+          const Color(0xFF5851DB),
+          const Color(0xFF833AB4),
+        ],
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF0095F6).withOpacity(0.3),
+          blurRadius: 20,
+          spreadRadius: 2,
+        ),
+      ],
+    ),
+    padding: const EdgeInsets.all(3),
+    child: Container(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black,
+      ),
+      child: ClipOval(
+        child: SafeAvatar(
+          imageUrl: avatarUrl,
+          radius: radius - 3,
+          backgroundColor: const Color(0xFF262626),
+          fallbackIcon: EvaIcons.personOutline,
+          iconColor: Colors.white,
+        ),
+      ),
+    ),
+  );
+}
 
+// 3. Анимированные счетчики статистики
+Widget _buildAnimatedStatColumn(String label, int count, {VoidCallback? onTap}) {
+  return TweenAnimationBuilder<int>(
+    tween: IntTween(begin: 0, end: count),
+    duration: const Duration(milliseconds: 800),
+    curve: Curves.easeOut,
+    builder: (context, value, child) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF262626),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                value.toString(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF8E8E8E),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
-Изменения отправлены в репозиторий `ekiliot/fuisor2`.
+// 4. Градиентные кнопки действий
+Widget _buildGradientActionButton({
+  required String text,
+  required VoidCallback onPressed,
+  required IconData icon,
+  bool isPrimary = true,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      gradient: isPrimary
+          ? LinearGradient(
+              colors: [
+                const Color(0xFF0095F6),
+                const Color(0xFF5851DB),
+              ],
+            )
+          : null,
+      boxShadow: isPrimary
+          ? [
+              BoxShadow(
+                color: const Color(0xFF0095F6).withOpacity(0.3),
+                blurRadius: 12,
+                spreadRadius: 1,
+              ),
+            ]
+          : null,
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
 
-**Что было сделано:**
-1. Добавлены все измененные файлы в staging
-2. Создан коммит с описанием исправлений
-3. Изменения отправлены в `backend` (ekiliot/fuisor2)
+// 5. Улучшенная секция Bio
+Widget _buildBioCard(String? bio) {
+  if (bio == null || bio.isEmpty) return const SizedBox.shrink();
+  
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: const Color(0xFF1A1A1A),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: const Color(0xFF262626),
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.3),
+          blurRadius: 10,
+          spreadRadius: 1,
+        ),
+      ],
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          EvaIcons.infoOutline,
+          color: Color(0xFF0095F6),
+          size: 20,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            bio,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
-**Коммит включает:**
-- Остановку видео при свайпе для просмотра профиля
-- Исправление передачи userId при открытии профиля из Shorts
-- Улучшенную обработку пустого userId в ProfileScreen
-- Логирование для отладки свайпа
+// 6. Анимированные табы
+Widget _buildAnimatedTabs() {
+  return Container(
+    decoration: BoxDecoration(
+      color: const Color(0xFF1A1A1A),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: const Color(0xFF262626),
+        width: 1,
+      ),
+    ),
+    margin: const EdgeInsets.symmetric(horizontal: 16),
+    child: TabBar(
+      controller: _tabController,
+      indicator: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF0095F6),
+            const Color(0xFF5851DB),
+          ],
+        ),
+      ),
+      indicatorSize: TabBarIndicatorSize.tab,
+      labelColor: Colors.white,
+      unselectedLabelColor: const Color(0xFF8E8E8E),
+      tabs: const [
+        Tab(
+          icon: Icon(EvaIcons.gridOutline),
+          text: 'Posts',
+        ),
+        Tab(
+          icon: Icon(EvaIcons.bookmarkOutline),
+          text: 'Saved',
+        ),
+      ],
+    ),
+  );
+}
+```
 
-Коммит `1d9417d` успешно отправлен в удаленный репозиторий.
+### Дополнительные улучшения:
+1. Параллакс-эффект при скролле
+2. Анимация появления элементов (staggered animation)
+3. Haptic feedback при взаимодействии
+4. Темная тема с акцентами
+5. Микро-анимации (например, счетчики)
+
+Применить эти улучшения? Могу создать полную версию обновленного `profile_screen.dart` с этими изменениями.

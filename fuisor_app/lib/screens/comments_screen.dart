@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import '../widgets/safe_avatar.dart';
 import '../utils/hashtag_utils.dart';
 import '../widgets/hashtag_text.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'hashtag_screen.dart';
 
 class CommentsScreen extends StatefulWidget {
@@ -273,12 +274,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
           icon: const Icon(EvaIcons.arrowBackOutline, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(
-          'Comments',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: const AnimatedAppBarTitle(
+          text: 'Comments',
         ),
       ),
       body: Column(

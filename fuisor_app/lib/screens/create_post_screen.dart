@@ -15,6 +15,7 @@ import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/supabase_storage_service.dart';
+import '../widgets/animated_app_bar_title.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -494,12 +495,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
-        title: Text(
-          'New Post',
-          style: GoogleFonts.delaGothicOne(
-            fontSize: 24,
-            color: Colors.white,
-          ),
+        title: const AnimatedAppBarTitle(
+          text: 'New Post',
         ),
         leading: IconButton(
           icon: const Icon(EvaIcons.close, color: Colors.white),

@@ -102,7 +102,7 @@ router.post('/upload-media', validateAuth, upload.single('media'), async (req, r
     const allowedMimes = allowedMimeTypes[mediaType];
     if (!allowedMimes || !allowedMimes.includes(file.mimetype)) {
       logger.postError('Invalid MIME type', {
-        userId: req.user.id,
+      userId: req.user.id,
         mediaType,
         mimetype: file.mimetype,
         allowed: allowedMimes
@@ -117,7 +117,7 @@ router.post('/upload-media', validateAuth, upload.single('media'), async (req, r
     const allowedExts = mediaType === 'image' 
       ? ['jpg', 'jpeg', 'png', 'gif', 'webp']
       : ['mp4', 'webm', 'mov', 'avi'];
-      
+
     if (!fileExt || !allowedExts.includes(fileExt)) {
       logger.postError('Invalid file extension', {
         userId: req.user.id,
@@ -245,7 +245,7 @@ router.post('/upload-thumbnail', validateAuth, upload.single('thumbnail'), async
       logger.postError('Error uploading thumbnail to Supabase', uploadError);
       return res.status(500).json({ error: 'Failed to upload thumbnail: ' + uploadError.message });
     }
-
+    
     // Bucket is private, so we return the file path instead of public URL
     // Signed URL will be obtained via API when needed
     const thumbnailPath = uploadData.path || fileName;
