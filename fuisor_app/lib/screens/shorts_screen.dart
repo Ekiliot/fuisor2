@@ -9,6 +9,9 @@ import '../widgets/shorts_video_player.dart';
 import '../widgets/shorts_comments_sheet.dart';
 import '../widgets/share_video_sheet.dart';
 import '../services/api_service.dart';
+import '../services/video_cache_service.dart';
+import '../services/video_preload_queue.dart';
+import '../services/network_speed_detector.dart';
 
 class ShortsScreen extends StatefulWidget {
   const ShortsScreen({super.key});
@@ -28,6 +31,14 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   final Map<int, int> _retryCounts = {}; // Счетчики попыток для retry
   static const int _maxRetries = 3;
   static const Duration _retryDelay = Duration(seconds: 2);
+  
+  // Сервисы для кеширования и предзагрузки
+  final VideoCacheService _videoCacheService = VideoCacheService();
+  final VideoPreloadQueue _preloadQueue = VideoPreloadQueue();
+  final NetworkSpeedDetector _networkSpeedDetector = NetworkSpeedDetector();
+  
+  // Отслеживание просмотренных видео
+  final Set<String> _viewedPostIds = {};
 
   @override
   void initState() {
@@ -38,6 +49,12 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     _tabController.addListener(_onTabChanged);
     // Set initial tab to Recommendations
     _currentTabIndex = 1;
+    
+    // Загружаем очередь непросмотренных видео
+    _loadUnviewedQueue();
+    
+    // Запускаем обработку очереди предзагрузки
+    _processPreloadQueue();
   }
 
   @override
@@ -47,6 +64,10 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     _tabController.dispose();
     _disposeAllControllers();
     _pageController.dispose();
+    
+    // Сохраняем непросмотренные видео перед закрытием
+    _saveUnviewedVideos();
+    
     super.dispose();
   }
 
@@ -301,6 +322,9 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString('access_token');
     
+    // Загружаем непросмотренные видео из очереди
+    final unviewedPosts = await _preloadQueue.loadUnviewedQueue();
+    
     // Загружаем видео для текущей вкладки
     if (_currentTabIndex == 0) {
       if (postsProvider.followingVideoPosts.isEmpty) {
@@ -319,11 +343,41 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
           : postsProvider.videoPosts;
       
       if (videoPosts.isNotEmpty) {
+        // Если есть непросмотренные видео, добавляем их в начало списка
+        List<Post> finalVideoPosts = videoPosts;
+        if (unviewedPosts.isNotEmpty) {
+          // Находим непросмотренные видео в текущем списке и перемещаем их в начало
+          final unviewedIds = unviewedPosts.map((p) => p.id).toSet();
+          final unviewedInList = videoPosts.where((p) => unviewedIds.contains(p.id)).toList();
+          final viewedInList = videoPosts.where((p) => !unviewedIds.contains(p.id)).toList();
+          finalVideoPosts = [...unviewedInList, ...viewedInList];
+        }
+        
+        // Предзагружаем первые 2-3 видео при запуске
+        final networkSpeed = await _networkSpeedDetector.getCurrentSpeed();
+        final preloadCount = networkSpeed == NetworkSpeed.fast ? 3 : 2;
+        
+        for (int i = 0; i < preloadCount && i < finalVideoPosts.length; i++) {
+          final post = finalVideoPosts[i];
+          try {
+            final apiService = ApiService();
+            apiService.setAccessToken(accessToken);
+            final signedUrl = await apiService.getPostMediaSignedUrl(
+              mediaPath: post.mediaUrl,
+            );
+            _videoCacheService.preloadVideo(signedUrl).catchError((e) {
+              print('ShortsScreen: Error preloading initial video: $e');
+            });
+          } catch (e) {
+            print('ShortsScreen: Error getting signed URL for initial preload: $e');
+          }
+        }
+        
         // Проверяем, нужно ли инициализировать видео для текущего индекса
         if (!_videoControllers.containsKey(_currentIndex)) {
           WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (_currentIndex < videoPosts.length) {
-              await _initializeVideo(_currentIndex, videoPosts[_currentIndex], autoPlay: true);
+            if (_currentIndex < finalVideoPosts.length) {
+              await _initializeVideo(_currentIndex, finalVideoPosts[_currentIndex], autoPlay: true);
             }
           });
         } else {
@@ -394,12 +448,34 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         }
       }
 
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
-        ),
-      );
+      // Проверяем кеш перед загрузкой
+      VideoPlayerController controller;
+      final cachedFile = await _videoCacheService.getCachedVideo(videoUrl);
+      
+      if (cachedFile != null && cachedFile.existsSync()) {
+        // Используем кешированный файл
+        print('ShortsScreen: Using cached video for $index');
+        controller = VideoPlayerController.file(
+          cachedFile,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+          ),
+        );
+      } else {
+        // Загружаем из сети
+        print('ShortsScreen: Loading video from network for $index');
+        controller = VideoPlayerController.networkUrl(
+          Uri.parse(videoUrl),
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false,
+          ),
+        );
+        
+        // Предзагружаем видео в кеш в фоне (не блокируем инициализацию)
+        _videoCacheService.preloadVideo(videoUrl).catchError((e) {
+          print('ShortsScreen: Error preloading video to cache: $e');
+        });
+      }
       
       await controller.initialize();
       controller.setLooping(true);
@@ -413,6 +489,10 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       setState(() {
         _videoControllers[index] = controller;
       });
+      
+      // Отмечаем видео как просмотренное
+      _viewedPostIds.add(post.id);
+      _preloadQueue.markAsViewed(post.id);
       
       // ВСЕГДА сначала ставим на паузу с выключенным звуком
       await controller.setVolume(0);
@@ -538,13 +618,8 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       print('ShortsScreen: WARNING - Current controller not initialized for index $_currentIndex');
     }
 
-    // Предзагружаем соседние видео (они будут на паузе с выключенным звуком)
-    if (_currentIndex + 1 < videoPosts.length && !_videoControllers.containsKey(_currentIndex + 1)) {
-      _initializeVideo(_currentIndex + 1, videoPosts[_currentIndex + 1]);
-    }
-    if (_currentIndex - 1 >= 0 && !_videoControllers.containsKey(_currentIndex - 1)) {
-      _initializeVideo(_currentIndex - 1, videoPosts[_currentIndex - 1]);
-    }
+    // Умная предзагрузка следующих видео
+    await _preloadNextVideos(index, videoPosts);
 
     // Автоподгрузка следующей страницы при приближении к концу
     final hasMore = _currentTabIndex == 0 
@@ -749,5 +824,186 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         );
       },
     );
+  }
+
+  /// Умная предзагрузка следующих видео
+  Future<void> _preloadNextVideos(int currentIndex, List<Post> videoPosts) async {
+    if (currentIndex >= videoPosts.length) return;
+
+    try {
+      // Получаем текущее видео для определения размера
+      final currentPost = videoPosts[currentIndex];
+      final videoUrl = currentPost.mediaUrl;
+      
+      // Получаем signed URL для определения размера
+      String signedUrl = videoUrl;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final accessToken = prefs.getString('access_token');
+        if (accessToken != null) {
+          final apiService = ApiService();
+          apiService.setAccessToken(accessToken);
+          signedUrl = await apiService.getPostMediaSignedUrl(mediaPath: videoUrl);
+        }
+      } catch (e) {
+        print('ShortsScreen: Error getting signed URL for size check: $e');
+      }
+
+      // Определяем размер видео
+      final videoSize = await _videoCacheService.getVideoSize(signedUrl);
+      final networkSpeed = await _networkSpeedDetector.getCurrentSpeed();
+
+      // Определяем сколько видео предзагружать
+      int preloadCount = 1; // минимум следующее видео
+      
+      if (videoSize != null) {
+        if (videoSize < 2 * 1024 * 1024) { // < 2MB
+          preloadCount = networkSpeed == NetworkSpeed.fast ? 3 : 2;
+        } else if (videoSize < 5 * 1024 * 1024) { // < 5MB
+          preloadCount = networkSpeed == NetworkSpeed.fast ? 2 : 1;
+        }
+      } else {
+        // Если не удалось определить размер, используем консервативный подход
+        preloadCount = networkSpeed == NetworkSpeed.fast ? 2 : 1;
+      }
+
+      print('ShortsScreen: Preloading $preloadCount videos (size: ${videoSize != null ? "${videoSize ~/ 1024}KB" : "unknown"}, speed: $networkSpeed)');
+
+      // Предзагружаем следующие видео
+      for (int i = 1; i <= preloadCount; i++) {
+        final nextIndex = currentIndex + i;
+        if (nextIndex < videoPosts.length) {
+          final nextPost = videoPosts[nextIndex];
+          
+          // Инициализируем контроллер для следующего видео
+          if (!_videoControllers.containsKey(nextIndex)) {
+            _initializeVideo(nextIndex, nextPost);
+          }
+          
+          // Добавляем в очередь предзагрузки для кеширования
+          final priority = i == 1 ? Priority.high : Priority.medium;
+          _preloadQueue.addVideo(nextPost, priority);
+          
+          // Предзагружаем в кеш в фоне
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final accessToken = prefs.getString('access_token');
+            if (accessToken != null) {
+              final apiService = ApiService();
+              apiService.setAccessToken(accessToken);
+              final signedUrl = await apiService.getPostMediaSignedUrl(
+                mediaPath: nextPost.mediaUrl,
+              );
+              _videoCacheService.preloadVideo(signedUrl, priority: i).catchError((e) {
+                print('ShortsScreen: Error preloading video $nextIndex: $e');
+              });
+            }
+          } catch (e) {
+            print('ShortsScreen: Error getting signed URL for preload: $e');
+          }
+        }
+      }
+    } catch (e) {
+      print('ShortsScreen: Error in _preloadNextVideos: $e');
+    }
+  }
+
+  /// Обработка очереди предзагрузки в фоне
+  Future<void> _processPreloadQueue() async {
+    if (_preloadQueue.isProcessing) return;
+    
+    _preloadQueue.setProcessing(true);
+    
+    while (_preloadQueue.getQueueSize() > 0 && _isScreenVisible) {
+      final queuedVideo = _preloadQueue.getNextVideo();
+      if (queuedVideo == null) break;
+      
+      try {
+        // Получаем signed URL
+        final prefs = await SharedPreferences.getInstance();
+        final accessToken = prefs.getString('access_token');
+        if (accessToken != null) {
+          final apiService = ApiService();
+          apiService.setAccessToken(accessToken);
+          final signedUrl = await apiService.getPostMediaSignedUrl(
+            mediaPath: queuedVideo.post.mediaUrl,
+          );
+          
+          // Предзагружаем в кеш
+          await _videoCacheService.preloadVideo(signedUrl);
+          print('ShortsScreen: Preloaded video from queue: ${queuedVideo.post.id}');
+        }
+      } catch (e) {
+        print('ShortsScreen: Error processing preload queue: $e');
+      }
+      
+      // Небольшая задержка между загрузками
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    _preloadQueue.setProcessing(false);
+  }
+
+  /// Загрузить непросмотренные видео из очереди
+  Future<void> _loadUnviewedQueue() async {
+    try {
+      final unviewedPosts = await _preloadQueue.loadUnviewedQueue();
+      if (unviewedPosts.isEmpty) return;
+      
+      print('ShortsScreen: Loaded ${unviewedPosts.length} unviewed videos');
+      
+      // Добавляем непросмотренные видео в очередь с высоким приоритетом
+      for (final post in unviewedPosts) {
+        _preloadQueue.addVideo(post, Priority.low, isUnviewed: true);
+      }
+      
+      // Предзагружаем первые 2-3 непросмотренных видео
+      final networkSpeed = await _networkSpeedDetector.getCurrentSpeed();
+      final preloadCount = networkSpeed == NetworkSpeed.fast ? 3 : 2;
+      
+      for (int i = 0; i < preloadCount && i < unviewedPosts.length; i++) {
+        final post = unviewedPosts[i];
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final accessToken = prefs.getString('access_token');
+          if (accessToken != null) {
+            final apiService = ApiService();
+            apiService.setAccessToken(accessToken);
+            final signedUrl = await apiService.getPostMediaSignedUrl(
+              mediaPath: post.mediaUrl,
+            );
+            _videoCacheService.preloadVideo(signedUrl).catchError((e) {
+              print('ShortsScreen: Error preloading unviewed video: $e');
+            });
+          }
+        } catch (e) {
+          print('ShortsScreen: Error getting signed URL for unviewed video: $e');
+        }
+      }
+    } catch (e) {
+      print('ShortsScreen: Error loading unviewed queue: $e');
+    }
+  }
+
+  /// Сохранить непросмотренные видео
+  Future<void> _saveUnviewedVideos() async {
+    try {
+      final postsProvider = context.read<PostsProvider>();
+      final videoPosts = _currentTabIndex == 0 
+          ? postsProvider.followingVideoPosts 
+          : postsProvider.videoPosts;
+      
+      // Находим непросмотренные видео
+      final unviewedPosts = videoPosts
+          .where((post) => !_viewedPostIds.contains(post.id))
+          .toList();
+      
+      if (unviewedPosts.isNotEmpty) {
+        await _preloadQueue.saveUnviewedQueue(unviewedPosts);
+        print('ShortsScreen: Saved ${unviewedPosts.length} unviewed videos');
+      }
+    } catch (e) {
+      print('ShortsScreen: Error saving unviewed videos: $e');
+    }
   }
 }

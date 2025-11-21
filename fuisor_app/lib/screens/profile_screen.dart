@@ -43,11 +43,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   double? _savedScrollPosition; // Сохранение позиции скролла при refresh
   String? _previousUserId; // Для отслеживания изменения userId
   bool _isSwitchingProfile = false; // Флаг переключения между профилями
+  String? _cachedTitleText; // Кеш текста заголовка для предотвращения лишних обновлений
 
   @override
   void initState() {
     super.initState();
+    // Создаем контроллер с правильной длиной (3 вкладки: Posts, Saved, Liked)
     _tabController = TabController(length: 3, vsync: this);
+    print('ProfileScreen: TabController initialized with length: ${_tabController.length}');
     _previousUserId = widget.userId; // Сохраняем начальный userId
     // Загружаем посты пользователя при инициализации
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -296,6 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   void dispose() {
     _refreshController.dispose();
     _scrollController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -569,10 +573,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             : null,
         title: Builder(
           builder: (context) {
-            final currentUser = context.watch<AuthProvider>().currentUser;
             // Определяем, открыт ли чужой профиль
+            final currentUserId = context.read<AuthProvider>().currentUser?.id;
             final isViewingOtherUser = widget.userId != null && 
-                                       widget.userId != currentUser?.id;
+                                       widget.userId != currentUserId;
             
             // Если идет переключение профилей, показываем скелетон в заголовке
             if (_isSwitchingProfile) {
@@ -587,29 +591,63 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 final displayText = _viewingUser!.name.isNotEmpty
                     ? '@${_viewingUser!.username} • ${_viewingUser!.name}'
                     : '@${_viewingUser!.username}';
+                // Обновляем кеш только если текст изменился
+                if (_cachedTitleText != displayText) {
+                  _cachedTitleText = displayText;
+                }
                 return AnimatedAppBarTitle(
+                  key: ValueKey('other_user_${_viewingUser!.id}_$displayText'),
                   text: displayText,
                 );
               } else {
                 // Показываем скелетон, если данные еще не загружены
+                if (_cachedTitleText != 'Loading...') {
+                  _cachedTitleText = 'Loading...';
+                }
                 return const AnimatedAppBarTitle(
                   text: 'Loading...',
                 );
               }
             }
             
-            // Для своего профиля показываем currentUser
-            if (currentUser != null) {
-              final displayText = currentUser.name.isNotEmpty
-                  ? '@${currentUser.username} • ${currentUser.name}'
-                  : '@${currentUser.username}';
-              return AnimatedAppBarTitle(
-                text: displayText,
-              );
-            }
-            
-            return const AnimatedAppBarTitle(
-              text: 'Profile',
+            // Для своего профиля используем Selector для оптимизации
+            return Selector<AuthProvider, Map<String, String?>>(
+              selector: (_, provider) => {
+                'username': provider.currentUser?.username,
+                'name': provider.currentUser?.name,
+              },
+              shouldRebuild: (prev, next) {
+                // Перестраиваем только если изменились username или name
+                final prevText = prev['name'] != null && prev['name']!.isNotEmpty
+                    ? '@${prev['username']} • ${prev['name']}'
+                    : '@${prev['username']}';
+                final nextText = next['name'] != null && next['name']!.isNotEmpty
+                    ? '@${next['username']} • ${next['name']}'
+                    : '@${next['username']}';
+                // Обновляем только если текст действительно изменился
+                final shouldUpdate = prevText != nextText;
+                if (shouldUpdate) {
+                  _cachedTitleText = nextText;
+                }
+                return shouldUpdate;
+              },
+              builder: (context, userData, child) {
+                final username = userData['username'];
+                final name = userData['name'];
+                if (username != null && username.isNotEmpty) {
+                  final displayText = name != null && name.isNotEmpty
+                      ? '@$username • $name'
+                      : '@$username';
+                  return AnimatedAppBarTitle(
+                    key: ValueKey('own_user_$displayText'),
+                    text: displayText,
+                  );
+                }
+                
+                return const AnimatedAppBarTitle(
+                  text: 'Profile',
+                );
+              },
             );
           },
         ),
@@ -900,13 +938,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               final authProvider = context.read<AuthProvider>();
                               final isOwnProfile = widget.userId == null || widget.userId == authProvider.currentUser?.id;
                               return WebsiteLinkWidget(
-                                websiteUrl: user.websiteUrl,
+                                websiteUrl: user?.websiteUrl,
                                 isOwnProfile: isOwnProfile,
                                 onEdit: isOwnProfile ? () async {
                                   final result = await showDialog<String>(
                                     context: context,
                                     builder: (context) => AddWebsiteDialog(
-                                      initialUrl: user.websiteUrl,
+                                      initialUrl: user?.websiteUrl,
                                     ),
                                   );
                                   
