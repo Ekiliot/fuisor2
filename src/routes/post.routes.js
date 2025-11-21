@@ -93,15 +93,58 @@ router.post('/upload-media', validateAuth, upload.single('media'), async (req, r
       return res.status(400).json({ error: 'Media type must be "image" or "video"' });
     }
 
+    // Security: Validate MIME type
+    const allowedMimeTypes = {
+      image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      video: ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo']
+    };
+    
+    const allowedMimes = allowedMimeTypes[mediaType];
+    if (!allowedMimes || !allowedMimes.includes(file.mimetype)) {
+      logger.postError('Invalid MIME type', {
+        userId: req.user.id,
+        mediaType,
+        mimetype: file.mimetype,
+        allowed: allowedMimes
+      });
+      return res.status(400).json({ 
+        error: `Invalid MIME type for ${mediaType}. Expected: ${allowedMimes.join(', ')}, got: ${file.mimetype}` 
+      });
+    }
+
+    // Security: Validate file extension
+    const fileExt = file.originalname.split('.').pop()?.toLowerCase();
+    const allowedExts = mediaType === 'image' 
+      ? ['jpg', 'jpeg', 'png', 'gif', 'webp']
+      : ['mp4', 'webm', 'mov', 'avi'];
+      
+    if (!fileExt || !allowedExts.includes(fileExt)) {
+      logger.postError('Invalid file extension', {
+        userId: req.user.id,
+        mediaType,
+        extension: fileExt,
+        allowed: allowedExts
+      });
+      return res.status(400).json({ 
+        error: `Invalid file extension. Allowed for ${mediaType}: ${allowedExts.join(', ')}, got: ${fileExt || 'none'}` 
+      });
+    }
+
+    // Security: Sanitize file name (prevent path traversal)
+    const sanitizedExt = fileExt.replace(/[^a-z0-9]/gi, '');
+    if (sanitizedExt !== fileExt) {
+      return res.status(400).json({ error: 'Invalid file extension format' });
+    }
+
     logger.post('Media upload request', {
       userId: req.user.id,
       mediaType,
       fileName: file.originalname,
       fileSize: file.size,
+      mimetype: file.mimetype,
+      extension: fileExt,
     });
 
-    // Determine file extension
-    const fileExt = file.originalname.split('.').pop() || (mediaType === 'video' ? 'mp4' : 'jpg');
     const fileName = `post_${req.user.id}_${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
@@ -136,7 +179,7 @@ router.post('/upload-media', validateAuth, upload.single('media'), async (req, r
   } catch (error) {
     logger.postError('Error in upload-media endpoint', error);
     res.status(500).json({ error: error.message });
-  }
+    }
 });
 
 // Upload thumbnail - returns URL
@@ -148,15 +191,50 @@ router.post('/upload-thumbnail', validateAuth, upload.single('thumbnail'), async
       return res.status(400).json({ error: 'No thumbnail file provided' });
     }
 
+    // Security: Validate MIME type (thumbnails are always images)
+    const allowedImageMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedImageMimes.includes(file.mimetype)) {
+      logger.postError('Invalid thumbnail MIME type', {
+        userId: req.user.id,
+        mimetype: file.mimetype,
+        allowed: allowedImageMimes
+      });
+      return res.status(400).json({ 
+        error: `Invalid thumbnail MIME type. Expected: ${allowedImageMimes.join(', ')}, got: ${file.mimetype}` 
+      });
+    }
+
+    // Security: Validate file extension
+    const fileExt = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
+    const allowedImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    
+    if (!allowedImageExts.includes(fileExt)) {
+      logger.postError('Invalid thumbnail extension', {
+        userId: req.user.id,
+        extension: fileExt,
+        allowed: allowedImageExts
+      });
+      return res.status(400).json({ 
+        error: `Invalid thumbnail extension. Allowed: ${allowedImageExts.join(', ')}, got: ${fileExt}` 
+      });
+    }
+
+    // Security: Sanitize file extension
+    const sanitizedExt = fileExt.replace(/[^a-z0-9]/gi, '');
+    if (sanitizedExt !== fileExt) {
+      return res.status(400).json({ error: 'Invalid thumbnail extension format' });
+    }
+
     logger.post('Thumbnail upload request', {
       userId: req.user.id,
       fileName: file.originalname,
       fileSize: file.size,
+      mimetype: file.mimetype,
+      extension: fileExt,
     });
 
-    const fileExt = file.originalname.split('.').pop() || 'jpg';
     const fileName = `thumb_${req.user.id}_${Date.now()}.${fileExt}`;
-
+    
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage

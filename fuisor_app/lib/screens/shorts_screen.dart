@@ -225,9 +225,9 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     int targetTabIndex = 1; // Always use Recommendations tab
     
     // Check Recommendations tab
-    final recommendedIndex = postsProvider.videoPosts.indexWhere((p) => p.id == targetPost.id);
-    if (recommendedIndex != -1) {
-      foundIndex = recommendedIndex;
+      final recommendedIndex = postsProvider.videoPosts.indexWhere((p) => p.id == targetPost.id);
+      if (recommendedIndex != -1) {
+        foundIndex = recommendedIndex;
     }
     
     // If post not found in recommendations, just switch to recommendations tab

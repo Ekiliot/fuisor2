@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/supabase_storage_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -364,34 +365,67 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final accessToken = authProvider.currentUser != null ? 
         await _getAccessTokenFromAuthProvider() : null;
       
-      // Загружаем медиа файл через API
+      // Загружаем медиа файл через API с fallback на Supabase Storage
       print('CreatePostScreen: Uploading media through API...');
       final apiService = ApiService();
       if (accessToken != null) {
         apiService.setAccessToken(accessToken);
       }
       
-      final mediaUrl = await apiService.uploadMedia(
-        fileBytes: mediaBytes,
-        fileName: mediaFileName,
-        mediaType: mediaType,
-      );
+      String mediaUrl;
+      try {
+        // Пробуем загрузить через API
+        mediaUrl = await apiService.uploadMedia(
+          fileBytes: mediaBytes,
+          fileName: mediaFileName,
+          mediaType: mediaType,
+        );
+        print('CreatePostScreen: Media uploaded via API, URL: $mediaUrl');
+      } catch (e) {
+        // Если получили 413 или другую ошибку, используем прямую загрузку в Supabase
+        print('CreatePostScreen: API upload failed: $e');
+        if (e.toString().contains('413') || e.toString().contains('Request Entity Too Large') || e.toString().contains('FILE_TOO_LARGE_FOR_VERCEL')) {
+          print('CreatePostScreen: Falling back to direct Supabase Storage upload...');
+          // Используем SupabaseStorageService для больших файлов
+          mediaUrl = await SupabaseStorageService.uploadMedia(
+            fileBytes: mediaBytes,
+            fileName: mediaFileName,
+            bucketName: 'post-media',
+            accessToken: accessToken,
+            mediaType: mediaType, // Передаем mediaType для валидации
+          );
+          print('CreatePostScreen: Media uploaded via Supabase Storage, URL: $mediaUrl');
+        } else {
+          // Для других ошибок пробрасываем исключение
+          rethrow;
+        }
+      }
       
-      print('CreatePostScreen: Media uploaded, URL: $mediaUrl');
-      
-      // Загружаем thumbnail если есть через API
+      // Загружаем thumbnail если есть через API с fallback
       String? thumbnailUrl;
       if (thumbnailBytes != null) {
-        print('CreatePostScreen: Uploading thumbnail through API...');
+        print('CreatePostScreen: Uploading thumbnail...');
         final thumbnailFileName = 'thumb_${DateTime.now().millisecondsSinceEpoch}.jpg';
         try {
+          // Пробуем через API
           thumbnailUrl = await apiService.uploadThumbnail(
             thumbnailBytes: thumbnailBytes,
             fileName: thumbnailFileName,
           );
-          print('CreatePostScreen: Thumbnail uploaded, URL: $thumbnailUrl');
+          print('CreatePostScreen: Thumbnail uploaded via API, URL: $thumbnailUrl');
         } catch (e) {
-          print('CreatePostScreen: WARNING - Thumbnail upload failed: $e, continuing without thumbnail');
+          // Fallback на Supabase Storage
+          print('CreatePostScreen: Thumbnail API upload failed: $e, using Supabase Storage...');
+          try {
+            thumbnailUrl = await SupabaseStorageService.uploadThumbnail(
+              thumbnailBytes: thumbnailBytes,
+              fileName: thumbnailFileName,
+              accessToken: accessToken,
+            );
+            print('CreatePostScreen: Thumbnail uploaded via Supabase Storage, URL: $thumbnailUrl');
+          } catch (supabaseError) {
+            print('CreatePostScreen: WARNING - Thumbnail upload failed: $supabaseError, continuing without thumbnail');
+          }
         }
       }
       

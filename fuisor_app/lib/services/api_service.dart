@@ -673,30 +673,30 @@ class ApiService {
       if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) {
         contentType = 'image/jpeg';
       } else if (fileNameLower.endsWith('.png')) {
-        contentType = 'image/png';
-      } else if (fileNameLower.endsWith('.gif')) {
-        contentType = 'image/gif';
-      } else if (fileNameLower.endsWith('.webp')) {
-        contentType = 'image/webp';
-      } else if (fileNameLower.endsWith('.mp4')) {
-        contentType = 'video/mp4';
-      } else if (fileNameLower.endsWith('.webm')) {
-        contentType = 'video/webm';
+          contentType = 'image/png';
+        } else if (fileNameLower.endsWith('.gif')) {
+          contentType = 'image/gif';
+        } else if (fileNameLower.endsWith('.webp')) {
+          contentType = 'image/webp';
+        } else if (fileNameLower.endsWith('.mp4')) {
+          contentType = 'video/mp4';
+        } else if (fileNameLower.endsWith('.webm')) {
+          contentType = 'video/webm';
       } else if (fileNameLower.endsWith('.mov')) {
-        contentType = 'video/quicktime';
-      } else if (fileNameLower.endsWith('.avi')) {
-        contentType = 'video/x-msvideo';
-      }
+          contentType = 'video/quicktime';
+        } else if (fileNameLower.endsWith('.avi')) {
+          contentType = 'video/x-msvideo';
+        }
 
       // Add file
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'media',
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'media',
           fileBytes,
           filename: fileName,
           contentType: contentType != null ? MediaType.parse(contentType) : null,
-        ),
-      );
+          ),
+        );
 
       print('ApiService: Sending upload request...');
       final streamedResponse = await request.send();
@@ -710,6 +710,10 @@ class ApiService {
         final mediaUrl = data['mediaUrl'] as String;
         print('ApiService: Media uploaded successfully, URL: $mediaUrl');
         return mediaUrl;
+      } else if (response.statusCode == 413) {
+        // Request Entity Too Large - пробрасываем специальное исключение для fallback
+        print('ApiService: Upload failed with 413 - file too large for Vercel');
+        throw Exception('FILE_TOO_LARGE_FOR_VERCEL');
       } else {
         try {
           final error = jsonDecode(response.body);
@@ -717,6 +721,11 @@ class ApiService {
           throw Exception(error['error'] ?? 'Failed to upload media');
         } catch (jsonError) {
           print('ApiService: Upload error (not JSON): ${response.body}');
+          // Проверяем, содержит ли ответ текст об ошибке размера
+          if (response.body.toString().contains('Request Entity Too Large') || 
+              response.body.toString().contains('FUNCTION_PAYLOAD_TOO_LARGE')) {
+            throw Exception('FILE_TOO_LARGE_FOR_VERCEL');
+          }
           throw Exception('Failed to upload media: ${response.statusCode}');
         }
       }
@@ -834,9 +843,9 @@ class ApiService {
 
       if (response.statusCode == 201) {
         try {
-          final responseData = jsonDecode(response.body);
-          print('ApiService: Post created successfully');
-          return Post.fromJson(responseData);
+        final responseData = jsonDecode(response.body);
+        print('ApiService: Post created successfully');
+        return Post.fromJson(responseData);
         } catch (e) {
           print('ApiService: Error parsing response JSON: $e');
           throw Exception('Failed to parse server response');
@@ -844,8 +853,8 @@ class ApiService {
       } else {
         // Пытаемся декодировать как JSON, но если не получается - используем текст ответа
         try {
-          final error = jsonDecode(response.body);
-          print('ApiService: Error response: $error');
+        final error = jsonDecode(response.body);
+        print('ApiService: Error response: $error');
           throw Exception(error['error'] ?? error['message'] ?? 'Failed to create post');
         } catch (jsonError) {
           // Если не JSON, используем текст ответа
