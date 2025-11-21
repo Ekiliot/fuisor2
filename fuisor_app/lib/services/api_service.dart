@@ -748,7 +748,7 @@ class ApiService {
       }
 
       // Determine content type (thumbnails are always images)
-      String? contentType = 'image/jpeg';
+      String contentType = 'image/jpeg';
       final fileNameLower = fileName.toLowerCase();
       if (fileNameLower.endsWith('.png')) {
         contentType = 'image/png';
@@ -762,7 +762,7 @@ class ApiService {
           'thumbnail',
           thumbnailBytes,
           filename: fileName,
-          contentType: contentType != null ? MediaType.parse(contentType) : null,
+          contentType: MediaType.parse(contentType),
         ),
       );
 

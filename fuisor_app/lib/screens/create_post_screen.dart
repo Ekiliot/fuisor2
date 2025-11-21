@@ -342,6 +342,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('Media type: $mediaType');
       print('Media filename: $mediaFileName');
       print('Caption: ${_captionController.text.trim()}');
+      print('Media size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+
+      // Проверка размера файла (Vercel limit ~4.5MB, но оставляем запас)
+      const maxFileSize = 4 * 1024 * 1024; // 4MB
+      if (mediaBytes.length > maxFileSize) {
+        throw Exception('File size is too large (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB). Maximum size is 4 MB.');
+      }
 
       // Получаем токен из AuthProvider
       final accessToken = authProvider.currentUser != null ? 
