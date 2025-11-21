@@ -368,12 +368,15 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
           try {
             final apiService = ApiService();
             apiService.setAccessToken(accessToken);
-            final signedUrl = await apiService.getPostMediaSignedUrl(
+            final result = await apiService.getPostMediaSignedUrl(
               mediaPath: post.mediaUrl,
+              postId: post.id, // Передаем postId
             );
+            final signedUrl = result['signedUrl']!;
+            final returnedPostId = result['postId'] ?? post.id;
             
             // Проверяем, не закешировано ли уже по postId
-            final isCached = await _videoCacheService.isVideoCached(post.id);
+            final isCached = await _videoCacheService.isVideoCached(returnedPostId);
             if (isCached) {
               // Если уже в кеше, сразу инициализируем контроллер
               if (mounted && !_videoControllers.containsKey(i)) {
@@ -541,11 +544,13 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             apiService.setAccessToken(accessToken);
             
             // Получаем signed URL
-            print('ShortsScreen: Getting signed URL for video $index');
-            videoUrl = await apiService.getPostMediaSignedUrl(
+            print('ShortsScreen: Getting signed URL for video $index (post: ${post.id})');
+            final result = await apiService.getPostMediaSignedUrl(
               mediaPath: post.mediaUrl,
+              postId: post.id, // Передаем postId
             );
-            print('ShortsScreen: Got signed URL for video $index');
+            videoUrl = result['signedUrl']!;
+            print('ShortsScreen: Got signed URL for video $index (post: ${post.id})');
           } else {
             print('ShortsScreen: No access token, using original URL');
           }
@@ -1044,7 +1049,12 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         if (accessToken != null) {
           final apiService = ApiService();
           apiService.setAccessToken(accessToken);
-          signedUrl = await apiService.getPostMediaSignedUrl(mediaPath: videoUrl);
+          // Для определения размера используем текущий пост
+          final result = await apiService.getPostMediaSignedUrl(
+            mediaPath: videoUrl,
+            postId: currentPost.id,
+          );
+          signedUrl = result['signedUrl']!;
         }
       } catch (e) {
         print('ShortsScreen: Error getting signed URL for size check: $e');
@@ -1083,12 +1093,15 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             if (accessToken != null) {
               final apiService = ApiService();
               apiService.setAccessToken(accessToken);
-              final signedUrl = await apiService.getPostMediaSignedUrl(
+              final result = await apiService.getPostMediaSignedUrl(
                 mediaPath: nextPost.mediaUrl,
+                postId: nextPost.id, // Передаем postId
               );
+              final signedUrl = result['signedUrl']!;
+              final returnedPostId = result['postId'] ?? nextPost.id;
               
               // Проверяем, не закешировано ли уже по postId
-              final isCached = await _videoCacheService.isVideoCached(nextPost.id);
+              final isCached = await _videoCacheService.isVideoCached(returnedPostId);
               
               if (!isCached) {
                 // ВАЖНО: Для следующего видео (i == 1) предзагружаем с высоким приоритетом
@@ -1158,9 +1171,11 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         if (accessToken != null) {
           final apiService = ApiService();
           apiService.setAccessToken(accessToken);
-          final signedUrl = await apiService.getPostMediaSignedUrl(
+          final result = await apiService.getPostMediaSignedUrl(
             mediaPath: queuedVideo.post.mediaUrl,
+            postId: queuedVideo.post.id, // Передаем postId
           );
+          final signedUrl = result['signedUrl']!;
           
           // Предзагружаем в кеш (используем postId)
           await _videoCacheService.preloadVideo(queuedVideo.post.id, signedUrl);
@@ -1208,15 +1223,18 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
           if (accessToken != null) {
             final apiService = ApiService();
             apiService.setAccessToken(accessToken);
-            final signedUrl = await apiService.getPostMediaSignedUrl(
+            final result = await apiService.getPostMediaSignedUrl(
               mediaPath: post.mediaUrl,
+              postId: post.id, // Передаем postId
             );
+            final signedUrl = result['signedUrl']!;
+            final returnedPostId = result['postId'] ?? post.id;
             
             // Находим индекс видео в списке
             final postIndex = videoPosts.indexWhere((p) => p.id == post.id);
             if (postIndex != -1) {
               // Проверяем, не закешировано ли уже по postId
-              final isCached = await _videoCacheService.isVideoCached(post.id);
+              final isCached = await _videoCacheService.isVideoCached(returnedPostId);
               if (isCached) {
                 // Если уже в кеше, сразу инициализируем контроллер
                 if (mounted && !_videoControllers.containsKey(postIndex)) {
