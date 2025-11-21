@@ -642,6 +642,159 @@ class ApiService {
   }
 
   // Создать новый пост (теперь принимает URL вместо файлов)
+  // Upload media file (image or video) through API
+  Future<String> uploadMedia({
+    required Uint8List fileBytes,
+    required String fileName,
+    required String mediaType, // 'image' or 'video'
+  }) async {
+    try {
+      print('ApiService: Uploading media through API...');
+      print('ApiService: File name: $fileName');
+      print('ApiService: File size: ${fileBytes.length} bytes (${(fileBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+      print('ApiService: Media type: $mediaType');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/posts/upload-media'),
+      );
+
+      // Add headers
+      if (_accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $_accessToken';
+      }
+
+      // Add media type
+      request.fields['mediaType'] = mediaType;
+
+      // Determine content type
+      String? contentType;
+      final fileNameLower = fileName.toLowerCase();
+      if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) {
+        contentType = 'image/jpeg';
+      } else if (fileNameLower.endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (fileNameLower.endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (fileNameLower.endsWith('.webp')) {
+        contentType = 'image/webp';
+      } else if (fileNameLower.endsWith('.mp4')) {
+        contentType = 'video/mp4';
+      } else if (fileNameLower.endsWith('.webm')) {
+        contentType = 'video/webm';
+      } else if (fileNameLower.endsWith('.mov')) {
+        contentType = 'video/quicktime';
+      } else if (fileNameLower.endsWith('.avi')) {
+        contentType = 'video/x-msvideo';
+      }
+
+      // Add file
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'media',
+          fileBytes,
+          filename: fileName,
+          contentType: contentType != null ? MediaType.parse(contentType) : null,
+        ),
+      );
+
+      print('ApiService: Sending upload request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('ApiService: Upload response status: ${response.statusCode}');
+      print('ApiService: Upload response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final mediaUrl = data['mediaUrl'] as String;
+        print('ApiService: Media uploaded successfully, URL: $mediaUrl');
+        return mediaUrl;
+      } else {
+        try {
+          final error = jsonDecode(response.body);
+          print('ApiService: Upload error: $error');
+          throw Exception(error['error'] ?? 'Failed to upload media');
+        } catch (jsonError) {
+          print('ApiService: Upload error (not JSON): ${response.body}');
+          throw Exception('Failed to upload media: ${response.statusCode}');
+        }
+      }
+    } catch (e, stackTrace) {
+      print('ApiService: Exception uploading media: $e');
+      print('ApiService: Stack trace: $stackTrace');
+      throw Exception('Failed to upload media: $e');
+    }
+  }
+
+  // Upload thumbnail through API
+  Future<String> uploadThumbnail({
+    required Uint8List thumbnailBytes,
+    required String fileName,
+  }) async {
+    try {
+      print('ApiService: Uploading thumbnail through API...');
+      print('ApiService: File name: $fileName');
+      print('ApiService: File size: ${thumbnailBytes.length} bytes');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/posts/upload-thumbnail'),
+      );
+
+      // Add headers
+      if (_accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $_accessToken';
+      }
+
+      // Determine content type (thumbnails are always images)
+      String? contentType = 'image/jpeg';
+      final fileNameLower = fileName.toLowerCase();
+      if (fileNameLower.endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (fileNameLower.endsWith('.webp')) {
+        contentType = 'image/webp';
+      }
+
+      // Add file
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'thumbnail',
+          thumbnailBytes,
+          filename: fileName,
+          contentType: contentType != null ? MediaType.parse(contentType) : null,
+        ),
+      );
+
+      print('ApiService: Sending thumbnail upload request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('ApiService: Thumbnail upload response status: ${response.statusCode}');
+      print('ApiService: Thumbnail upload response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final thumbnailUrl = data['thumbnailUrl'] as String;
+        print('ApiService: Thumbnail uploaded successfully, URL: $thumbnailUrl');
+        return thumbnailUrl;
+      } else {
+        try {
+          final error = jsonDecode(response.body);
+          print('ApiService: Thumbnail upload error: $error');
+          throw Exception(error['error'] ?? 'Failed to upload thumbnail');
+        } catch (jsonError) {
+          print('ApiService: Thumbnail upload error (not JSON): ${response.body}');
+          throw Exception('Failed to upload thumbnail: ${response.statusCode}');
+        }
+      }
+    } catch (e, stackTrace) {
+      print('ApiService: Exception uploading thumbnail: $e');
+      print('ApiService: Stack trace: $stackTrace');
+      throw Exception('Failed to upload thumbnail: $e');
+    }
+  }
+
   Future<Post> createPost({
     required String caption,
     required String mediaUrl,

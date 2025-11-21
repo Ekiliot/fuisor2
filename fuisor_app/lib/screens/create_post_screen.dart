@@ -13,7 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/supabase_storage_service.dart';
+import '../services/api_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -347,31 +347,34 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final accessToken = authProvider.currentUser != null ? 
         await _getAccessTokenFromAuthProvider() : null;
       
-      // Загружаем медиа файл напрямую в Supabase Storage
-      print('CreatePostScreen: Uploading media to Supabase Storage...');
-      final mediaUrl = await SupabaseStorageService.uploadMedia(
+      // Загружаем медиа файл через API
+      print('CreatePostScreen: Uploading media through API...');
+      final apiService = ApiService();
+      if (accessToken != null) {
+        apiService.setAccessToken(accessToken);
+      }
+      
+      final mediaUrl = await apiService.uploadMedia(
         fileBytes: mediaBytes,
         fileName: mediaFileName,
-        bucketName: 'post-media',
-        accessToken: accessToken,
+        mediaType: mediaType,
       );
       
       print('CreatePostScreen: Media uploaded, URL: $mediaUrl');
       
-      // Загружаем thumbnail если есть
+      // Загружаем thumbnail если есть через API
       String? thumbnailUrl;
       if (thumbnailBytes != null) {
-        print('CreatePostScreen: Uploading thumbnail to Supabase Storage...');
+        print('CreatePostScreen: Uploading thumbnail through API...');
         final thumbnailFileName = 'thumb_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        thumbnailUrl = await SupabaseStorageService.uploadThumbnail(
-          thumbnailBytes: thumbnailBytes,
-          fileName: thumbnailFileName,
-          accessToken: accessToken,
-        );
-        if (thumbnailUrl != null) {
+        try {
+          thumbnailUrl = await apiService.uploadThumbnail(
+            thumbnailBytes: thumbnailBytes,
+            fileName: thumbnailFileName,
+          );
           print('CreatePostScreen: Thumbnail uploaded, URL: $thumbnailUrl');
-        } else {
-          print('CreatePostScreen: WARNING - Thumbnail upload failed, continuing without thumbnail');
+        } catch (e) {
+          print('CreatePostScreen: WARNING - Thumbnail upload failed: $e, continuing without thumbnail');
         }
       }
       

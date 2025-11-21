@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validatePost, validatePostUpdate, validateComment, validateUUID, validateCommentId } from '../middleware/validation.middleware.js';
@@ -6,6 +7,14 @@ import { createNotification } from './notification.routes.js';
 import { logger } from '../utils/logger.js';
 
 const router = express.Router();
+
+// Multer setup for media uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB max (Vercel limit is 4.5MB for request body, but we'll stream to Supabase)
+  },
+});
 
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
@@ -66,6 +75,119 @@ router.get('/', validateAuth, async (req, res) => {
       totalPages: Math.ceil(count / limit)
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload media file (image or video) - returns URL
+router.post('/upload-media', validateAuth, upload.single('media'), async (req, res) => {
+  try {
+    const file = req.file;
+    const { mediaType } = req.body; // 'image' or 'video'
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    if (!mediaType || !['image', 'video'].includes(mediaType)) {
+      return res.status(400).json({ error: 'Media type must be "image" or "video"' });
+    }
+
+    logger.post('Media upload request', {
+      userId: req.user.id,
+      mediaType,
+      fileName: file.originalname,
+      fileSize: file.size,
+    });
+
+    // Determine file extension
+    const fileExt = file.originalname.split('.').pop() || (mediaType === 'video' ? 'mp4' : 'jpg');
+    const fileName = `post_${req.user.id}_${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabaseAdmin
+      .storage
+      .from('post-media')
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      logger.postError('Error uploading media to Supabase', uploadError);
+      return res.status(500).json({ error: 'Failed to upload media: ' + uploadError.message });
+    }
+
+    // Get public URL
+    const { data: urlData } = supabaseAdmin
+      .storage
+      .from('post-media')
+      .getPublicUrl(fileName);
+
+    const mediaUrl = urlData.publicUrl;
+
+    logger.post('Media uploaded successfully', {
+      userId: req.user.id,
+      fileName,
+      mediaUrl,
+    });
+
+    res.json({ mediaUrl });
+  } catch (error) {
+    logger.postError('Error in upload-media endpoint', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload thumbnail - returns URL
+router.post('/upload-thumbnail', validateAuth, upload.single('thumbnail'), async (req, res) => {
+  try {
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No thumbnail file provided' });
+    }
+
+    logger.post('Thumbnail upload request', {
+      userId: req.user.id,
+      fileName: file.originalname,
+      fileSize: file.size,
+    });
+
+    const fileExt = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `thumb_${req.user.id}_${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabaseAdmin
+      .storage
+      .from('post-media')
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      logger.postError('Error uploading thumbnail to Supabase', uploadError);
+      return res.status(500).json({ error: 'Failed to upload thumbnail: ' + uploadError.message });
+    }
+
+    // Get public URL
+    const { data: urlData } = supabaseAdmin
+      .storage
+      .from('post-media')
+      .getPublicUrl(fileName);
+
+    const thumbnailUrl = urlData.publicUrl;
+
+    logger.post('Thumbnail uploaded successfully', {
+      userId: req.user.id,
+      fileName,
+      thumbnailUrl,
+    });
+
+    res.json({ thumbnailUrl });
+  } catch (error) {
+    logger.postError('Error in upload-thumbnail endpoint', error);
     res.status(500).json({ error: error.message });
   }
 });

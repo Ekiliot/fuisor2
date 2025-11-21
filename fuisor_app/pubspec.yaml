@@ -51,6 +51,7 @@ dependencies:
   
   # Animations
   flutter_staggered_animations: ^1.1.1
+  pretty_animated_text: ^2.0.0
   
   # Pull to refresh
   pull_to_refresh: ^2.0.0

@@ -20,7 +20,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   final PageController _pageController = PageController();
   late TabController _tabController;
   int _currentIndex = 0;
-  int _currentTabIndex = 0; // 0 = Подписки, 1 = Рекомендации
+  int _currentTabIndex = 1; // 0 = Following, 1 = Recommendations
   final Map<int, VideoPlayerController> _videoControllers = {};
   final Set<int> _initializingVideos = {}; // Защита от параллельной инициализации
   final Map<int, int> _retryCounts = {}; // Счетчики попыток для retry
@@ -31,11 +31,11 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Инициализируем TabController с начальным индексом 0 (Подписки)
-    _tabController = TabController(initialIndex: 0, length: 2, vsync: this);
+    // Initialize TabController with initial index 1 (Recommendations)
+    _tabController = TabController(initialIndex: 1, length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
-    // Устанавливаем начальную вкладку на Подписки
-    _currentTabIndex = 0;
+    // Set initial tab to Recommendations
+    _currentTabIndex = 1;
   }
 
   @override
@@ -79,12 +79,12 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     final accessToken = prefs.getString('access_token');
     
     if (_currentTabIndex == 0) {
-      // Подписки
+      // Following
       print('ShortsScreen: Loading following video posts');
       await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
       print('ShortsScreen: Loaded ${postsProvider.followingVideoPosts.length} following video posts');
     } else {
-      // Рекомендации
+      // Recommendations
       print('ShortsScreen: Loading recommended video posts');
       await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
       print('ShortsScreen: Loaded ${postsProvider.videoPosts.length} recommended video posts');
@@ -206,7 +206,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
 
   bool _isScreenVisible = false;
 
-  // Метод для навигации к конкретному посту
+  // Method to navigate to a specific post (always opens in Recommendations tab)
   Future<void> navigateToPost(Post targetPost) async {
     print('ShortsScreen: Navigating to post: ${targetPost.id}');
     
@@ -214,47 +214,53 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString('access_token');
     
-    // Загружаем видео посты, если они еще не загружены
-    if (postsProvider.followingVideoPosts.isEmpty) {
-      await postsProvider.loadFollowingVideoPosts(refresh: true, accessToken: accessToken);
-    }
+    // Always load recommendations video posts
     if (postsProvider.videoPosts.isEmpty) {
       await postsProvider.loadVideoPosts(refresh: true, accessToken: accessToken);
     }
     
-    // Ищем пост в обеих вкладках
+    // Always search in Recommendations tab (index 1)
     int? foundIndex;
-    int targetTabIndex = 0;
+    int targetTabIndex = 1; // Always use Recommendations tab
     
-    // Проверяем вкладку "Подписки"
-    final followingIndex = postsProvider.followingVideoPosts.indexWhere((p) => p.id == targetPost.id);
-    if (followingIndex != -1) {
-      foundIndex = followingIndex;
-      targetTabIndex = 0;
-    } else {
-      // Проверяем вкладку "Рекомендации"
-      final recommendedIndex = postsProvider.videoPosts.indexWhere((p) => p.id == targetPost.id);
-      if (recommendedIndex != -1) {
-        foundIndex = recommendedIndex;
-        targetTabIndex = 1;
-      }
+    // Check Recommendations tab
+    final recommendedIndex = postsProvider.videoPosts.indexWhere((p) => p.id == targetPost.id);
+    if (recommendedIndex != -1) {
+      foundIndex = recommendedIndex;
     }
     
-    if (foundIndex != null && mounted) {
-      // Переключаемся на нужную вкладку
+    // If post not found in recommendations, just switch to recommendations tab
+    if (foundIndex == null) {
+      // Post not in recommendations, just switch to recommendations tab
+      print('ShortsScreen: Post ${targetPost.id} not found in recommendations, opening recommendations tab');
+      if (_currentTabIndex != 1) {
+        _tabController.animateTo(1);
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      setState(() {
+        _currentTabIndex = 1;
+        _currentIndex = 0;
+        _isScreenVisible = true;
+      });
+      await initializeScreen();
+      return;
+    }
+    
+    if (mounted) {
+      // Switch to Recommendations tab if not already there
       if (_currentTabIndex != targetTabIndex) {
         _tabController.animateTo(targetTabIndex);
-        await Future.delayed(const Duration(milliseconds: 300)); // Ждем переключения вкладки
+        await Future.delayed(const Duration(milliseconds: 300)); // Wait for tab switch
       }
       
-      // Устанавливаем индекс и переключаемся на нужную страницу
+      // Set index and switch to the correct page
       setState(() {
         _currentIndex = foundIndex!;
         _currentTabIndex = targetTabIndex;
         _isScreenVisible = true;
       });
       
-      // Переключаемся на нужную страницу в PageController
+      // Switch to the correct page in PageController
       if (_pageController.hasClients) {
         await _pageController.animateToPage(
           foundIndex,
@@ -263,17 +269,15 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
         );
       }
       
-      // Инициализируем и запускаем видео
-      final videoPosts = targetTabIndex == 0 
-          ? postsProvider.followingVideoPosts 
-          : postsProvider.videoPosts;
+      // Initialize and play video
+      final videoPosts = postsProvider.videoPosts;
       
       if (foundIndex < videoPosts.length) {
         await _initializeVideo(foundIndex, videoPosts[foundIndex], autoPlay: true);
       }
     } else {
       print('ShortsScreen: Post ${targetPost.id} not found in video posts');
-      // Если пост не найден, просто инициализируем экран
+      // If post not found, just initialize screen
       await initializeScreen();
     }
   }
@@ -560,8 +564,8 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
                       }
                     },
                     tabs: const [
-                      Tab(text: 'Подписки'),
-                      Tab(text: 'Рекомендации'),
+                      Tab(text: 'Following'),
+                      Tab(text: 'Recommendations'),
                     ],
                   ),
                 ),
@@ -586,7 +590,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
       );
     }
 
-    // Для вкладки "Подписки" показываем специальное сообщение, если видео нет
+    // For "Following" tab show special message if no videos
     if (_currentTabIndex == 0 && videoPosts.isEmpty) {
       return Center(
         child: Column(
@@ -599,7 +603,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             ),
             const SizedBox(height: 16),
             const Text(
-              'Нет видео от подписок',
+              'No videos from following',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -608,7 +612,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             ),
             const SizedBox(height: 8),
             const Text(
-              'Подпишитесь на пользователей, чтобы видеть их видео здесь',
+              'Follow users to see their videos here',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey,
@@ -625,14 +629,14 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              child: const Text('Переключиться на рекомендации'),
+              child: const Text('Switch to Recommendations'),
             ),
           ],
         ),
       );
     }
 
-    // Для вкладки "Рекомендации" показываем стандартное сообщение, если видео нет
+    // For "Recommendations" tab show standard message if no videos
     if (_currentTabIndex == 1 && videoPosts.isEmpty) {
       return Center(
         child: Column(
@@ -645,7 +649,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             ),
             const SizedBox(height: 16),
             const Text(
-              'Нет видео',
+              'No videos',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -654,7 +658,7 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
             ),
             const SizedBox(height: 8),
             const Text(
-              'Загрузите свое первое видео!',
+              'Upload your first video!',
               style: TextStyle(
                 color: Colors.grey,
                 fontSize: 14,
