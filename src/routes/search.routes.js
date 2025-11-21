@@ -50,7 +50,7 @@ router.get('/', validateAuth, async (req, res) => {
         .from('posts')
         .select(`
           *,
-          profiles:user_id (username, avatar_url),
+          profiles:user_id (username, name, avatar_url),
           likes(count)
         `)
         .ilike('caption', `%${searchQuery}%`)

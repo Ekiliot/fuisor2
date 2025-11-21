@@ -40,7 +40,7 @@ router.get('/', validateAuth, async (req, res) => {
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, avatar_url),
+        profiles:user_id (username, name, avatar_url),
         likes(count)
       `, { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -493,7 +493,7 @@ router.get('/feed', validateAuth, async (req, res) => {
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, avatar_url),
+        profiles:user_id (username, name, avatar_url),
         likes(count)
       `, { count: 'exact' });
 
@@ -599,13 +599,13 @@ router.get('/:id', validateAuth, validateUUID, async (req, res) => {
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, avatar_url),
+        profiles:user_id (username, name, avatar_url),
         comments (
           id,
           content,
           parent_comment_id,
           created_at,
-          profiles:user_id (username, avatar_url)
+          profiles:user_id (username, name, avatar_url)
         ),
         likes(count)
       `)
@@ -956,7 +956,7 @@ router.post('/:id/comments', validateAuth, validateUUID, validateComment, async 
       ])
       .select(`
         *,
-        profiles:user_id (username, avatar_url)
+        profiles:user_id (username, name, avatar_url)
       `)
       .single();
 
@@ -1010,7 +1010,7 @@ router.put('/:id/comments/:commentId', validateAuth, validateUUID, validateComme
       .eq('id', commentId)
       .select(`
         *,
-        profiles:user_id (username, avatar_url)
+        profiles:user_id (username, name, avatar_url)
       `)
       .single();
 
@@ -1275,7 +1275,7 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       .eq('id', id)
       .select(`
         *,
-        profiles:user_id (username, avatar_url)
+        profiles:user_id (username, name, avatar_url)
       `)
       .single();
 
@@ -1303,7 +1303,7 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, avatar_url),
+        profiles:user_id (username, name, avatar_url),
         likes(count)
       `, { count: 'exact' })
       .ilike('caption', `%#${hashtag.toLowerCase()}%`)
@@ -1367,7 +1367,7 @@ router.get('/mentions', validateAuth, async (req, res) => {
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, avatar_url),
+        profiles:user_id (username, name, avatar_url),
         likes(count),
         post_mentions!inner(mentioned_user_id)
       `, { count: 'exact' })

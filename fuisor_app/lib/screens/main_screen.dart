@@ -44,9 +44,29 @@ class MainScreenState extends State<MainScreen> {
     setState(() {
       _currentIndex = 3; // Переключаемся на Shorts
     });
-    // Передаем пост в ShortsScreen
+    // Передаем пост в ShortsScreen с несколькими попытками для надежности
+    _navigateToPostWithRetry(post, maxAttempts: 5);
+  }
+  
+  // Вспомогательный метод для навигации с повторными попытками
+  void _navigateToPostWithRetry(Post post, {int maxAttempts = 5, int attempt = 0}) {
+    if (attempt >= maxAttempts) {
+      print('MainScreen: Failed to navigate to post after $maxAttempts attempts');
+      return;
+    }
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _shortsScreenKey.currentState?.navigateToPost(post);
+      final shortsState = _shortsScreenKey.currentState;
+      if (shortsState != null) {
+        print('MainScreen: Navigating to post ${post.id} (attempt ${attempt + 1})');
+        shortsState.navigateToPost(post);
+      } else {
+        print('MainScreen: ShortsScreen not ready, retrying... (attempt ${attempt + 1}/$maxAttempts)');
+        // Повторяем попытку через небольшую задержку
+        Future.delayed(Duration(milliseconds: 100 * (attempt + 1)), () {
+          _navigateToPostWithRetry(post, maxAttempts: maxAttempts, attempt: attempt + 1);
+        });
+      }
     });
   }
 

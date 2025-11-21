@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import '../models/user.dart' show Post, Comment;
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
@@ -14,6 +13,7 @@ class PostsProvider extends ChangeNotifier {
   List<Post> _hashtagPosts = [];
   List<Post> _mentionedPosts = [];
   List<Post> _userPosts = [];
+  String? _currentUserPostsUserId; // Отслеживаем, для какого пользователя загружены посты
   // Кэш комментариев для постов: postId -> List<Comment>
   final Map<String, List<Comment>> _commentsCache = {};
   bool _isLoading = false;
@@ -800,6 +800,17 @@ class PostsProvider extends ChangeNotifier {
       return;
     }
 
+    // ВАЖНО: Если переключились на другого пользователя, очищаем список постов
+    if (_currentUserPostsUserId != null && _currentUserPostsUserId != userId) {
+      print('PostsProvider: User changed from $_currentUserPostsUserId to $userId, clearing posts');
+      _userPosts.clear();
+      _currentUserPage = 1;
+      _hasMoreUserPosts = true;
+      _currentUserPostsUserId = userId;
+    } else if (_currentUserPostsUserId == null) {
+      _currentUserPostsUserId = userId;
+    }
+
     // Сохраняем старые данные для восстановления при ошибке
     List<Post>? oldPosts;
     if (refresh) {
@@ -807,16 +818,26 @@ class PostsProvider extends ChangeNotifier {
       _currentUserPage = 1;
       _hasMoreUserPosts = true;
       _isRefreshingUserPosts = true;
-      // НЕ очищаем _userPosts здесь - очистим только после успешной загрузки
+      // Очищаем список только если userId совпадает (refresh для того же пользователя)
+      if (_currentUserPostsUserId == userId) {
+        // НЕ очищаем _userPosts здесь - очистим только после успешной загрузки
+      }
       notifyListeners(); // Уведомляем о начале refresh
     } else {
-      // При первой загрузке проверяем кеш
-      if (_userPosts.isEmpty) {
+      // При первой загрузке проверяем кеш только если список пуст И userId совпадает
+      if (_userPosts.isEmpty && _currentUserPostsUserId == userId) {
         final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
         if (cachedUserPosts != null) {
-          _userPosts = cachedUserPosts;
+          // ВАЖНО: Фильтруем кешированные посты - оставляем только те, которые принадлежат правильному пользователю
+          final filteredCachedPosts = cachedUserPosts.where((post) => post.userId == userId).toList();
+          if (filteredCachedPosts.length != cachedUserPosts.length) {
+            print('PostsProvider: Filtered out ${cachedUserPosts.length - filteredCachedPosts.length} invalid posts from cache');
+            // Обновляем кеш с отфильтрованными постами
+            await _cacheService.cacheUserPosts(userId, filteredCachedPosts);
+          }
+          _userPosts = filteredCachedPosts;
           notifyListeners();
-          print('PostsProvider: Loaded user posts from cache (${cachedUserPosts.length} posts)');
+          print('PostsProvider: Loaded ${filteredCachedPosts.length} user posts from cache');
         }
       }
     }
@@ -845,26 +866,52 @@ class PostsProvider extends ChangeNotifier {
         limit: 20,
       );
 
+      // ВАЖНО: Проверяем, что userId не изменился во время загрузки
+      if (_currentUserPostsUserId != userId) {
+        print('PostsProvider: User changed during load, ignoring response');
+        return;
+      }
+
+      // ВАЖНО: Фильтруем посты - оставляем только те, которые принадлежат правильному пользователю
+      final filteredResponse = response.where((post) {
+        final postUserId = post.userId;
+        if (postUserId != userId) {
+          print('PostsProvider: WARNING - Post ${post.id} belongs to user $postUserId, but we requested posts for $userId. Filtering out.');
+          return false;
+        }
+        return true;
+      }).toList();
+
+      if (filteredResponse.length != response.length) {
+        print('PostsProvider: Filtered out ${response.length - filteredResponse.length} posts that don\'t belong to user $userId');
+      }
+
       // Только после успешной загрузки обновляем список
-      if (response.isNotEmpty) {
+      if (filteredResponse.isNotEmpty) {
         if (refresh) {
-          _userPosts = response; // Заменяем только после успешной загрузки
+          _userPosts = filteredResponse; // Заменяем только после успешной загрузки
           _isRefreshingUserPosts = false;
           // Кешируем обновленные посты пользователя
-          await _cacheService.cacheUserPosts(userId, response);
+          await _cacheService.cacheUserPosts(userId, filteredResponse);
         } else {
-          _userPosts.addAll(response);
-          // Обновляем кеш
-          await _cacheService.cacheUserPosts(userId, _userPosts);
+          // Проверяем, что добавляем посты для правильного пользователя
+          if (_currentUserPostsUserId == userId) {
+            _userPosts.addAll(filteredResponse);
+            // Обновляем кеш
+            await _cacheService.cacheUserPosts(userId, _userPosts);
+          } else {
+            print('PostsProvider: User changed, not adding posts');
+            return;
+          }
         }
         _currentUserPage++;
         
         // Если получили меньше постов чем лимит, значит больше нет
-        if (response.length < 20) {
+        if (filteredResponse.length < 20) {
           _hasMoreUserPosts = false;
         }
       } else {
-        if (refresh) {
+        if (refresh && _currentUserPostsUserId == userId) {
           _userPosts = []; // Пустой список только после успешной загрузки
           _isRefreshingUserPosts = false;
           // Кешируем пустой список
@@ -873,8 +920,16 @@ class PostsProvider extends ChangeNotifier {
         _hasMoreUserPosts = false;
       }
 
-      print('PostsProvider: Loaded ${response.length} user posts');
+      print('PostsProvider: Loaded ${filteredResponse.length} user posts (filtered from ${response.length})');
       print('PostsProvider: Total user posts: ${_userPosts.length}');
+      
+      // Дополнительная проверка - убеждаемся, что все посты принадлежат правильному пользователю
+      final invalidPosts = _userPosts.where((post) => post.userId != userId).toList();
+      if (invalidPosts.isNotEmpty) {
+        print('PostsProvider: ERROR - Found ${invalidPosts.length} posts that don\'t belong to user $userId. Removing them.');
+        _userPosts.removeWhere((post) => post.userId != userId);
+        await _cacheService.cacheUserPosts(userId, _userPosts);
+      }
       _setLoading(false);
     } catch (e) {
       print('PostsProvider: Error loading user posts: $e');
@@ -887,8 +942,14 @@ class PostsProvider extends ChangeNotifier {
           // Если нет старых данных, пытаемся загрузить из кеша
           final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
           if (cachedUserPosts != null) {
-            _userPosts = cachedUserPosts;
-            print('PostsProvider: User posts refresh failed, loaded from cache');
+            // ВАЖНО: Фильтруем кешированные посты
+            final filteredCachedPosts = cachedUserPosts.where((post) => post.userId == userId).toList();
+            if (filteredCachedPosts.length != cachedUserPosts.length) {
+              print('PostsProvider: Filtered out ${cachedUserPosts.length - filteredCachedPosts.length} invalid posts from cache');
+              await _cacheService.cacheUserPosts(userId, filteredCachedPosts);
+            }
+            _userPosts = filteredCachedPosts;
+            print('PostsProvider: User posts refresh failed, loaded ${filteredCachedPosts.length} posts from cache');
           } else {
             _userPosts = [];
           }
@@ -898,7 +959,13 @@ class PostsProvider extends ChangeNotifier {
         if (_userPosts.isEmpty) {
           final cachedUserPosts = _cacheService.getCachedUserPosts(userId);
           if (cachedUserPosts != null) {
-            _userPosts = cachedUserPosts;
+            // ВАЖНО: Фильтруем кешированные посты
+            final filteredCachedPosts = cachedUserPosts.where((post) => post.userId == userId).toList();
+            if (filteredCachedPosts.length != cachedUserPosts.length) {
+              print('PostsProvider: Filtered out ${cachedUserPosts.length - filteredCachedPosts.length} invalid posts from cache');
+              await _cacheService.cacheUserPosts(userId, filteredCachedPosts);
+            }
+            _userPosts = filteredCachedPosts;
             notifyListeners();
           }
         }

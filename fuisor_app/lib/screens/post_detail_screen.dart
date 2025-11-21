@@ -22,17 +22,27 @@ class PostDetailScreen extends StatefulWidget {
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final ScrollController _scrollController = ScrollController();
-  int _currentPage = 1;
   bool _isLoadingMore = false;
   bool _hasMorePosts = true;
   int? _initialPostIndex;
+  List<Post> _posts = [];
+  String? _userId; // ID пользователя, чьи посты мы просматриваем
 
   @override
   void initState() {
     super.initState();
     
+    // Инициализируем список постов из initialPosts
+    _posts = List.from(widget.initialPosts);
+    
+    // Определяем userId из первого поста
+    if (widget.initialPosts.isNotEmpty) {
+      _userId = widget.initialPosts.first.userId;
+      print('PostDetailScreen: Viewing posts for user: $_userId');
+    }
+    
     // Находим индекс начального поста
-    _initialPostIndex = widget.initialPosts.indexWhere(
+    _initialPostIndex = _posts.indexWhere(
       (post) => post.id == widget.initialPostId,
     );
     
@@ -43,7 +53,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     
     // Скроллим к нужному посту после загрузки
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_initialPostIndex != null && _initialPostIndex! < widget.initialPosts.length) {
+      if (_initialPostIndex != null && _initialPostIndex! < _posts.length) {
         _scrollToPost(_initialPostIndex!);
       }
     });
@@ -65,7 +75,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _loadMorePosts() async {
-    if (_isLoadingMore || !_hasMorePosts) return;
+    if (_isLoadingMore || !_hasMorePosts || _userId == null) return;
 
     setState(() {
       _isLoadingMore = true;
@@ -77,19 +87,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final accessToken = prefs.getString('access_token');
 
       if (accessToken != null) {
-        await postsProvider.loadMoreFeedPosts(
-          page: _currentPage + 1,
-          limit: 20,
+        // Загружаем посты пользователя, а не из ленты
+        await postsProvider.loadUserPosts(
+          userId: _userId!,
+          refresh: false,
           accessToken: accessToken,
         );
         
+        // Обновляем список постов из provider
+        final newPosts = postsProvider.userPosts;
         setState(() {
-          _currentPage++;
-          _hasMorePosts = postsProvider.hasMorePosts;
+          _posts = newPosts;
+          _hasMorePosts = postsProvider.hasMoreUserPosts;
         });
+        
+        print('PostDetailScreen: Loaded ${newPosts.length} user posts');
       }
     } catch (e) {
-      print('Error loading more posts: $e');
+      print('PostDetailScreen: Error loading more posts: $e');
     } finally {
       setState(() {
         _isLoadingMore = false;
@@ -98,7 +113,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   void _scrollToPost(int index) {
-    if (index < widget.initialPosts.length) {
+    if (index < _posts.length) {
       // Вычисляем примерную позицию поста
       final double itemHeight = MediaQuery.of(context).size.width + 200; // Примерная высота поста
       final double targetPosition = index * itemHeight;
@@ -139,9 +154,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
       body: Consumer<PostsProvider>(
         builder: (context, postsProvider, child) {
-          final allPosts = postsProvider.feedPosts;
+          // Если есть userId, синхронизируем с userPosts из provider
+          if (_userId != null) {
+            final providerUserPosts = postsProvider.userPosts;
+            // Проверяем, что посты в provider принадлежат правильному пользователю
+            if (providerUserPosts.isNotEmpty && 
+                providerUserPosts.first.userId == _userId) {
+              // Обновляем список, если в provider больше постов
+              if (providerUserPosts.length > _posts.length) {
+                _posts = providerUserPosts;
+              }
+            }
+          }
           
-          if (allPosts.isEmpty) {
+          if (_posts.isEmpty) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -166,9 +192,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
           return ListView.builder(
             controller: _scrollController,
-            itemCount: allPosts.length + (_isLoadingMore ? 1 : 0),
+            itemCount: _posts.length + (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
-              if (index == allPosts.length) {
+              if (index == _posts.length) {
                 // Показать индикатор загрузки в конце
                 return const Padding(
                   padding: EdgeInsets.all(16),
@@ -180,7 +206,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 );
               }
 
-              final post = allPosts[index];
+              final post = _posts[index];
               return PostCard(
                 post: post,
                 onLike: () => postsProvider.likePost(post.id),
