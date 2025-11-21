@@ -689,10 +689,9 @@ class PostsProvider extends ChangeNotifier {
   // Создать новый пост
   Future<void> createPost({
     required String caption,
-    required Uint8List? mediaBytes,
-    required String mediaFileName,
+    required String mediaUrl,
     required String mediaType,
-    Uint8List? thumbnailBytes,
+    String? thumbnailUrl,
     List<String>? mentions,
     List<String>? hashtags,
     String? accessToken, // Добавляем токен как параметр
@@ -701,8 +700,8 @@ class PostsProvider extends ChangeNotifier {
       print('PostsProvider: createPost called');
       print('PostsProvider: Caption length: ${caption.length}');
       print('PostsProvider: Media type: $mediaType');
-      print('PostsProvider: Media filename: $mediaFileName');
-      print('PostsProvider: Media bytes: ${mediaBytes != null ? "${mediaBytes.length} bytes" : "NULL"}');
+      print('PostsProvider: Media URL: $mediaUrl');
+      print('PostsProvider: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('PostsProvider: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       _setLoading(true);
@@ -721,10 +720,9 @@ class PostsProvider extends ChangeNotifier {
       print('PostsProvider: Calling ApiService.createPost...');
       final newPost = await _apiService.createPost(
         caption: caption,
-        mediaBytes: mediaBytes,
-        mediaFileName: mediaFileName,
+        mediaUrl: mediaUrl,
         mediaType: mediaType,
-        thumbnailBytes: thumbnailBytes,
+        thumbnailUrl: thumbnailUrl,
         mentions: mentions,
         hashtags: hashtags,
       );

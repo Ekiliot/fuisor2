@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/supabase_storage_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -346,22 +347,49 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final accessToken = authProvider.currentUser != null ? 
         await _getAccessTokenFromAuthProvider() : null;
       
+      // Загружаем медиа файл напрямую в Supabase Storage
+      print('CreatePostScreen: Uploading media to Supabase Storage...');
+      final mediaUrl = await SupabaseStorageService.uploadMedia(
+        fileBytes: mediaBytes,
+        fileName: mediaFileName,
+        bucketName: 'post-media',
+        accessToken: accessToken,
+      );
+      
+      print('CreatePostScreen: Media uploaded, URL: $mediaUrl');
+      
+      // Загружаем thumbnail если есть
+      String? thumbnailUrl;
+      if (thumbnailBytes != null) {
+        print('CreatePostScreen: Uploading thumbnail to Supabase Storage...');
+        final thumbnailFileName = 'thumb_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        thumbnailUrl = await SupabaseStorageService.uploadThumbnail(
+          thumbnailBytes: thumbnailBytes,
+          fileName: thumbnailFileName,
+          accessToken: accessToken,
+        );
+        if (thumbnailUrl != null) {
+          print('CreatePostScreen: Thumbnail uploaded, URL: $thumbnailUrl');
+        } else {
+          print('CreatePostScreen: WARNING - Thumbnail upload failed, continuing without thumbnail');
+        }
+      }
+      
       // Hashtags are stored directly in the caption text
       final captionText = _captionController.text.trim();
       
       print('CreatePostScreen: About to call postsProvider.createPost');
       print('CreatePostScreen: Caption: $captionText');
       print('CreatePostScreen: Media type: $mediaType');
-      print('CreatePostScreen: Media filename: $mediaFileName');
-      print('CreatePostScreen: Media bytes length: ${mediaBytes.length}');
+      print('CreatePostScreen: Media URL: $mediaUrl');
+      print('CreatePostScreen: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       await postsProvider.createPost(
         caption: captionText,
-        mediaBytes: mediaBytes,
-        mediaFileName: mediaFileName,
+        mediaUrl: mediaUrl,
         mediaType: mediaType,
-        thumbnailBytes: thumbnailBytes,
+        thumbnailUrl: thumbnailUrl,
         accessToken: accessToken,
       );
 

@@ -246,4 +246,17 @@ router.post('/logout', validateAuth, async (req, res) => {
   }
 });
 
+// Get Supabase credentials for client-side uploads
+router.get('/supabase-config', async (req, res) => {
+  try {
+    // Возвращаем только публичные credentials (anon key безопасен для клиента)
+    res.json({
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

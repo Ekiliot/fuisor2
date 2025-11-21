@@ -4,14 +4,8 @@ import { validateAuth } from '../middleware/auth.middleware.js';
 import { validatePost, validatePostUpdate, validateComment, validateUUID, validateCommentId } from '../middleware/validation.middleware.js';
 import { createNotification } from './notification.routes.js';
 import { logger } from '../utils/logger.js';
-import multer from 'multer';
 
 const router = express.Router();
-const upload = multer();
-const uploadFields = upload.fields([
-  { name: 'media', maxCount: 1 },
-  { name: 'thumbnail', maxCount: 1 }
-]);
 
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
@@ -76,118 +70,65 @@ router.get('/', validateAuth, async (req, res) => {
   }
 });
 
-// Create post
-router.post('/', validateAuth, uploadFields, validatePost, async (req, res) => {
+// Create post (теперь принимает URL вместо файлов)
+router.post('/', validateAuth, validatePost, async (req, res) => {
   try {
     logger.post('Post creation request', {
       userId: req.user.id,
       userEmail: req.user.email,
-      hasMedia: !!req.files?.media?.[0],
-      hasThumbnail: !!req.files?.thumbnail?.[0],
-      mediaInfo: req.files?.media?.[0] ? {
-      originalname: req.files.media[0].originalname,
-      mimetype: req.files.media[0].mimetype,
-      size: req.files.media[0].size
-      } : null,
-      thumbnailInfo: req.files?.thumbnail?.[0] ? {
-      originalname: req.files.thumbnail[0].originalname,
-      mimetype: req.files.thumbnail[0].mimetype,
-      size: req.files.thumbnail[0].size
-      } : null
+      hasMediaUrl: !!req.body.media_url,
+      hasThumbnailUrl: !!req.body.thumbnail_url,
     });
     
-    const { caption, media_type, mentions, hashtags } = req.body;
-    const media = req.files?.media?.[0];
-    const thumbnail = req.files?.thumbnail?.[0];
+    const { caption, media_url, media_type, thumbnail_url, mentions } = req.body;
 
-    if (!media) {
-      logger.postError('No media file provided', { userId: req.user.id });
-      return res.status(400).json({ message: 'Media file is required' });
+    if (!media_url) {
+      logger.postError('No media URL provided', { userId: req.user.id });
+      return res.status(400).json({ message: 'Media URL is required' });
     }
 
-    logger.post('Media file received, validating...');
-
     // Validate media type
-    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
-    const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
-
-    if (!allowedTypes.includes(media.mimetype)) {
-      logger.postError('Invalid file type', { mimetype: media.mimetype, userId: req.user.id });
+    if (!media_type || !['image', 'video'].includes(media_type)) {
+      logger.postError('Invalid media type', { media_type, userId: req.user.id });
       return res.status(400).json({ 
-        message: 'Invalid file type. Supported: images (JPEG, PNG, GIF, WebP) and videos (MP4, WebM, QuickTime)' 
+        message: 'Media type must be "image" or "video"' 
       });
+    }
+
+    logger.post('Media URL received, validating...');
+
+    // Validate URL format (должен быть валидный URL)
+    try {
+      new URL(media_url);
+    } catch (urlError) {
+      logger.postError('Invalid media URL format', { media_url, userId: req.user.id });
+      return res.status(400).json({ 
+        message: 'Invalid media URL format' 
+      });
+    }
+
+    // Validate thumbnail URL if provided
+    if (thumbnail_url) {
+      try {
+        new URL(thumbnail_url);
+      } catch (urlError) {
+        logger.postError('Invalid thumbnail URL format', { thumbnail_url, userId: req.user.id });
+        return res.status(400).json({ 
+          message: 'Invalid thumbnail URL format' 
+        });
+      }
     }
 
     logger.post('Media type validation passed');
-
-    // Determine media type if not provided
-    let detectedMediaType = media_type;
-    if (!detectedMediaType) {
-      detectedMediaType = allowedImageTypes.includes(media.mimetype) ? 'image' : 'video';
-    }
-
-    // Validate media type matches file type
-    if ((detectedMediaType === 'image' && !allowedImageTypes.includes(media.mimetype)) ||
-        (detectedMediaType === 'video' && !allowedVideoTypes.includes(media.mimetype))) {
-      return res.status(400).json({ 
-        message: 'Media type does not match file type' 
-      });
-    }
-
-    // Upload media to Supabase Storage
-    logger.post('Uploading media to Supabase Storage...');
-    const fileExt = media.originalname.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(7)}.${fileExt}`;
-    
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('post-media')
-      .upload(fileName, media.buffer);
-
-    if (uploadError) {
-      logger.postError('Storage upload error', uploadError);
-      throw uploadError;
-    }
-    
-    logger.post('Media uploaded to storage successfully', { fileName });
-
-    // Get public URL for the uploaded media
-    const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('post-media')
-      .getPublicUrl(fileName);
-
-    // Upload thumbnail if provided (for videos)
-    let thumbnailUrl = null;
-    if (thumbnail && detectedMediaType === 'video') {
-      logger.post('Uploading thumbnail to Supabase Storage...');
-      const thumbnailExt = thumbnail.originalname.split('.').pop() || 'jpg';
-      const thumbnailName = `thumb_${Math.random().toString(36).substring(7)}.${thumbnailExt}`;
-      
-      const { error: thumbnailUploadError } = await supabaseAdmin.storage
-        .from('post-media')
-        .upload(thumbnailName, thumbnail.buffer);
-
-      if (thumbnailUploadError) {
-        logger.postError('Thumbnail upload error', thumbnailUploadError);
-        // Не прерываем создание поста, если thumbnail не загрузился
-        logger.post('Continuing without thumbnail due to upload error');
-      } else {
-        const { data: { publicUrl: thumbnailPublicUrl } } = supabaseAdmin.storage
-          .from('post-media')
-          .getPublicUrl(thumbnailName);
-        thumbnailUrl = thumbnailPublicUrl;
-        logger.post('Thumbnail uploaded to storage successfully', { thumbnailName });
-      }
-    }
 
     // Create post record using admin client to bypass RLS
     logger.post('Creating post in database', {
       userId: req.user.id,
       caption: caption?.substring(0, 50),
-      mediaType: detectedMediaType,
+      mediaType: media_type,
+      mediaUrl: media_url,
+      thumbnailUrl: thumbnail_url || 'none',
       hasMentions: !!mentions,
-      hasHashtags: !!hashtags,
-      hasThumbnail: !!thumbnailUrl
     });
     
     const { data, error } = await supabaseAdmin
@@ -196,9 +137,9 @@ router.post('/', validateAuth, uploadFields, validatePost, async (req, res) => {
         {
           user_id: req.user.id,
           caption,
-          media_url: publicUrl,
-          media_type: detectedMediaType,
-          thumbnail_url: thumbnailUrl
+          media_url: media_url,
+          media_type: media_type,
+          thumbnail_url: thumbnail_url || null
         }
       ])
       .select()

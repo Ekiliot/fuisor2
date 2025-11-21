@@ -476,8 +476,8 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                                     ? CachedNetworkImage(
                                         imageUrl: widget.post.thumbnailUrl!,
                                         fit: BoxFit.cover,
-                                        width: width,
-                                        height: width,
+                              width: width,
+                              height: width,
                                         placeholder: (context, url) => Container(
                                           color: Colors.grey[200],
                                           child: const Center(

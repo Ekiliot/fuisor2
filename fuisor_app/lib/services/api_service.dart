@@ -641,128 +641,66 @@ class ApiService {
     }
   }
 
-  // Создать новый пост
+  // Создать новый пост (теперь принимает URL вместо файлов)
   Future<Post> createPost({
     required String caption,
-    required Uint8List? mediaBytes,
-    required String mediaFileName,
+    required String mediaUrl,
     required String mediaType,
-    Uint8List? thumbnailBytes,
+    String? thumbnailUrl,
     List<String>? mentions,
     List<String>? hashtags,
   }) async {
     try {
-      print('ApiService: Creating post with filename: $mediaFileName');
+      print('ApiService: Creating post with media URL: $mediaUrl');
       print('ApiService: Media type: $mediaType');
-      print('ApiService: Media bytes length: ${mediaBytes?.length ?? 0}');
-      print('ApiService: Thumbnail bytes length: ${thumbnailBytes?.length ?? 0}');
+      print('ApiService: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('ApiService: Caption: $caption');
       print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
 
-      var request = http.MultipartRequest(
-        'POST',
+      // Теперь отправляем простой JSON запрос с URL
+      final response = await http.post(
         Uri.parse('$baseUrl/posts'),
+        headers: _headers,
+        body: jsonEncode({
+          'caption': caption,
+          'media_url': mediaUrl,
+          'media_type': mediaType,
+          if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
+          if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
+        }),
       );
-
-      request.headers.addAll(_headers);
-      // Убираем Content-Type для multipart запроса - он будет установлен автоматически
-      request.headers.remove('Content-Type');
-      print('ApiService: Headers: ${request.headers}');
-
-      // Добавляем поля
-      request.fields['caption'] = caption;
-      request.fields['media_type'] = mediaType;
-      
-      if (mentions != null && mentions.isNotEmpty) {
-        request.fields['mentions'] = jsonEncode(mentions);
-      }
-      
-      // Hashtags are stored directly in caption text
-
-      print('ApiService: Request fields: ${request.fields}');
-
-      // Добавляем медиа файл
-      if (mediaBytes != null) {
-        // Определяем MIME тип по расширению файла
-        String contentType = 'image/jpeg'; // По умолчанию
-        final fileNameLower = mediaFileName.toLowerCase();
-        
-        if (fileNameLower.endsWith('.png')) {
-          contentType = 'image/png';
-        } else if (fileNameLower.endsWith('.gif')) {
-          contentType = 'image/gif';
-        } else if (fileNameLower.endsWith('.webp')) {
-          contentType = 'image/webp';
-        } else if (fileNameLower.endsWith('.mp4')) {
-          contentType = 'video/mp4';
-        } else if (fileNameLower.endsWith('.webm')) {
-          contentType = 'video/webm';
-        } else if (fileNameLower.endsWith('.mov') || fileNameLower.endsWith('.quicktime')) {
-          contentType = 'video/quicktime';
-        } else if (fileNameLower.endsWith('.avi')) {
-          contentType = 'video/x-msvideo';
-        }
-
-        print('ApiService: Preparing to upload media file');
-        print('ApiService: File name: $mediaFileName');
-        print('ApiService: Content type: $contentType');
-        print('ApiService: Media type: $mediaType');
-        print('ApiService: File size: ${mediaBytes.length} bytes (${(mediaBytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
-
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'media',
-            mediaBytes,
-            filename: mediaFileName,
-            contentType: MediaType.parse(contentType),
-          ),
-        );
-        print('ApiService: Media file added to multipart request');
-      } else {
-        print('ApiService: WARNING - No media bytes provided!');
-      }
-
-      // Добавляем thumbnail файл (если есть)
-      if (thumbnailBytes != null && mediaType == 'video') {
-        print('ApiService: Preparing to upload thumbnail file');
-        print('ApiService: Thumbnail size: ${thumbnailBytes.length} bytes');
-        
-        final thumbnailFileName = 'thumbnail_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'thumbnail',
-            thumbnailBytes,
-            filename: thumbnailFileName,
-            contentType: MediaType.parse('image/jpeg'),
-          ),
-        );
-        print('ApiService: Thumbnail file added to multipart request');
-      }
-
-      print('ApiService: Sending request...');
-      print('ApiService: Request URL: ${request.url}');
-      print('ApiService: Request method: ${request.method}');
-      print('ApiService: Request files count: ${request.files.length}');
-      print('ApiService: Request fields count: ${request.fields.length}');
-      
-      final streamedResponse = await request.send();
-      print('ApiService: Response received');
-      print('ApiService: Response status code: ${streamedResponse.statusCode}');
-      print('ApiService: Response headers: ${streamedResponse.headers}');
-      final response = await http.Response.fromStream(streamedResponse);
 
       print('ApiService: Response status: ${response.statusCode}');
       print('ApiService: Response body: ${response.body}');
 
+      // Обработка ошибки 413 - Request Entity Too Large (теперь не должна возникать)
+      if (response.statusCode == 413) {
+        print('ApiService: Request too large (413)');
+        throw Exception('File size is too large. Please use a smaller video file.');
+      }
+
       if (response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        print('ApiService: Post created successfully');
-        return Post.fromJson(responseData);
+        try {
+          final responseData = jsonDecode(response.body);
+          print('ApiService: Post created successfully');
+          return Post.fromJson(responseData);
+        } catch (e) {
+          print('ApiService: Error parsing response JSON: $e');
+          throw Exception('Failed to parse server response');
+        }
       } else {
-        final error = jsonDecode(response.body);
-        print('ApiService: Error response: $error');
-        throw Exception(error['error'] ?? 'Failed to create post');
+        // Пытаемся декодировать как JSON, но если не получается - используем текст ответа
+        try {
+          final error = jsonDecode(response.body);
+          print('ApiService: Error response: $error');
+          throw Exception(error['error'] ?? error['message'] ?? 'Failed to create post');
+        } catch (jsonError) {
+          // Если не JSON, используем текст ответа
+          print('ApiService: Error response (not JSON): ${response.body}');
+          throw Exception(response.body.isNotEmpty 
+              ? response.body 
+              : 'Failed to create post (status: ${response.statusCode})');
+        }
       }
     } catch (e, stackTrace) {
       print('ApiService: Exception creating post: $e');
