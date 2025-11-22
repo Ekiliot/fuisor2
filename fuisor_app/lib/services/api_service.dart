@@ -831,6 +831,8 @@ class ApiService {
     List<String>? hashtags,
     double? latitude,
     double? longitude,
+    String? visibility,
+    int? expiresInHours,
   }) async {
     try {
       print('ApiService: Creating post with media URL: $mediaUrl');
@@ -851,6 +853,8 @@ class ApiService {
           if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
           if (latitude != null) 'latitude': latitude,
           if (longitude != null) 'longitude': longitude,
+          if (visibility != null) 'visibility': visibility,
+          if (expiresInHours != null) 'expires_in_hours': expiresInHours,
         }),
       );
 

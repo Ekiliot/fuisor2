@@ -332,6 +332,52 @@ router.post('/unfollow/:id', validateAuth, validateUUID, async (req, res) => {
   }
 });
 
+// Get mutual followers (users who follow each other)
+router.get('/mutual-followers', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get users that current user follows
+    const { data: following, error: followingError } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) throw followingError;
+
+    const followingIds = following.map(f => f.following_id);
+
+    // Get users who follow current user
+    const { data: followers, error: followersError } = await supabaseAdmin
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', userId);
+
+    if (followersError) throw followersError;
+
+    const followerIds = followers.map(f => f.follower_id);
+
+    // Mutual followers: users who follow us AND we follow them
+    const mutualFollowerIds = followingIds.filter(id => followerIds.includes(id));
+
+    // Get profiles of mutual followers
+    let mutualFollowers = [];
+    if (mutualFollowerIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, username, name, avatar_url')
+        .in('id', mutualFollowerIds);
+
+      if (profilesError) throw profilesError;
+      mutualFollowers = profiles || [];
+    }
+
+    res.json({ mutualFollowers });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get user posts
 router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
   try {

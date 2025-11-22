@@ -70,12 +70,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final accessToken = await _getAccessTokenFromAuthProvider();
       context.read<PostsProvider>().loadFeed(refresh: true, accessToken: accessToken);
-
+      
       // Load notifications to update unread count
       final authProvider = context.read<AuthProvider>();
       context.read<NotificationsProvider>().loadNotifications(refresh: true, authProvider: authProvider);
     });
-
+    
     _scrollController.addListener(_onScroll);
   }
 
@@ -405,7 +405,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           bottom: BorderSide(
                             color: Colors.white.withOpacity(0.1),
                             width: 0.5,
-                          ),
+          ),
                         ),
                       ),
                     ),
@@ -617,25 +617,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           return ClipRect(
             child: SmartRefresher(
-              controller: _refreshController,
-              onRefresh: _onRefresh,
-              enablePullDown: true,
-              enablePullUp: false,
-              header: const WaterDropHeader(
-                waterDropColor: Color(0xFF0095F6),
-                complete: Icon(
-                  EvaIcons.checkmarkCircle,
-                  color: Color(0xFF0095F6),
-                  size: 20,
-                ),
-                failed: Icon(
-                  EvaIcons.closeCircle,
-                  color: Colors.red,
-                  size: 20,
-                ),
+            controller: _refreshController,
+            onRefresh: _onRefresh,
+            enablePullDown: true,
+            enablePullUp: false,
+            header: const WaterDropHeader(
+              waterDropColor: Color(0xFF0095F6),
+              complete: Icon(
+                EvaIcons.checkmarkCircle,
+                color: Color(0xFF0095F6),
+                size: 20,
               ),
-              child: ListView.builder(
-                controller: _scrollController,
+              failed: Icon(
+                EvaIcons.closeCircle,
+                color: Colors.red,
+                size: 20,
+              ),
+            ),
+            child: ListView.builder(
+              controller: _scrollController,
                 clipBehavior: Clip.antiAlias, // Плавная обрезка
                 physics: const BouncingScrollPhysics(), // Плавный скроллинг с отскоком
                 cacheExtent: 1000, // Увеличенная предзагрузка для плавности
@@ -644,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + 20, // Pull to refresh виден ниже header
                 ),
-                itemCount: totalItems,
+              itemCount: totalItems,
               itemBuilder: (context, index) {
                 // Stories всегда на первой позиции
                 if (index == 0) {
@@ -680,15 +680,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 return RepaintBoundary(
                   child: PostCard(
-                    post: feedPosts[postIndex],
-                    onLike: () => postsProvider.likePost(
-                      feedPosts[postIndex].id,
-                    ),
-                    onComment: (content, parentCommentId) =>
-                        postsProvider.addComment(
-                      feedPosts[postIndex].id,
-                      content,
-                      parentCommentId: parentCommentId,
+                  post: feedPosts[postIndex],
+                  onLike: () => postsProvider.likePost(
+                    feedPosts[postIndex].id,
+                  ),
+                  onComment: (content, parentCommentId) =>
+                      postsProvider.addComment(
+                    feedPosts[postIndex].id,
+                    content,
+                    parentCommentId: parentCommentId,
                     ),
                   ),
                 );
@@ -697,7 +697,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           );
         },
-        ),
+      ),
       ),
     );
   }

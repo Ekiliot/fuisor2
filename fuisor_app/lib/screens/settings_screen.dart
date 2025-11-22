@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../services/api_service.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 
@@ -16,8 +18,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool notificationsEnabled = true;
   bool autoplayVideos = true;
   bool useCellularData = false;
+  bool locationSharingEnabled = false;
+  bool _isLoadingLocationSetting = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocationSharingSetting();
+  }
+
+  Future<void> _loadLocationSharingSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      if (accessToken == null) return;
+
+      _apiService.setAccessToken(accessToken);
+      
+      // TODO: Загрузить текущее значение location_sharing_enabled из API
+      // Пока используем значение по умолчанию false
+      // В будущем можно добавить endpoint для получения настроек пользователя
+    } catch (e) {
+      print('SettingsScreen: Error loading location sharing setting: $e');
+    }
+  }
+
+  Future<void> _toggleLocationSharing(bool value) async {
+    if (_isLoadingLocationSetting) return;
+
+    setState(() {
+      _isLoadingLocationSetting = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      if (accessToken == null) {
+        setState(() {
+          locationSharingEnabled = false;
+          _isLoadingLocationSetting = false;
+        });
+        return;
+      }
+
+      _apiService.setAccessToken(accessToken);
+      await _apiService.setLocationSharing(value);
+
+      setState(() {
+        locationSharingEnabled = value;
+        _isLoadingLocationSetting = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value 
+                ? 'Location sharing enabled. Friends can see your location.'
+                : 'Location sharing disabled.',
+            ),
+            backgroundColor: const Color(0xFF0095F6),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('SettingsScreen: Error toggling location sharing: $e');
+      setState(() {
+        locationSharingEnabled = !value; // Откатываем изменение
+        _isLoadingLocationSetting = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -132,6 +217,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         },
+      ),
+      _SettingItem(
+        section: 'Privacy',
+        icon: EvaIcons.navigation2Outline,
+        title: 'Location sharing',
+        subtitle: 'Share your location with friends on the map',
+        type: _SettingType.switch_,
+        switchValue: locationSharingEnabled,
+        onSwitchChanged: _toggleLocationSharing,
       ),
     ];
 

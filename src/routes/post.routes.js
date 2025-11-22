@@ -326,7 +326,7 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       hasThumbnailUrl: !!req.body.thumbnail_url,
     });
     
-    const { caption, media_url, media_type, thumbnail_url, mentions } = req.body;
+    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude } = req.body;
 
     if (!media_url) {
       logger.postError('No media URL provided', { userId: req.user.id });
@@ -375,6 +375,31 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
 
     logger.post('Media type validation passed');
 
+    // Validate visibility if provided
+    const validVisibilityValues = ['public', 'friends', 'private'];
+    const postVisibility = visibility || 'public';
+    if (!validVisibilityValues.includes(postVisibility)) {
+      logger.postError('Invalid visibility value', { visibility: postVisibility, userId: req.user.id });
+      return res.status(400).json({ 
+        message: `Visibility must be one of: ${validVisibilityValues.join(', ')}` 
+      });
+    }
+
+    // Validate expires_in_hours if provided
+    const validExpiresHours = [12, 24, 48];
+    let expiresAt = null;
+    if (expires_in_hours !== undefined && expires_in_hours !== null) {
+      if (!validExpiresHours.includes(parseInt(expires_in_hours))) {
+        logger.postError('Invalid expires_in_hours value', { expires_in_hours, userId: req.user.id });
+        return res.status(400).json({ 
+          message: `expires_in_hours must be one of: ${validExpiresHours.join(', ')}` 
+        });
+      }
+      // Calculate expires_at based on expires_in_hours
+      expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + parseInt(expires_in_hours));
+    }
+
     // Create post record using admin client to bypass RLS
     logger.post('Creating post in database', {
       userId: req.user.id,
@@ -383,19 +408,34 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       mediaUrl: media_url,
       thumbnailUrl: thumbnail_url || 'none',
       hasMentions: !!mentions,
+      visibility: postVisibility,
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
+      hasLocation: !!(latitude && longitude),
     });
+    
+    const postData = {
+      user_id: req.user.id,
+      caption,
+      media_url: media_url,
+      media_type: media_type,
+      thumbnail_url: thumbnail_url || null,
+      visibility: postVisibility,
+    };
+
+    // Add expires_at if provided
+    if (expiresAt) {
+      postData.expires_at = expiresAt.toISOString();
+    }
+
+    // Add location if provided
+    if (latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null) {
+      postData.latitude = parseFloat(latitude);
+      postData.longitude = parseFloat(longitude);
+    }
     
     const { data, error } = await supabaseAdmin
       .from('posts')
-      .insert([
-        {
-          user_id: req.user.id,
-          caption,
-          media_url: media_url,
-          media_type: media_type,
-          thumbnail_url: thumbnail_url || null
-        }
-      ])
+      .insert([postData])
       .select()
       .single();
       
@@ -1450,6 +1490,126 @@ router.post('/:id/save', validateAuth, validateUUID, async (req, res) => {
     if (error) throw error;
 
     res.json({ message: 'Post saved successfully', saved: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get geo-posts for map view
+router.get('/geo/map', validateAuth, async (req, res) => {
+  try {
+    const { swLat, swLng, neLat, neLng } = req.query;
+    const userId = req.user.id;
+
+    if (!swLat || !swLng || !neLat || !neLng) {
+      return res.status(400).json({ error: 'All bounding box parameters (swLat, swLng, neLat, neLng) are required' });
+    }
+
+    const swLatNum = parseFloat(swLat);
+    const swLngNum = parseFloat(swLng);
+    const neLatNum = parseFloat(neLat);
+    const neLngNum = parseFloat(neLng);
+
+    // Get current time for filtering expired posts
+    const now = new Date().toISOString();
+
+    // Get mutual followers for visibility filtering
+    const { data: following, error: followingError } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) throw followingError;
+
+    const followingIds = following.map(f => f.following_id);
+
+    // Get users who follow current user (mutual followers)
+    const { data: followers, error: followersError } = await supabaseAdmin
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', userId);
+
+    if (followersError) throw followersError;
+
+    const followerIds = followers.map(f => f.follower_id);
+    // Mutual followers: users who follow us AND we follow them
+    const mutualFollowerIds = followingIds.filter(id => followerIds.includes(id));
+    // Always include current user's own posts
+    const visibleUserIds = [...mutualFollowerIds, userId];
+
+    // Build query for geo-posts within bounding box
+    let query = supabaseAdmin
+      .from('posts')
+      .select(`
+        *,
+        profiles:user_id (id, username, name, avatar_url)
+      `)
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .gte('latitude', swLatNum)
+      .lte('latitude', neLatNum)
+      .gte('longitude', swLngNum)
+      .lte('longitude', neLngNum);
+
+    // Filter out expired posts
+    query = query.or(`expires_at.is.null,expires_at.gt.${now}`);
+
+    // Filter by visibility
+    // We need to get all posts first, then filter in JavaScript
+    // because Supabase doesn't support complex OR conditions with user_id checks easily
+    const { data: allGeoPosts, error: postsError } = await query;
+
+    if (postsError) throw postsError;
+
+    // Filter posts by visibility
+    const filteredPosts = allGeoPosts.filter(post => {
+      // Private posts: only author can see
+      if (post.visibility === 'private') {
+        return post.user_id === userId;
+      }
+      // Friends posts: only mutual followers can see
+      if (post.visibility === 'friends') {
+        return visibleUserIds.includes(post.user_id);
+      }
+      // Public posts: everyone can see
+      return true;
+    });
+
+    // Get likes count and is_liked status for filtered posts
+    const postIds = filteredPosts.map(post => post.id);
+    let likedPostIds = new Set();
+    if (postIds.length > 0) {
+      const { data: userLikes, error: likesError } = await supabaseAdmin
+        .from('likes')
+        .select('post_id')
+        .eq('user_id', userId)
+        .in('post_id', postIds);
+
+      if (!likesError && userLikes) {
+        likedPostIds = new Set(userLikes.map(like => like.post_id));
+      }
+
+      // Get likes count for each post
+      const { data: likesCounts, error: likesCountError } = await supabaseAdmin
+        .from('likes')
+        .select('post_id')
+        .in('post_id', postIds);
+
+      if (!likesCountError && likesCounts) {
+        const likesCountMap = new Map();
+        likesCounts.forEach(like => {
+          likesCountMap.set(like.post_id, (likesCountMap.get(like.post_id) || 0) + 1);
+        });
+
+        // Add likes_count and is_liked to each post
+        filteredPosts.forEach(post => {
+          post.likes_count = likesCountMap.get(post.id) || 0;
+          post.is_liked = likedPostIds.has(post.id);
+        });
+      }
+    }
+
+    res.json({ posts: filteredPosts });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

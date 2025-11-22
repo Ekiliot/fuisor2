@@ -497,7 +497,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
 
       // Упрощенная версия: берем первый альбом (обычно "Recent" или "All")
       AssetPathEntity recentAlbum = albums.first;
-      
+
       int totalCount = await recentAlbum.assetCountAsync;
       print('Album: ${recentAlbum.name}, Asset count: $totalCount');
 
@@ -546,8 +546,8 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           if (nextStartIndex < totalCount) {
             final nextAssets = await recentAlbum.getAssetListRange(
               start: nextStartIndex,
-              end: nextEndIndex,
-            );
+            end: nextEndIndex,
+          );
             final nextVideos = nextAssets.where((asset) => asset.type == AssetType.video).toList();
             
             if (nextVideos.isNotEmpty) {
@@ -566,8 +566,8 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
               });
               print('Loaded ${assets.length} videos from next batch, total: ${_mediaAssets.length}');
               return;
-            }
-          }
+        }
+      }
         }
       } else {
         // Для фото фильтруем только изображения
@@ -585,7 +585,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         });
         return;
       }
-      
+
       // Если загрузили 0 элементов, но еще не достигли конца (для фото)
       if (assets.isEmpty && _currentTabIndex == 0) {
         print('No images in this batch, but more assets available.');
@@ -854,17 +854,17 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             ),
             fullscreenDialog: true,
           ),
-        );
-        
+      );
+
         if (croppedBytes != null && mounted) {
-          setState(() {
+        setState(() {
             _selectedImageBytes = croppedBytes;
-          });
+        });
           _navigateToCreatePost();
         } else if (mounted) {
           // Пользователь отменил обрезку, используем оригинальное изображение
           _navigateToCreatePost();
-        }
+      }
       } else {
         // Для видео или веб сразу переходим
         _navigateToCreatePost();
@@ -875,26 +875,26 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   }
 
   void _navigateToCreatePost() {
-    print('MediaSelectionScreen: Navigating to CreatePostScreen');
-    print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
-    print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
-    print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
-    print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
-    
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) {
-          print('MediaSelectionScreen: Building CreatePostScreen');
-          return CreatePostScreen(
-            selectedFile: _selectedFile!,
-            selectedImageBytes: _selectedImageBytes,
-            videoController: _videoController,
-          );
-        },
-      ),
-    ).then((_) {
-      print('MediaSelectionScreen: Returned from CreatePostScreen');
-    });
+      print('MediaSelectionScreen: Navigating to CreatePostScreen');
+      print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
+      print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
+      print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
+      print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
+      
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) {
+            print('MediaSelectionScreen: Building CreatePostScreen');
+            return CreatePostScreen(
+              selectedFile: _selectedFile!,
+              selectedImageBytes: _selectedImageBytes,
+              videoController: _videoController,
+            );
+          },
+        ),
+      ).then((_) {
+        print('MediaSelectionScreen: Returned from CreatePostScreen');
+      });
   }
 
   @override
@@ -1270,7 +1270,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           if (!_isLoadingMedia) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && !_isLoadingMedia) {
-                _loadMedia(loadMore: true);
+              _loadMedia(loadMore: true);
               }
             });
           }

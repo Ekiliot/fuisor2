@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
@@ -337,7 +338,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           }
         } else {
           print('CreatePostScreen: Using selectedImageBytes (cropped image), size: ${mediaBytes.length} bytes');
-        }
+      }
       }
 
       // mediaBytes гарантированно не null после обработки выше
@@ -433,11 +434,43 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Hashtags are stored directly in the caption text
       final captionText = _captionController.text.trim();
       
+      // Получаем геолокацию (опционально, не блокируем создание поста при ошибке)
+      double? latitude;
+      double? longitude;
+      try {
+        print('CreatePostScreen: Getting current location...');
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+          
+          if (permission == LocationPermission.whileInUse || 
+              permission == LocationPermission.always) {
+            Position position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            latitude = position.latitude;
+            longitude = position.longitude;
+            print('CreatePostScreen: Location obtained: lat=$latitude, lng=$longitude');
+          } else {
+            print('CreatePostScreen: Location permission denied, creating post without location');
+          }
+        } else {
+          print('CreatePostScreen: Location services disabled, creating post without location');
+        }
+      } catch (e) {
+        print('CreatePostScreen: Error getting location: $e, creating post without location');
+        // Не блокируем создание поста при ошибке получения геолокации
+      }
+      
       print('CreatePostScreen: About to call postsProvider.createPost');
       print('CreatePostScreen: Caption: $captionText');
       print('CreatePostScreen: Media type: $mediaType');
       print('CreatePostScreen: Media URL: $mediaUrl');
       print('CreatePostScreen: Thumbnail URL: ${thumbnailUrl ?? "None"}');
+      print('CreatePostScreen: Location: ${latitude != null ? "lat=$latitude, lng=$longitude" : "None"}');
       print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       await postsProvider.createPost(
@@ -446,6 +479,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mediaType: mediaType,
         thumbnailUrl: thumbnailUrl,
         accessToken: accessToken,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       print('CreatePostScreen: Post created successfully!');

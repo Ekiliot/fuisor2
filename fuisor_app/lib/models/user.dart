@@ -98,6 +98,8 @@ class Post {
   final String? thumbnailUrl;
   final double? latitude; // For geo-posts
   final double? longitude; // For geo-posts
+  final String? visibility; // 'public', 'friends', 'private'
+  final DateTime? expiresAt; // Expiration time for geo-posts
 
   Post({
     required this.id,
@@ -118,6 +120,8 @@ class Post {
     this.thumbnailUrl,
     this.latitude,
     this.longitude,
+    this.visibility,
+    this.expiresAt,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -147,6 +151,8 @@ class Post {
       thumbnailUrl: json['thumbnail_url'],
       latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
       longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
+      visibility: json['visibility'],
+      expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at']) : null,
     );
   }
 
@@ -170,6 +176,8 @@ class Post {
       'thumbnail_url': thumbnailUrl,
       'latitude': latitude,
       'longitude': longitude,
+      'visibility': visibility,
+      'expires_at': expiresAt?.toIso8601String(),
     };
   }
 
@@ -192,6 +200,8 @@ class Post {
     String? thumbnailUrl,
     double? latitude,
     double? longitude,
+    String? visibility,
+    DateTime? expiresAt,
   }) {
     return Post(
       id: id ?? this.id,
@@ -212,6 +222,8 @@ class Post {
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      visibility: visibility ?? this.visibility,
+      expiresAt: expiresAt ?? this.expiresAt,
     );
   }
 }

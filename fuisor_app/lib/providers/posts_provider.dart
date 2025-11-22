@@ -695,6 +695,10 @@ class PostsProvider extends ChangeNotifier {
     List<String>? mentions,
     List<String>? hashtags,
     String? accessToken, // Добавляем токен как параметр
+    double? latitude, // Геолокация для geo-posts
+    double? longitude, // Геолокация для geo-posts
+    String? visibility, // Видимость поста: 'public', 'friends', 'private'
+    int? expiresInHours, // Время жизни поста в часах: 12, 24, 48
   }) async {
     try {
       print('PostsProvider: createPost called');
@@ -725,6 +729,10 @@ class PostsProvider extends ChangeNotifier {
         thumbnailUrl: thumbnailUrl,
         mentions: mentions,
         hashtags: hashtags,
+        latitude: latitude,
+        longitude: longitude,
+        visibility: visibility,
+        expiresInHours: expiresInHours,
       );
 
       print('PostsProvider: Post created successfully, adding to lists...');
