@@ -837,18 +837,35 @@ router.post('/location', validateAuth, async (req, res) => {
     const userId = req.user.id;
     const { latitude, longitude } = req.body;
 
+    console.log('Update location request:', {
+      userId,
+      latitude,
+      longitude,
+      hasLatitude: !!latitude,
+      hasLongitude: !!longitude
+    });
+
     if (!latitude || !longitude) {
+      console.log('Update location: Missing latitude or longitude');
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
     // Проверяем, включен ли location sharing
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('location_sharing_enabled')
       .eq('id', userId)
       .single();
 
+    if (profileError) {
+      console.error('Update location: Error fetching profile:', profileError);
+      throw profileError;
+    }
+
+    console.log('Update location: Profile location_sharing_enabled:', profile?.location_sharing_enabled);
+
     if (!profile?.location_sharing_enabled) {
+      console.log('Update location: Location sharing is not enabled for user');
       return res.status(403).json({ 
         error: 'Location sharing is not enabled' 
       });
@@ -863,10 +880,15 @@ router.post('/location', validateAuth, async (req, res) => {
       })
       .eq('id', userId);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Update location: Error updating profile:', error);
+      throw error;
+    }
 
+    console.log('Update location: ✅ Successfully updated location for user', userId);
     res.json({ success: true });
   } catch (error) {
+    console.error('Update location: Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

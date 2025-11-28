@@ -2031,6 +2031,10 @@ class ApiService {
     required double longitude,
   }) async {
     try {
+      print('ApiService: Updating location to $baseUrl/users/location');
+      print('ApiService: Latitude: $latitude, Longitude: $longitude');
+      print('ApiService: Headers: ${_headers.containsKey('Authorization') ? 'Authorization present' : 'No Authorization'}');
+      
       final response = await http.post(
         Uri.parse('$baseUrl/users/location'),
         headers: _headers,
@@ -2040,12 +2044,17 @@ class ApiService {
         }),
       );
 
+      print('ApiService: Response status: ${response.statusCode}');
+      print('ApiService: Response body: ${response.body}');
+
       if (response.statusCode != 200) {
         final error = jsonDecode(response.body);
         throw Exception(error['error'] ?? 'Failed to update location');
       }
+      
+      print('ApiService: ✅ Location updated successfully');
     } catch (e) {
-      print('ApiService: Error updating location: $e');
+      print('ApiService: ❌ Error updating location: $e');
       rethrow;
     }
   }
