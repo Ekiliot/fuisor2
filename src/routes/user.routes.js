@@ -965,6 +965,12 @@ router.get('/friends/locations', validateAuth, async (req, res) => {
 
     if (visibility === 'nobody') {
       // Nobody can see location
+      console.log('Friends locations request:', {
+        userId,
+        visibility,
+        visibleUserIdsCount: 0,
+        friendsWithLocations: 0
+      });
       return res.json({ friends: [] });
     } else if (visibility === 'mutual_followers') {
       // Only mutual followers
@@ -1000,6 +1006,12 @@ router.get('/friends/locations', validateAuth, async (req, res) => {
     }
 
     if (visibleUserIds.length === 0) {
+      console.log('Friends locations request:', {
+        userId,
+        visibility,
+        visibleUserIdsCount: 0,
+        friendsWithLocations: 0
+      });
       return res.json({ friends: [] });
     }
 
@@ -1024,8 +1036,17 @@ router.get('/friends/locations', validateAuth, async (req, res) => {
       last_location_updated_at: friend.last_location_updated_at,
     }));
 
+    console.log('Friends locations request:', {
+      userId,
+      visibility,
+      visibleUserIdsCount: visibleUserIds.length,
+      friendsWithLocations: friendsLocations.length,
+      friends: friendsLocations.map(f => ({ username: f.username, hasLocation: !!(f.latitude && f.longitude) }))
+    });
+
     res.json({ friends: friendsLocations });
   } catch (error) {
+    console.error('Error in /friends/locations:', error);
     res.status(500).json({ error: error.message });
   }
 });
