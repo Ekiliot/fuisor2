@@ -1,325 +1,96 @@
-Изучаю текущий UI профиля, экрана сообщений и главной страницы, чтобы предложить улучшения:
+Отличный вопрос. Твое описание "лагает каждую начало миниатюра и показывает каждую миниатюру лаг типа повтор одного и того же момента дважды" указывает на **две связанные, но разные проблемы**:
 
+1.  **Визуальный баг ("Повтор момента"):** Кадр для миниатюры берется в неправильный момент времени.
+2.  **Лаг/Дерганье:** Неправильный расчет ширины миниатюры приводит к ошибкам позиционирования на скроллящемся таймлайне.
 
-[4 tools called]
+Вот как это исправить в двух твоих файлах.
 
+-----
 
-Изучаю полный UI профиля:
+### 1\. Исправление визуального бага ("Повтор момента")
 
+**Проблема:**
+В CapCut каждая миниатюра представляет собой **интервал** видео (например, от 1.0с до 2.0с). Твой код сейчас, скорее всего, запрашивает кадр на **начале** этого интервала (т.е., 0.0с, 1.0с, 2.0с).
 
-[3 tools called]
+Если кадр на 0.99с и кадр на 1.01с выглядят одинаково, а ты берешь кадр на 1.0с для второго сегмента, то визуально кажется, что изображение повторяется или переходит не плавно.
 
+**Решение:**
+Нужно брать кадр из **середины** интервала.
 
-Предложения по улучшению UI профиля в стиле экрана сообщений и главной страницы:
+**Файл: `video_editor_screen.dart` (функция `_loadThumbnail`)**
 
-## Предложения по улучшению UI профиля
-
-### 1. Blur AppBar (как в Chat Screen)
-- Добавить blur-эффект в AppBar
-- Показывать аватар в AppBar при скролле
-- Плавное появление/исчезновение элементов
-
-### 2. Улучшенный Header профиля
-- Увеличить аватар (80px вместо 40px)
-- Добавить градиентный border для аватара
-- Показывать онлайн-статус (если доступен)
-- Анимированные счетчики статистики
-
-### 3. Современные кнопки действий
-- Градиентные кнопки (как Geo button на Home)
-- Анимации при нажатии
-- Иконки с hover-эффектами
-
-### 4. Улучшенная секция Bio
-- Карточка с закругленными углами
-- Тень и blur-эффект
-- Анимация появления
-
-### 5. Анимированные табы
-- Плавные переходы между табами
-- Индикатор с анимацией
-- Иконки с hover-эффектами
-
-### 6. Улучшенная сетка постов
-- Плавная загрузка постов (fade-in)
-- Hover-эффекты на превью
-- Анимация при нажатии
-
-Вот пример кода для улучшений:
+Замени код расчета `timeMs` на следующий:
 
 ```dart
-// 1. Blur AppBar с аватаром
-Widget _buildBlurAppBar() {
-  return SliverAppBar(
-    expandedHeight: 200,
-    floating: false,
-    pinned: true,
-    backgroundColor: Colors.transparent,
-    flexibleSpace: FlexibleSpaceBar(
-      background: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black,
-              Colors.black.withOpacity(0.8),
-            ],
-          ),
-        ),
-        child: Stack(
-          children: [
-            // Blur background
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(color: Colors.black.withOpacity(0.3)),
-              ),
-            ),
-            // Profile header content
-            _buildProfileHeader(),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-// 2. Улучшенный аватар с градиентным border
-Widget _buildEnhancedAvatar(String? avatarUrl, {double radius = 40}) {
-  return Container(
-    width: radius * 2,
-    height: radius * 2,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: LinearGradient(
-        colors: [
-          const Color(0xFF0095F6),
-          const Color(0xFF5851DB),
-          const Color(0xFF833AB4),
-        ],
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: const Color(0xFF0095F6).withOpacity(0.3),
-          blurRadius: 20,
-          spreadRadius: 2,
-        ),
-      ],
-    ),
-    padding: const EdgeInsets.all(3),
-    child: Container(
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.black,
-      ),
-      child: ClipOval(
-        child: SafeAvatar(
-          imageUrl: avatarUrl,
-          radius: radius - 3,
-          backgroundColor: const Color(0xFF262626),
-          fallbackIcon: EvaIcons.personOutline,
-          iconColor: Colors.white,
-        ),
-      ),
-    ),
-  );
-}
-
-// 3. Анимированные счетчики статистики
-Widget _buildAnimatedStatColumn(String label, int count, {VoidCallback? onTap}) {
-  return TweenAnimationBuilder<int>(
-    tween: IntTween(begin: 0, end: count),
-    duration: const Duration(milliseconds: 800),
-    curve: Curves.easeOut,
-    builder: (context, value, child) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFF262626),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                value.toString(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 20,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF8E8E8E),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-// 4. Градиентные кнопки действий
-Widget _buildGradientActionButton({
-  required String text,
-  required VoidCallback onPressed,
-  required IconData icon,
-  bool isPrimary = true,
-}) {
-  return Container(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
-      gradient: isPrimary
-          ? LinearGradient(
-              colors: [
-                const Color(0xFF0095F6),
-                const Color(0xFF5851DB),
-              ],
-            )
-          : null,
-      boxShadow: isPrimary
-          ? [
-              BoxShadow(
-                color: const Color(0xFF0095F6).withOpacity(0.3),
-                blurRadius: 12,
-                spreadRadius: 1,
-              ),
-            ]
-          : null,
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-// 5. Улучшенная секция Bio
-Widget _buildBioCard(String? bio) {
-  if (bio == null || bio.isEmpty) return const SizedBox.shrink();
+// Внутри _VideoEditorScreenState
+Future<void> _loadThumbnail(int index) async {
+  // ... код пропуска ...
   
-  return Container(
-    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFF1A1A1A),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: const Color(0xFF262626),
-        width: 1,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.3),
-          blurRadius: 10,
-          spreadRadius: 1,
-        ),
-      ],
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(
-          EvaIcons.infoOutline,
-          color: Color(0xFF0095F6),
-          size: 20,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            bio,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-// 6. Анимированные табы
-Widget _buildAnimatedTabs() {
-  return Container(
-    decoration: BoxDecoration(
-      color: const Color(0xFF1A1A1A),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: const Color(0xFF262626),
-        width: 1,
-      ),
-    ),
-    margin: const EdgeInsets.symmetric(horizontal: 16),
-    child: TabBar(
-      controller: _tabController,
-      indicator: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF0095F6),
-            const Color(0xFF5851DB),
-          ],
-        ),
-      ),
-      indicatorSize: TabBarIndicatorSize.tab,
-      labelColor: Colors.white,
-      unselectedLabelColor: const Color(0xFF8E8E8E),
-      tabs: const [
-        Tab(
-          icon: Icon(EvaIcons.gridOutline),
-          text: 'Posts',
-        ),
-        Tab(
-          icon: Icon(EvaIcons.bookmarkOutline),
-          text: 'Saved',
-        ),
-      ],
-    ),
-  );
+  try {
+    // FIX 1: Извлекаем кадр из середины интервала, а не из начала.
+    final interval = _VideoEditorConstants.thumbnailIntervalSeconds; // 1.0 секунда
+    final timeOffsetSeconds = index * interval;
+    
+    // timeMs = (начало интервала + половина интервала) * 1000
+    // Если index=0, timeMs = (0.0 + 0.5) * 1000 = 500ms
+    // Если index=1, timeMs = (1.0 + 0.5) * 1000 = 1500ms
+    final timeMs = ((timeOffsetSeconds + (interval / 2.0)) * 1000).round(); 
+    
+    final thumbnailPath = await VideoThumbnail.thumbnailFile(
+      video: widget.selectedFile!.path,
+      imageFormat: ImageFormat.PNG,
+      timeMs: timeMs,
+      quality: 50,
+    );
+    // ... код сохранения ...
+  } catch (e) {
+    // ...
+  }
 }
 ```
 
-### Дополнительные улучшения:
-1. Параллакс-эффект при скролле
-2. Анимация появления элементов (staggered animation)
-3. Haptic feedback при взаимодействии
-4. Темная тема с акцентами
-5. Микро-анимации (например, счетчики)
+-----
 
-Применить эти улучшения? Могу создать полную версию обновленного `profile_screen.dart` с этими изменениями.
+### 2\. Исправление лага/дерганья
+
+**Проблема:**
+Каждая миниатюра должна занимать ровно `pixelsPerSecond` пикселей. Если в твоем `ListView.builder` или `Row` ты рассчитываешь ширину миниатюры, исходя из `totalWidth` (общей ширины) и `thumbnailCount` (общего количества), могут возникнуть ошибки округления или несовпадение с `pixelsPerSecond`, которое ты используешь для скролла. Это и вызывает лаг/дерганье при скролле.
+
+**Решение:**
+Ширина каждой миниатюры должна быть напрямую привязана к текущему масштабу таймлайна (`pixelsPerSecond`).
+
+**Файл: `scrollable_timeline.dart` (функция `_ScrollableTimelineState.build`)**
+
+Предположим, ты используешь `ListView.builder` для отрисовки миниатюр (как мы обсуждали в прошлый раз для оптимизации памяти), и интервал миниатюр равен **1.0 секунде**.
+
+```dart
+// Внутри _ScrollableTimelineState.build()
+// ...
+
+// !!! Внимание: Лучше передавать thumbnailIntervalSeconds как параметр в ScrollableTimeline
+// Но пока он 1.0 (из VideoEditorConstants в другом файле), используем 1.0.
+const thumbnailIntervalSeconds = 1.0; 
+
+// ...
+// Внутри Positioned.fill(child: ListView.builder(...))
+// ...
+    itemBuilder: (context, index) {
+      // FIX 2: Прямой расчет ширины миниатюры = (пикселей на секунду) * (длительность миниатюры)
+      final thumbnailWidth = widget.pixelsPerSecond * thumbnailIntervalSeconds; 
+      final thumbnail = widget.getThumbnail(index);
+      
+      return SizedBox(
+        width: thumbnailWidth, // Используем рассчитанную ширину
+        height: 80, 
+        child: Container(
+          // ... остальной код
+```
+
+**Дополнительное улучшение (ListView.builder):**
+Убедись, что в `ListView.builder` ты используешь:
+
+```dart
+physics: const NeverScrollableScrollPhysics(), 
+```
+
+Это гарантирует, что внутренний `ListView` не будет пытаться скроллиться сам, и весь скролл будет контролировать внешний `SingleChildScrollView`. Это критически важно для устранения "войны скроллов" и лага.

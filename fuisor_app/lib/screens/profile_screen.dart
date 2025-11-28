@@ -941,11 +941,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 websiteUrl: user?.websiteUrl,
                                 isOwnProfile: isOwnProfile,
                                 onEdit: isOwnProfile ? () async {
-                                  final result = await showDialog<String>(
-                                    context: context,
-                                    builder: (context) => AddWebsiteDialog(
-                                      initialUrl: user?.websiteUrl,
-                                    ),
+                                  final result = await AddWebsiteDialog.show(
+                                    context,
+                                    initialUrl: user?.websiteUrl,
                                   );
                                   
                                   if (result != null && mounted) {

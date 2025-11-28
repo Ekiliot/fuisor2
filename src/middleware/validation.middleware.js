@@ -126,3 +126,10 @@ export const validateCommentId = [
     .withMessage('Invalid comment ID format'),
   validateRequest
 ];
+
+export const validateFriendId = [
+  param('friendId')
+    .isUUID()
+    .withMessage('Invalid friend ID format'),
+  validateRequest
+];

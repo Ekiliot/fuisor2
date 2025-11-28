@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
 import 'create_post_screen.dart';
+import 'video_editor_screen.dart';
 import '../widgets/custom_image_cropper.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
@@ -632,6 +633,13 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
 
   Future<void> _selectMedia(AssetEntity asset) async {
     try {
+      // Паузим и отключаем предыдущий видео контроллер перед выбором нового медиа
+      if (_videoController != null) {
+        await _videoController!.pause();
+        _videoController!.dispose();
+        _videoController = null;
+      }
+      
       setState(() {
         _isLoading = true;
       });
@@ -652,7 +660,6 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         setState(() {
           _selectedFile = xFile;
           _selectedImageBytes = bytes;
-          _videoController?.dispose();
           _videoController = null;
         });
       } else if (asset.type == AssetType.video) {
@@ -845,8 +852,63 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     print('MediaSelectionScreen: _selectedFile is null: ${_selectedFile == null}');
     
     if (_selectedFile != null) {
-      // Если это фото, открываем собственный кроппер
-      if (_selectedImageBytes != null && !kIsWeb) {
+      // Для видео открываем редактор
+      if (_videoController != null || _isVideoFile(_selectedFile!)) {
+        // Отключаем видео контроллер перед переходом в редактор
+        if (_videoController != null) {
+          await _videoController!.pause();
+          _videoController!.dispose();
+          _videoController = null;
+        }
+        
+        final editedFile = await Navigator.of(context).push<XFile>(
+          MaterialPageRoute(
+            builder: (context) => VideoEditorScreen(
+              selectedFile: _selectedFile,
+              videoController: null, // Не передаем контроллер, он уже отключен
+            ),
+            fullscreenDialog: true,
+          ),
+        );
+        
+        if (editedFile != null && mounted) {
+          print('MediaSelectionScreen: Received edited file: ${editedFile.path}');
+
+          // Инициализируем видео контроллер для отредактированного файла
+          VideoPlayerController? newController;
+          if (!kIsWeb) {
+            try {
+              final editedVideoFile = File(editedFile.path);
+              final fileExists = await editedVideoFile.exists();
+              print('MediaSelectionScreen: Edited file exists: $fileExists, size: ${fileExists ? await editedVideoFile.length() : 0} bytes');
+
+              if (fileExists && await editedVideoFile.length() > 0) {
+                newController = VideoPlayerController.file(editedVideoFile);
+                await newController.initialize();
+                print('MediaSelectionScreen: Edited video controller initialized successfully, aspect ratio: ${newController.value.aspectRatio}');
+                
+                // Добавляем слушатель для обновления UI при изменении состояния
+                newController.addListener(() {
+                  if (mounted) {
+                    setState(() {});
+                  }
+                });
+              } else {
+                print('MediaSelectionScreen: Edited file does not exist or is empty!');
+              }
+            } catch (e) {
+              print('MediaSelectionScreen: Error initializing edited video controller: $e');
+            }
+          }
+
+          setState(() {
+            _selectedFile = editedFile;
+            _videoController = newController;
+          });
+          _navigateToCreatePost();
+        }
+      } else if (_selectedImageBytes != null && !kIsWeb) {
+        // Если это фото, открываем собственный кроппер
         final croppedBytes = await Navigator.of(context).push<Uint8List>(
           MaterialPageRoute(
             builder: (context) => CustomImageCropper(
@@ -866,7 +928,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           _navigateToCreatePost();
       }
       } else {
-        // Для видео или веб сразу переходим
+        // Для веб или других случаев сразу переходим
         _navigateToCreatePost();
       }
     } else {
@@ -874,12 +936,26 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     }
   }
 
-  void _navigateToCreatePost() {
+  bool _isVideoFile(XFile file) {
+    final name = file.name.toLowerCase();
+    return name.contains('.mp4') || name.contains('.mov') || 
+           name.contains('.avi') || name.contains('.webm') ||
+           name.contains('.quicktime');
+  }
+
+  void _navigateToCreatePost() async {
       print('MediaSelectionScreen: Navigating to CreatePostScreen');
       print('MediaSelectionScreen: File path: ${_selectedFile!.path}');
       print('MediaSelectionScreen: File name: ${_selectedFile!.name}');
       print('MediaSelectionScreen: Has image bytes: ${_selectedImageBytes != null}');
       print('MediaSelectionScreen: Has video controller: ${_videoController != null}');
+      
+      // Отключаем видео контроллер перед переходом в CreatePostScreen
+      if (_videoController != null) {
+        await _videoController!.pause();
+        _videoController!.dispose();
+        _videoController = null;
+      }
       
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -888,7 +964,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             return CreatePostScreen(
               selectedFile: _selectedFile!,
               selectedImageBytes: _selectedImageBytes,
-              videoController: _videoController,
+              videoController: null, // Не передаем контроллер, он уже отключен
             );
           },
         ),
@@ -1058,12 +1134,30 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         ),
       );
     } else if (_videoController != null) {
-      // Для видео - используем AspectRatio
-      return Center(
-        child: AspectRatio(
-          aspectRatio: _videoController!.value.aspectRatio,
-          child: VideoPlayer(_videoController!),
-        ),
+      // Для видео - используем AnimatedBuilder для автоматического обновления при изменении контроллера
+      return AnimatedBuilder(
+        animation: _videoController!,
+        builder: (context, child) {
+          // Паузим видео при показе предпросмотра, чтобы не нагружать систему
+          if (_videoController!.value.isPlaying) {
+            _videoController!.pause();
+          }
+          
+          if (!_videoController!.value.isInitialized) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF0095F6),
+              ),
+            );
+          }
+          
+          return Center(
+            child: AspectRatio(
+              aspectRatio: _videoController!.value.aspectRatio,
+              child: VideoPlayer(_videoController!),
+            ),
+          );
+        },
       );
     }
 

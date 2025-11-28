@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
-import { validateProfileUpdate, validateUUID } from '../middleware/validation.middleware.js';
+import { validateProfileUpdate, validateUUID, validateFriendId } from '../middleware/validation.middleware.js';
 import { logger } from '../utils/logger.js';
 import multer from 'multer';
 
@@ -823,6 +823,308 @@ router.put('/settings/online-status', validateAuth, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Error updating online status setting:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Location Sharing Endpoints
+// ==============================================
+
+// Update user's current location
+router.post('/location', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+
+    // Проверяем, включен ли location sharing
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('location_sharing_enabled')
+      .eq('id', userId)
+      .single();
+
+    if (!profile?.location_sharing_enabled) {
+      return res.status(403).json({ 
+        error: 'Location sharing is not enabled' 
+      });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        last_location_lat: parseFloat(latitude),
+        last_location_lng: parseFloat(longitude),
+        last_location_updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle location sharing
+router.post('/location/sharing', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        location_sharing_enabled: enabled,
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({ success: true, enabled });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get location visibility setting
+router.get('/location/visibility', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('location_visibility, location_sharing_enabled')
+      .eq('id', userId)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      location_visibility: profile?.location_visibility || 'mutual_followers',
+      location_sharing_enabled: profile?.location_sharing_enabled || false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update location visibility setting
+router.put('/location/visibility', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { location_visibility } = req.body;
+
+    const validValues = ['nobody', 'mutual_followers', 'followers', 'close_friends'];
+    if (!validValues.includes(location_visibility)) {
+      return res.status(400).json({ 
+        error: `location_visibility must be one of: ${validValues.join(', ')}` 
+      });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ location_visibility })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get friends' locations (filtered by visibility setting)
+router.get('/friends/locations', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get current user's location visibility setting
+    const { data: currentUserProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('location_visibility')
+      .eq('id', userId)
+      .single();
+
+    const visibility = currentUserProfile?.location_visibility || 'mutual_followers';
+
+    // Get users based on visibility setting
+    let visibleUserIds = [];
+
+    if (visibility === 'nobody') {
+      // Nobody can see location
+      return res.json({ friends: [] });
+    } else if (visibility === 'mutual_followers') {
+      // Only mutual followers
+      const { data: following } = await supabaseAdmin
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
+
+      const { data: followers } = await supabaseAdmin
+        .from('follows')
+        .select('follower_id')
+        .eq('following_id', userId);
+
+      const followingIds = following.map(f => f.following_id);
+      const followerIds = followers.map(f => f.follower_id);
+      visibleUserIds = followingIds.filter(id => followerIds.includes(id));
+    } else if (visibility === 'followers') {
+      // All followers
+      const { data: followers } = await supabaseAdmin
+        .from('follows')
+        .select('follower_id')
+        .eq('following_id', userId);
+
+      visibleUserIds = followers.map(f => f.follower_id);
+    } else if (visibility === 'close_friends') {
+      // Only close friends
+      const { data: closeFriends } = await supabaseAdmin
+        .from('close_friends')
+        .select('friend_id')
+        .eq('user_id', userId);
+
+      visibleUserIds = closeFriends.map(f => f.friend_id);
+    }
+
+    if (visibleUserIds.length === 0) {
+      return res.json({ friends: [] });
+    }
+
+    // Get profiles of visible users with enabled location sharing
+    const { data: friends, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, name, avatar_url, last_location_lat, last_location_lng, last_location_updated_at')
+      .in('id', visibleUserIds)
+      .eq('location_sharing_enabled', true)
+      .not('last_location_lat', 'is', null)
+      .not('last_location_lng', 'is', null);
+
+    if (error) throw error;
+
+    const friendsLocations = (friends || []).map(friend => ({
+      id: friend.id,
+      username: friend.username,
+      name: friend.name,
+      avatar_url: friend.avatar_url,
+      latitude: friend.last_location_lat,
+      longitude: friend.last_location_lng,
+      last_location_updated_at: friend.last_location_updated_at,
+    }));
+
+    res.json({ friends: friendsLocations });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================================
+// Close Friends Endpoints
+// ==============================================
+
+// Get close friends list
+router.get('/close-friends', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { data: closeFriends, error } = await supabaseAdmin
+      .from('close_friends')
+      .select(`
+        friend_id,
+        profiles:friend_id (
+          id,
+          username,
+          name,
+          avatar_url
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const friends = (closeFriends || []).map(cf => ({
+      id: cf.profiles?.id,
+      username: cf.profiles?.username,
+      name: cf.profiles?.name,
+      avatar_url: cf.profiles?.avatar_url,
+    })).filter(f => f.id != null);
+
+    res.json({ close_friends: friends });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add user to close friends
+router.post('/close-friends/:friendId', validateAuth, validateFriendId, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { friendId } = req.params;
+
+    if (userId === friendId) {
+      return res.status(400).json({ error: 'Cannot add yourself to close friends' });
+    }
+
+    // Check if user exists
+    const { data: friend } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', friendId)
+      .single();
+
+    if (!friend) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('close_friends')
+      .insert([{
+        user_id: userId,
+        friend_id: friendId,
+      }]);
+
+    if (error) {
+      if (error.code === '23505') { // Unique constraint violation
+        return res.status(400).json({ error: 'User is already in close friends' });
+      }
+      throw error;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove user from close friends
+router.delete('/close-friends/:friendId', validateAuth, validateFriendId, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { friendId } = req.params;
+
+    const { error } = await supabaseAdmin
+      .from('close_friends')
+      .delete()
+      .eq('user_id', userId)
+      .eq('friend_id', friendId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

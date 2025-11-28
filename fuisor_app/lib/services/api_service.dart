@@ -2091,4 +2091,102 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// Get location visibility setting
+  Future<Map<String, dynamic>> getLocationVisibility() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/location/visibility'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get location visibility');
+      }
+    } catch (e) {
+      print('ApiService: Error getting location visibility: $e');
+      rethrow;
+    }
+  }
+
+  /// Update location visibility setting
+  Future<void> updateLocationVisibility(String visibility) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/location/visibility'),
+        headers: _headers,
+        body: jsonEncode({
+          'location_visibility': visibility,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to update location visibility');
+      }
+    } catch (e) {
+      print('ApiService: Error updating location visibility: $e');
+      rethrow;
+    }
+  }
+
+  /// Get close friends list
+  Future<List<Map<String, dynamic>>> getCloseFriends() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/close-friends'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['close_friends'] ?? []);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get close friends');
+      }
+    } catch (e) {
+      print('ApiService: Error getting close friends: $e');
+      rethrow;
+    }
+  }
+
+  /// Add user to close friends
+  Future<void> addCloseFriend(String friendId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/close-friends/$friendId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to add close friend');
+      }
+    } catch (e) {
+      print('ApiService: Error adding close friend: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove user from close friends
+  Future<void> removeCloseFriend(String friendId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/users/close-friends/$friendId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to remove close friend');
+      }
+    } catch (e) {
+      print('ApiService: Error removing close friend: $e');
+      rethrow;
+    }
+  }
 }

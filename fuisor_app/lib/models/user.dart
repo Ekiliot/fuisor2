@@ -10,6 +10,8 @@ class User {
   final int followingCount;
   final int postsCount;
   final DateTime createdAt;
+  final String? locationVisibility; // 'nobody', 'mutual_followers', 'followers', 'close_friends'
+  final bool? locationSharingEnabled;
 
   User({
     required this.id,
@@ -23,6 +25,8 @@ class User {
     required this.followingCount,
     required this.postsCount,
     required this.createdAt,
+    this.locationVisibility,
+    this.locationSharingEnabled,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -40,6 +44,8 @@ class User {
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at']) 
           : DateTime.now(),
+      locationVisibility: json['location_visibility'],
+      locationSharingEnabled: json['location_sharing_enabled'],
     );
   }
 
@@ -59,6 +65,8 @@ class User {
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at']) 
           : DateTime.now(),
+      locationVisibility: json['location_visibility'],
+      locationSharingEnabled: json['location_sharing_enabled'],
     );
   }
 
@@ -75,6 +83,8 @@ class User {
       'following_count': followingCount,
       'posts_count': postsCount,
       'created_at': createdAt.toIso8601String(),
+      'location_visibility': locationVisibility,
+      'location_sharing_enabled': locationSharingEnabled,
     };
   }
 }

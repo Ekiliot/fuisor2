@@ -41,6 +41,7 @@ dependencies:
   # Video processing
   ffmpeg_kit_flutter_new: ^4.1.0
   video_thumbnail: ^0.5.3
+  video_editor: ^3.0.0
   
   # Camera
   camera: ^0.11.0+3

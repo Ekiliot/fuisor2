@@ -414,10 +414,10 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
     });
     
     const postData = {
-      user_id: req.user.id,
-      caption,
-      media_url: media_url,
-      media_type: media_type,
+          user_id: req.user.id,
+          caption,
+          media_url: media_url,
+          media_type: media_type,
       thumbnail_url: thumbnail_url || null,
       visibility: postVisibility,
     };
