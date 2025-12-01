@@ -1676,23 +1676,29 @@ router.get('/stories/users', validateAuth, async (req, res) => {
     // Stories are posts with expires_at > now
     const { data: activeStories, error: storiesError } = await supabaseAdmin
       .from('posts')
-      .select('user_id')
+      .select('user_id, expires_at, created_at')
       .in('user_id', allUserIds)
       .not('expires_at', 'is', null)
       .gt('expires_at', now);
 
     if (storiesError) throw storiesError;
 
+    console.log(`Found ${activeStories?.length || 0} active stories for ${allUserIds.length} users`);
+
     // Get unique user IDs with active stories
     const userIdsWithStories = new Set();
     for (const story of activeStories || []) {
       if (story.user_id) {
         userIdsWithStories.add(story.user_id);
+        if (story.user_id === userId) {
+          console.log(`Current user has active story: expires_at=${story.expires_at}, created_at=${story.created_at}`);
+        }
       }
     }
 
     // Check if current user has active stories
     const currentUserHasStories = userIdsWithStories.has(userId);
+    console.log(`Current user has stories: ${currentUserHasStories}`);
 
     // Add hasStories flag to each following user (exclude current user if they appear in following)
     const followingUsersWithStories = followingUsers

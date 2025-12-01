@@ -88,32 +88,17 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       // Get users with active stories
       final apiService = ApiService();
       apiService.setAccessToken(accessToken);
-      final users = await apiService.getUsersWithStories();
+      final result = await apiService.getUsersWithStories();
 
-      // Filter out current user if they appear in the list (shouldn't happen, but just in case)
-      final filteredUsers = users.where((u) => u.id != _currentUser?.id).toList();
+      final users = result['users'] as List<User>;
+      final currentUserHasStories = result['currentUserHasStories'] as bool;
 
-      // Check if any user in the original list is current user with stories
-      // (This handles the case where backend returns current user)
-      final currentUserInList = users.firstWhere(
-        (u) => u.id == _currentUser?.id,
-        orElse: () => User(
-          id: '',
-          username: '',
-          name: '',
-          email: '',
-          followersCount: 0,
-          followingCount: 0,
-          postsCount: 0,
-          createdAt: DateTime.now(),
-          hasStories: false,
-        ),
-      );
-      final currentUserHasStories = currentUserInList.hasStories == true;
+      print('StoriesWidget: Loaded ${users.length} users with stories');
+      print('StoriesWidget: Current user has stories: $currentUserHasStories');
 
       if (mounted) {
         setState(() {
-          _usersWithStories = filteredUsers;
+          _usersWithStories = users;
           _currentUserHasStories = currentUserHasStories;
           _isLoading = false;
           _lastLoadTime = DateTime.now();
@@ -170,8 +155,9 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
             builder: (context) => const CameraScreen(),
           ),
         );
-        // Reload stories when returning from camera
+        // Reload stories when returning from camera (with delay to allow DB to update)
         if (mounted) {
+          await Future.delayed(const Duration(milliseconds: 800));
           _loadStories();
         }
       },
