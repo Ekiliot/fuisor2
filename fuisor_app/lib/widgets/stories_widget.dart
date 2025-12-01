@@ -1,149 +1,312 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/camera_screen.dart';
+import '../screens/profile_screen.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import '../models/user.dart';
+import 'cached_network_image_with_signed_url.dart';
 
-class StoriesWidget extends StatelessWidget {
+class StoriesWidget extends StatefulWidget {
   const StoriesWidget({super.key});
+
+  @override
+  State<StoriesWidget> createState() => _StoriesWidgetState();
+}
+
+class _StoriesWidgetState extends State<StoriesWidget> {
+  List<User> _usersWithStories = [];
+  bool _isLoading = true;
+  User? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStories();
+    
+    // Listen to auth provider changes
+    final authProvider = context.read<AuthProvider>();
+    authProvider.addListener(_onAuthChanged);
+  }
+
+  void _onAuthChanged() {
+    // Reload stories when user changes
+    _loadStories();
+  }
+
+  @override
+  void dispose() {
+    final authProvider = context.read<AuthProvider>();
+    authProvider.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  Future<void> _loadStories() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Get current user from AuthProvider
+      final authProvider = context.read<AuthProvider>();
+      _currentUser = authProvider.currentUser;
+
+      // Get access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Get users with active stories
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+      final users = await apiService.getUsersWithStories();
+
+      if (mounted) {
+        setState(() {
+          _usersWithStories = users;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('StoriesWidget: Error loading stories: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 100,
-      margin: const EdgeInsets.only(top: 0, bottom: 8), // Stories ближе к header
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: 10, // Mock data without Geo button
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return _buildAddStoryItem(context);
-          }
-          return _buildStoryItem(index);
-        },
-      ),
+      margin: const EdgeInsets.only(top: 0, bottom: 8),
+      child: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF0095F6),
+                strokeWidth: 2,
+              ),
+            )
+          : ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemCount: 1 + _usersWithStories.length, // 1 for "Your Story" + users with stories
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return _buildAddStoryItem(context);
+                }
+                final user = _usersWithStories[index - 1];
+                return _buildStoryItem(user);
+              },
+            ),
     );
   }
 
   Widget _buildAddStoryItem(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
+      onTap: () async {
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const CameraScreen(),
           ),
         );
+        // Reload stories when returning from camera
+        if (mounted) {
+          _loadStories();
+        }
       },
       child: Container(
-      width: 70,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        children: [
-          Stack(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFF262626),
-                    width: 2,
-                  ),
-                ),
-                child: const CircleAvatar(
-                  backgroundColor: Color(0xFF262626),
-                  child: Icon(
-                    EvaIcons.personOutline,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF0095F6),
+        width: 70,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF262626),
+                      width: 2,
+                    ),
                   ),
-                  child: const Icon(
-                    EvaIcons.plus,
-                    color: Colors.white,
-                    size: 16,
+                  child: _currentUser != null && _currentUser!.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty
+                      ? ClipOval(
+                          child: CachedNetworkImageWithSignedUrl(
+                            imageUrl: _currentUser!.avatarUrl!,
+                            postId: '', // Not needed for avatars
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            placeholder: (context) => Container(
+                              width: 60,
+                              height: 60,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: 60,
+                              height: 60,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                        )
+                      : const CircleAvatar(
+                          backgroundColor: Color(0xFF262626),
+                          child: Icon(
+                            EvaIcons.personOutline,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF0095F6),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      EvaIcons.plus,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Your Story',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white,
+              ],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              _currentUser?.name.isNotEmpty == true 
+                  ? _currentUser!.name 
+                  : (_currentUser?.username ?? 'Your Story'),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
   }
 
-
-  Widget _buildStoryItem(int index) {
-    return Container(
-      width: 70,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF833AB4),
-                  Color(0xFFE1306C),
-                  Color(0xFFFD1D1D),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            padding: const EdgeInsets.all(2),
-            child: Container(
-              decoration: const BoxDecoration(
+  Widget _buildStoryItem(User user) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ProfileScreen(userId: user.id),
+          ),
+        );
+      },
+      child: Container(
+        width: 70,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          children: [
+            // Avatar with gradient border (for users with stories)
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF000000),
-              ),
-              padding: const EdgeInsets.all(2),
-              child: const CircleAvatar(
-                backgroundColor: Color(0xFF262626),
-                child: Icon(
-                  EvaIcons.personOutline,
-                  color: Colors.white,
-                  size: 24,
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF833AB4),
+                    Color(0xFFE1306C),
+                    Color(0xFFFD1D1D),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
+              padding: const EdgeInsets.all(2),
+              child: Container(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF000000),
+                ),
+                padding: const EdgeInsets.all(2),
+                child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                    ? ClipOval(
+                        child: CachedNetworkImageWithSignedUrl(
+                          imageUrl: user.avatarUrl!,
+                          postId: '', // Not needed for avatars
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          placeholder: (context) => Container(
+                            width: 56,
+                            height: 56,
+                            color: const Color(0xFF262626),
+                            child: const Icon(
+                              EvaIcons.personOutline,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: 56,
+                            height: 56,
+                            color: const Color(0xFF262626),
+                            child: const Icon(
+                              EvaIcons.personOutline,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      )
+                    : const CircleAvatar(
+                        backgroundColor: Color(0xFF262626),
+                        child: Icon(
+                          EvaIcons.personOutline,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'User $index',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white,
+            const SizedBox(height: 4),
+            Text(
+              user.name.isNotEmpty ? user.name : user.username,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

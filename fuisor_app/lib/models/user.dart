@@ -12,6 +12,7 @@ class User {
   final DateTime createdAt;
   final String? locationVisibility; // 'nobody', 'mutual_followers', 'followers', 'close_friends'
   final bool? locationSharingEnabled;
+  final bool? hasStories; // Whether user has active stories
 
   User({
     required this.id,
@@ -27,6 +28,7 @@ class User {
     required this.createdAt,
     this.locationVisibility,
     this.locationSharingEnabled,
+    this.hasStories,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
