@@ -2039,7 +2039,7 @@ class ApiService {
   }
 
   /// Get users with active stories from following list
-  Future<List<User>> getUsersWithStories() async {
+  Future<Map<String, dynamic>> getUsersWithStories() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/posts/stories/users'),
@@ -2051,7 +2051,12 @@ class ApiService {
         final users = (data['users'] as List)
             .map((json) => User.fromJson(json))
             .toList();
-        return users;
+        final currentUserHasStories = data['currentUserHasStories'] ?? false;
+        
+        return {
+          'users': users,
+          'currentUserHasStories': currentUserHasStories,
+        };
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['error'] ?? 'Failed to get users with stories');
