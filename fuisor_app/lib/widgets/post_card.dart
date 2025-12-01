@@ -353,7 +353,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                                 height: 4,
                                 margin: const EdgeInsets.only(bottom: 2),
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFF8E8E8E),
+                                  color: Colors.white,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -363,8 +363,9 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             Text(
                               '@${widget.post.user?.username ?? 'unknown'}',
                               style: const TextStyle(
-                                color: Color(0xFF8E8E8E),
-                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
                           ],
@@ -376,8 +377,9 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                           Text(
                             _formatTimeAgo(widget.post.createdAt),
                             style: const TextStyle(
-                              color: Color(0xFF8E8E8E),
-                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.white,
                             ),
                           ),
                           if (widget.post.createdAt != widget.post.updatedAt) ...[
@@ -385,8 +387,9 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             const Text(
                               '• Изменено',
                               style: TextStyle(
-                                color: Color(0xFF8E8E8E),
-                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
                                 fontStyle: FontStyle.italic,
                               ),
                             ),

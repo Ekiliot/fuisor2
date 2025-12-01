@@ -70,19 +70,25 @@ router.get('/profile', validateAuth, async (req, res) => {
 
 // Get user profile by username
 router.get('/username/:username', async (req, res) => {
+  console.log('GET /username/:username route hit', { params: req.params, path: req.path, url: req.url });
   try {
     const { username } = req.params;
+    const trimmedUsername = username.trim();
+    
+    console.log('Get user by username request:', { username, trimmedUsername });
 
-    if (!username || username.trim().length === 0) {
+    if (!trimmedUsername || trimmedUsername.length === 0) {
       return res.status(400).json({ message: 'Username is required' });
     }
 
-    // Get user profile by username
+    // Get user profile by username (case-insensitive search)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('username', username.trim())
+      .ilike('username', trimmedUsername)
       .single();
+    
+    console.log('Profile query result:', { profile: profile ? 'found' : 'not found', error: profileError });
 
     if (profileError || !profile) {
       return res.status(404).json({ message: 'User not found' });
