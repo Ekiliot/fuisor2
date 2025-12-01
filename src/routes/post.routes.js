@@ -1636,4 +1636,62 @@ router.delete('/:id/save', validateAuth, validateUUID, async (req, res) => {
   }
 });
 
+// Get users with active stories (from following list)
+router.get('/stories/users', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+
+    // Get users that current user follows
+    const { data: following, error: followingError } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) throw followingError;
+
+    const followingIds = following.map(f => f.following_id);
+    
+    // If no following, return empty array
+    if (followingIds.length === 0) {
+      return res.json({ users: [] });
+    }
+
+    // Get active geo-posts (stories) from following users
+    // Stories are posts with expires_at > now
+    const { data: activeStories, error: storiesError } = await supabaseAdmin
+      .from('posts')
+      .select(`
+        user_id,
+        profiles:user_id (
+          id,
+          username,
+          name,
+          avatar_url
+        )
+      `)
+      .in('user_id', followingIds)
+      .not('expires_at', 'is', null)
+      .gt('expires_at', now);
+
+    if (storiesError) throw storiesError;
+
+    // Get unique users with active stories
+    const usersWithStories = new Map();
+    for (const story of activeStories || []) {
+      if (story.profiles && !usersWithStories.has(story.user_id)) {
+        usersWithStories.set(story.user_id, story.profiles);
+      }
+    }
+
+    // Convert to array
+    const users = Array.from(usersWithStories.values());
+
+    res.json({ users });
+  } catch (error) {
+    console.error('Error getting users with stories:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

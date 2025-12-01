@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import '../utils/hashtag_utils.dart';
+import '../widgets/username_error_notification.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -36,6 +37,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
   bool _isSaved = false;
   bool _showComments = false;
   final TextEditingController _commentController = TextEditingController();
+  OverlayEntry? _usernameErrorOverlay;
   
   // Локальные счетчики для анимации
   int _likesCount = 0;
@@ -100,7 +102,38 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
     _commentController.dispose();
     _likesAnimationController.dispose();
     _commentsAnimationController.dispose();
+    _hideUsernameErrorNotification();
     super.dispose();
+  }
+
+  void _showUsernameErrorNotification() {
+    // Если уведомление уже показывается, не создаем новое
+    if (_usernameErrorOverlay != null) {
+      return;
+    }
+    
+    // Создаем overlay entry для показа уведомления сверху
+    final overlay = Overlay.of(context);
+    
+    _usernameErrorOverlay = OverlayEntry(
+      builder: (context) => UsernameErrorNotification(
+        onDismiss: () {
+          if (_usernameErrorOverlay != null && _usernameErrorOverlay!.mounted) {
+            _usernameErrorOverlay!.remove();
+            _usernameErrorOverlay = null;
+          }
+        },
+      ),
+    );
+    
+    overlay.insert(_usernameErrorOverlay!);
+  }
+
+  void _hideUsernameErrorNotification() {
+    if (_usernameErrorOverlay != null && _usernameErrorOverlay!.mounted) {
+      _usernameErrorOverlay!.remove();
+      _usernameErrorOverlay = null;
+    }
   }
 
   void _navigateToHashtag(String hashtag) {
@@ -155,13 +188,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
     } catch (e) {
       print('PostCard: Error navigating to user: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load user profile: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        _showUsernameErrorNotification();
       }
     }
   }

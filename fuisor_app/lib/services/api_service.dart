@@ -2038,6 +2038,30 @@ class ApiService {
     }
   }
 
+  /// Get users with active stories from following list
+  Future<List<User>> getUsersWithStories() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/posts/stories/users'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final users = (data['users'] as List)
+            .map((json) => User.fromJson(json))
+            .toList();
+        return users;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get users with stories');
+      }
+    } catch (e) {
+      print('ApiService: Error getting users with stories: $e');
+      rethrow;
+    }
+  }
+
   /// Update user's current location
   Future<void> updateLocation({
     required double latitude,

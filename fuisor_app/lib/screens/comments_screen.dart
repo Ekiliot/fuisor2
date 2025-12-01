@@ -10,6 +10,7 @@ import '../widgets/safe_avatar.dart';
 import '../utils/hashtag_utils.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/cached_network_image_with_signed_url.dart';
+import '../widgets/username_error_notification.dart';
 import 'hashtag_screen.dart';
 import 'profile_screen.dart';
 
@@ -42,6 +43,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
   String? _editingCommentId;
   Comment? _editingComment;
   bool _isHeaderCollapsed = false;
+  OverlayEntry? _usernameErrorOverlay;
 
   @override
   void initState() {
@@ -55,7 +57,38 @@ class _CommentsScreenState extends State<CommentsScreen> {
     _commentController.dispose();
     _scrollController.dispose();
     _commentFocusNode.dispose();
+    _hideUsernameErrorNotification();
     super.dispose();
+  }
+
+  void _showUsernameErrorNotification() {
+    // Если уведомление уже показывается, не создаем новое
+    if (_usernameErrorOverlay != null) {
+      return;
+    }
+    
+    // Создаем overlay entry для показа уведомления сверху
+    final overlay = Overlay.of(context);
+    
+    _usernameErrorOverlay = OverlayEntry(
+      builder: (context) => UsernameErrorNotification(
+        onDismiss: () {
+          if (_usernameErrorOverlay != null && _usernameErrorOverlay!.mounted) {
+            _usernameErrorOverlay!.remove();
+            _usernameErrorOverlay = null;
+          }
+        },
+      ),
+    );
+    
+    overlay.insert(_usernameErrorOverlay!);
+  }
+
+  void _hideUsernameErrorNotification() {
+    if (_usernameErrorOverlay != null && _usernameErrorOverlay!.mounted) {
+      _usernameErrorOverlay!.remove();
+      _usernameErrorOverlay = null;
+    }
   }
 
   void _onScroll() {
@@ -1285,13 +1318,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
     } catch (e) {
       print('CommentsScreen: Error navigating to user: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load user profile: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        _showUsernameErrorNotification();
       }
     }
   }
