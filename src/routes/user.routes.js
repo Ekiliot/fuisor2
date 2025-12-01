@@ -81,16 +81,31 @@ router.get('/username/:username', async (req, res) => {
       return res.status(400).json({ message: 'Username is required' });
     }
 
-    // Get user profile by username (case-insensitive search)
-    const { data: profile, error: profileError } = await supabase
+    // Try exact match first
+    let { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('*')
-      .ilike('username', trimmedUsername)
+      .eq('username', trimmedUsername)
       .single();
     
-    console.log('Profile query result:', { profile: profile ? 'found' : 'not found', error: profileError });
+    console.log('Exact match result:', { profile: profile ? 'found' : 'not found', error: profileError });
+
+    // If not found, try case-insensitive search
+    if (profileError && profileError.code === 'PGRST116') {
+      console.log('Exact match failed, trying case-insensitive search');
+      const result = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .ilike('username', trimmedUsername)
+        .maybeSingle();
+      
+      profile = result.data;
+      profileError = result.error;
+      console.log('Case-insensitive search result:', { profile: profile ? 'found' : 'not found', error: profileError });
+    }
 
     if (profileError || !profile) {
+      console.log('User not found:', { username: trimmedUsername, error: profileError });
       return res.status(404).json({ message: 'User not found' });
     }
 
