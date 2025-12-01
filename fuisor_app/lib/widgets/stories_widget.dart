@@ -8,7 +8,6 @@ import '../screens/geo_stories_viewer.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
-import '../models/post.dart';
 import 'cached_network_image_with_signed_url.dart';
 
 class StoriesWidget extends StatefulWidget {
@@ -23,16 +22,23 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
   bool _isLoading = true;
   User? _currentUser;
   bool _currentUserHasStories = false;
+  AuthProvider? _authProvider; // Сохраняем ссылку на provider
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadStories();
-    
-    // Listen to auth provider changes
-    final authProvider = context.read<AuthProvider>();
-    authProvider.addListener(_onAuthChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Сохраняем ссылку на AuthProvider в didChangeDependencies
+    if (_authProvider == null) {
+      _authProvider = context.read<AuthProvider>();
+      _authProvider?.addListener(_onAuthChanged);
+    }
   }
 
   @override
@@ -109,8 +115,8 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    final authProvider = context.read<AuthProvider>();
-    authProvider.removeListener(_onAuthChanged);
+    // Используем сохраненную ссылку вместо context.read
+    _authProvider?.removeListener(_onAuthChanged);
     super.dispose();
   }
 
@@ -340,25 +346,27 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                               color: Colors.white,
                               size: 30,
                             ),
-                          ),
-                  ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF0095F6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      EvaIcons.plus,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
+                        ),
                 ),
+                // Показываем кнопку "+" только если нет активных сторис
+                if (!_currentUserHasStories)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF0095F6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        EvaIcons.plus,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 4),

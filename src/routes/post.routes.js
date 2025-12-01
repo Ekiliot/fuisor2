@@ -43,6 +43,7 @@ router.get('/', validateAuth, async (req, res) => {
         profiles:user_id (username, name, avatar_url),
         likes(count)
       `, { count: 'exact' })
+      .is('expires_at', null) // Исключаем сторис (посты с expires_at)
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -535,7 +536,8 @@ router.get('/feed', validateAuth, async (req, res) => {
         *,
         profiles:user_id (username, name, avatar_url),
         likes(count)
-      `, { count: 'exact' });
+      `, { count: 'exact' })
+      .is('expires_at', null); // Исключаем сторис (посты с expires_at)
 
     // Фильтруем по типу медиа, если указан
     if (media_type && (media_type === 'video' || media_type === 'image')) {
@@ -1347,6 +1349,7 @@ router.get('/hashtag/:hashtag', validateAuth, async (req, res) => {
         likes(count)
       `, { count: 'exact' })
       .ilike('caption', `%#${hashtag.toLowerCase()}%`)
+      .is('expires_at', null) // Исключаем сторис (посты с expires_at)
       .order('created_at', { ascending: false })
       .range(from, to);
 

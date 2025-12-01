@@ -44,7 +44,7 @@ router.get('/', validateAuth, async (req, res) => {
       }
     }
 
-    // Search posts by caption
+    // Search posts by caption (excluding stories)
     if (type === 'all' || type === 'posts') {
       const { data: postsData, error: postsError } = await supabaseAdmin
         .from('posts')
@@ -54,6 +54,7 @@ router.get('/', validateAuth, async (req, res) => {
           likes(count)
         `)
         .ilike('caption', `%${searchQuery}%`)
+        .is('expires_at', null) // Исключаем сторис (посты с expires_at)
         .order('created_at', { ascending: false })
         .range(from, to);
 

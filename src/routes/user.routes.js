@@ -507,6 +507,7 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
         likes(count)
       `, { count: 'exact' })
       .eq('user_id', id)
+      .is('expires_at', null) // Исключаем сторис (посты с expires_at)
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -555,7 +556,7 @@ router.get('/me/saved', validateAuth, async (req, res) => {
     const from = (page - 1) * limit;
     const to = from + parseInt(limit) - 1;
 
-    // Get saved posts with post details
+    // Get saved posts with post details (excluding stories)
     const { data: savedPosts, error: savedError } = await supabaseAdmin
       .from('saved_posts')
       .select(`
@@ -569,6 +570,7 @@ router.get('/me/saved', validateAuth, async (req, res) => {
           media_type,
           created_at,
           updated_at,
+          expires_at,
           profiles:user_id (
             id,
             username,
@@ -583,11 +585,14 @@ router.get('/me/saved', validateAuth, async (req, res) => {
 
     if (savedError) throw savedError;
 
-    // Get counts for each post
+    // Get counts for each post (filter out stories)
     const postsWithCounts = await Promise.all(
       (savedPosts || []).map(async (savedPost) => {
         const post = savedPost.posts;
         if (!post) return null;
+        
+        // Исключаем сторис (посты с expires_at)
+        if (post.expires_at != null) return null;
 
         // Get likes count
         const { count: likesCount } = await supabaseAdmin
@@ -649,7 +654,7 @@ router.get('/me/liked', validateAuth, async (req, res) => {
     const from = (page - 1) * limit;
     const to = from + parseInt(limit) - 1;
 
-    // Get liked posts with post details
+    // Get liked posts with post details (excluding stories)
     const { data: likedPosts, error: likedError } = await supabaseAdmin
       .from('likes')
       .select(`
@@ -664,6 +669,7 @@ router.get('/me/liked', validateAuth, async (req, res) => {
           thumbnail_url,
           created_at,
           updated_at,
+          expires_at,
           profiles:user_id (
             id,
             username,
@@ -678,11 +684,14 @@ router.get('/me/liked', validateAuth, async (req, res) => {
 
     if (likedError) throw likedError;
 
-    // Get counts for each post
+    // Get counts for each post (filter out stories)
     const postsWithCounts = await Promise.all(
       (likedPosts || []).map(async (likedPost) => {
         const post = likedPost.posts;
         if (!post) return null;
+        
+        // Исключаем сторис (посты с expires_at)
+        if (post.expires_at != null) return null;
 
         // Get likes count
         const { count: likesCount } = await supabaseAdmin
