@@ -48,6 +48,7 @@ class User {
           : DateTime.now(),
       locationVisibility: json['location_visibility'],
       locationSharingEnabled: json['location_sharing_enabled'],
+      hasStories: json['hasStories'],
     );
   }
 
@@ -69,6 +70,7 @@ class User {
           : DateTime.now(),
       locationVisibility: json['location_visibility'],
       locationSharingEnabled: json['location_sharing_enabled'],
+      hasStories: json['hasStories'],
     );
   }
 

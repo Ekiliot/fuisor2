@@ -1636,11 +1636,20 @@ router.delete('/:id/save', validateAuth, validateUUID, async (req, res) => {
   }
 });
 
-// Get users with active stories (from following list)
+// Get users with active stories (from following list + current user)
 router.get('/stories/users', validateAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const now = new Date().toISOString();
+
+    // Get current user's profile
+    const { data: currentUserProfile, error: currentUserError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, name, avatar_url')
+      .eq('id', userId)
+      .single();
+
+    if (currentUserError) throw currentUserError;
 
     // Get users that current user follows with their profile info
     const { data: following, error: followingError } = await supabaseAdmin
@@ -1659,19 +1668,16 @@ router.get('/stories/users', validateAuth, async (req, res) => {
     if (followingError) throw followingError;
 
     const followingUsers = (following || []).map(f => f.following).filter(Boolean);
-    const followingIds = followingUsers.map(u => u.id);
     
-    // If no following, return empty array
-    if (followingIds.length === 0) {
-      return res.json({ users: [] });
-    }
-
-    // Get active geo-posts (stories) from following users
+    // Combine current user with following users
+    const allUserIds = [userId, ...followingUsers.map(u => u.id)];
+    
+    // Get active stories from all users (current user + following)
     // Stories are posts with expires_at > now
     const { data: activeStories, error: storiesError } = await supabaseAdmin
       .from('posts')
       .select('user_id')
-      .in('user_id', followingIds)
+      .in('user_id', allUserIds)
       .not('expires_at', 'is', null)
       .gt('expires_at', now);
 
@@ -1685,11 +1691,20 @@ router.get('/stories/users', validateAuth, async (req, res) => {
       }
     }
 
-    // Add hasStories flag to each user
-    const users = followingUsers.map(user => ({
+    // Add hasStories flag to current user
+    const currentUserWithStories = {
+      ...currentUserProfile,
+      hasStories: userIdsWithStories.has(userId)
+    };
+
+    // Add hasStories flag to each following user
+    const followingUsersWithStories = followingUsers.map(user => ({
       ...user,
       hasStories: userIdsWithStories.has(user.id)
     }));
+
+    // Return current user + following users
+    const users = [currentUserWithStories, ...followingUsersWithStories];
 
     res.json({ users });
   } catch (error) {

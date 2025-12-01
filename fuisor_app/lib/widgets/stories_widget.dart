@@ -16,19 +16,35 @@ class StoriesWidget extends StatefulWidget {
   State<StoriesWidget> createState() => _StoriesWidgetState();
 }
 
-class _StoriesWidgetState extends State<StoriesWidget> {
+class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserver {
   List<User> _usersWithStories = [];
   bool _isLoading = true;
   User? _currentUser;
+  bool _currentUserHasStories = false;
+  DateTime? _lastLoadTime;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadStories();
     
     // Listen to auth provider changes
     final authProvider = context.read<AuthProvider>();
     authProvider.addListener(_onAuthChanged);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Reload stories when app comes back to foreground
+    if (state == AppLifecycleState.resumed) {
+      // Only reload if more than 5 seconds have passed since last load
+      if (_lastLoadTime == null || 
+          DateTime.now().difference(_lastLoadTime!) > const Duration(seconds: 5)) {
+        _loadStories();
+      }
+    }
   }
 
   void _onAuthChanged() {
@@ -38,12 +54,15 @@ class _StoriesWidgetState extends State<StoriesWidget> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     final authProvider = context.read<AuthProvider>();
     authProvider.removeListener(_onAuthChanged);
     super.dispose();
   }
 
   Future<void> _loadStories() async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
     });
@@ -58,9 +77,11 @@ class _StoriesWidgetState extends State<StoriesWidget> {
       final accessToken = prefs.getString('access_token');
       
       if (accessToken == null) {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         return;
       }
 
@@ -69,10 +90,15 @@ class _StoriesWidgetState extends State<StoriesWidget> {
       apiService.setAccessToken(accessToken);
       final users = await apiService.getUsersWithStories();
 
+      // Check if current user has active stories
+      final currentUserHasStories = users.any((u) => u.id == _currentUser?.id && u.hasStories == true);
+
       if (mounted) {
         setState(() {
           _usersWithStories = users;
+          _currentUserHasStories = currentUserHasStories;
           _isLoading = false;
+          _lastLoadTime = DateTime.now();
         });
       }
     } catch (e) {
@@ -132,55 +158,116 @@ class _StoriesWidgetState extends State<StoriesWidget> {
           children: [
             Stack(
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFF262626),
-                      width: 2,
+                // Avatar with gradient border if user has active stories
+                if (_currentUserHasStories)
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF833AB4),
+                          Color(0xFFE1306C),
+                          Color(0xFFFD1D1D),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
+                    padding: const EdgeInsets.all(2),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF000000),
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: _currentUser != null && _currentUser!.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty
+                          ? ClipOval(
+                              child: CachedNetworkImageWithSignedUrl(
+                                imageUrl: _currentUser!.avatarUrl!,
+                                postId: null, // Not a post, so no postId
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                placeholder: (context) => Container(
+                                  width: 56,
+                                  height: 56,
+                                  color: const Color(0xFF262626),
+                                  child: const Icon(
+                                    EvaIcons.personOutline,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: 56,
+                                  height: 56,
+                                  color: const Color(0xFF262626),
+                                  child: const Icon(
+                                    EvaIcons.personOutline,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : const CircleAvatar(
+                              backgroundColor: Color(0xFF262626),
+                              child: Icon(
+                                EvaIcons.personOutline,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFF262626),
+                        width: 2,
+                      ),
+                    ),
+                    child: _currentUser != null && _currentUser!.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty
+                        ? ClipOval(
+                            child: CachedNetworkImageWithSignedUrl(
+                              imageUrl: _currentUser!.avatarUrl!,
+                              postId: null, // Not a post, so no postId
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              placeholder: (context) => Container(
+                                color: const Color(0xFF262626),
+                                child: const Icon(
+                                  EvaIcons.personOutline,
+                                  color: Colors.white,
+                                  size: 30,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: const Color(0xFF262626),
+                                child: const Icon(
+                                  EvaIcons.personOutline,
+                                  color: Colors.white,
+                                  size: 30,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const CircleAvatar(
+                            backgroundColor: Color(0xFF262626),
+                            child: Icon(
+                              EvaIcons.personOutline,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
                   ),
-                  child: _currentUser != null && _currentUser!.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty
-                      ? ClipOval(
-                          child: CachedNetworkImageWithSignedUrl(
-                            imageUrl: _currentUser!.avatarUrl!,
-                            postId: '', // Not needed for avatars
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            placeholder: (context) => Container(
-                              width: 60,
-                              height: 60,
-                              color: const Color(0xFF262626),
-                              child: const Icon(
-                                EvaIcons.personOutline,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              width: 60,
-                              height: 60,
-                              color: const Color(0xFF262626),
-                              child: const Icon(
-                                EvaIcons.personOutline,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                            ),
-                          ),
-                        )
-                      : const CircleAvatar(
-                          backgroundColor: Color(0xFF262626),
-                          child: Icon(
-                            EvaIcons.personOutline,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
-                ),
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -219,6 +306,8 @@ class _StoriesWidgetState extends State<StoriesWidget> {
   }
 
   Widget _buildStoryItem(User user) {
+    final hasStories = user.hasStories == true;
+    
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
@@ -232,55 +321,104 @@ class _StoriesWidgetState extends State<StoriesWidget> {
         margin: const EdgeInsets.symmetric(horizontal: 4),
         child: Column(
           children: [
-            // Avatar with gradient border (for users with stories)
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF833AB4),
-                    Color(0xFFE1306C),
-                    Color(0xFFFD1D1D),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.all(2),
-              child: Container(
-                decoration: const BoxDecoration(
+            // Avatar with gradient border (only for users with stories)
+            if (hasStories)
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0xFF000000),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF833AB4),
+                      Color(0xFFE1306C),
+                      Color(0xFFFD1D1D),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
                 padding: const EdgeInsets.all(2),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF000000),
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                      ? ClipOval(
+                          child: CachedNetworkImageWithSignedUrl(
+                            imageUrl: user.avatarUrl!,
+                            postId: null, // Not a post, so no postId
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            placeholder: (context) => Container(
+                              width: 56,
+                              height: 56,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: 56,
+                              height: 56,
+                              color: const Color(0xFF262626),
+                              child: const Icon(
+                                EvaIcons.personOutline,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        )
+                      : const CircleAvatar(
+                          backgroundColor: Color(0xFF262626),
+                          child: Icon(
+                            EvaIcons.personOutline,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                ),
+              )
+            else
+              // Avatar without gradient border (for users without stories)
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF262626),
+                    width: 2,
+                  ),
+                ),
                 child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
                     ? ClipOval(
                         child: CachedNetworkImageWithSignedUrl(
                           imageUrl: user.avatarUrl!,
-                          postId: '', // Not needed for avatars
-                          width: 56,
-                          height: 56,
+                          postId: null, // Not a post, so no postId
+                          width: 60,
+                          height: 60,
                           fit: BoxFit.cover,
                           placeholder: (context) => Container(
-                            width: 56,
-                            height: 56,
                             color: const Color(0xFF262626),
                             child: const Icon(
                               EvaIcons.personOutline,
                               color: Colors.white,
-                              size: 24,
+                              size: 30,
                             ),
                           ),
                           errorWidget: (context, url, error) => Container(
-                            width: 56,
-                            height: 56,
                             color: const Color(0xFF262626),
                             child: const Icon(
                               EvaIcons.personOutline,
                               color: Colors.white,
-                              size: 24,
+                              size: 30,
                             ),
                           ),
                         ),
@@ -290,11 +428,10 @@ class _StoriesWidgetState extends State<StoriesWidget> {
                         child: Icon(
                           EvaIcons.personOutline,
                           color: Colors.white,
-                          size: 24,
+                          size: 30,
                         ),
                       ),
               ),
-            ),
             const SizedBox(height: 4),
             Text(
               user.name.isNotEmpty ? user.name : user.username,
