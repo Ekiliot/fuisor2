@@ -81,18 +81,28 @@ router.get('/username/:username', async (req, res) => {
       return res.status(400).json({ message: 'Username is required' });
     }
 
-    // Try exact match first
+    // Normalize username: trim and convert to lowercase for comparison
+    const normalizedUsername = trimmedUsername.toLowerCase().trim();
+    
+    // Try exact match first (case-sensitive)
     let { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('username', trimmedUsername)
       .single();
     
-    console.log('Exact match result:', { profile: profile ? 'found' : 'not found', error: profileError });
+    console.log('Exact match result:', { 
+      searched: trimmedUsername, 
+      found: !!profile, 
+      error: profileError?.code 
+    });
 
-    // If not found, try case-insensitive search
+    // If not found, try case-insensitive search using LOWER() function
     if (profileError && profileError.code === 'PGRST116') {
-      console.log('Exact match failed, trying case-insensitive search');
+      console.log('Exact match failed, trying case-insensitive search with normalized:', normalizedUsername);
+      
+      // Use RPC or raw query for case-insensitive search
+      // First try with ilike (PostgreSQL case-insensitive)
       const result = await supabaseAdmin
         .from('profiles')
         .select('*')
@@ -101,7 +111,23 @@ router.get('/username/:username', async (req, res) => {
       
       profile = result.data;
       profileError = result.error;
-      console.log('Case-insensitive search result:', { profile: profile ? 'found' : 'not found', error: profileError });
+      
+      console.log('Case-insensitive search result:', { 
+        searched: trimmedUsername,
+        normalized: normalizedUsername,
+        found: !!profile,
+        error: profileError?.code 
+      });
+      
+      // If still not found, try to find any user with similar username (for debugging)
+      if (!profile) {
+        const { data: allUsers, error: debugError } = await supabaseAdmin
+          .from('profiles')
+          .select('username')
+          .limit(10);
+        
+        console.log('Sample usernames in DB:', allUsers?.map(u => u.username) || []);
+      }
     }
 
     if (profileError || !profile) {
