@@ -90,12 +90,30 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       apiService.setAccessToken(accessToken);
       final users = await apiService.getUsersWithStories();
 
-      // Check if current user has active stories
-      final currentUserHasStories = users.any((u) => u.id == _currentUser?.id && u.hasStories == true);
+      // Filter out current user if they appear in the list (shouldn't happen, but just in case)
+      final filteredUsers = users.where((u) => u.id != _currentUser?.id).toList();
+
+      // Check if any user in the original list is current user with stories
+      // (This handles the case where backend returns current user)
+      final currentUserInList = users.firstWhere(
+        (u) => u.id == _currentUser?.id,
+        orElse: () => User(
+          id: '',
+          username: '',
+          name: '',
+          email: '',
+          followersCount: 0,
+          followingCount: 0,
+          postsCount: 0,
+          createdAt: DateTime.now(),
+          hasStories: false,
+        ),
+      );
+      final currentUserHasStories = currentUserInList.hasStories == true;
 
       if (mounted) {
         setState(() {
-          _usersWithStories = users;
+          _usersWithStories = filteredUsers;
           _currentUserHasStories = currentUserHasStories;
           _isLoading = false;
           _lastLoadTime = DateTime.now();
@@ -117,12 +135,7 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       height: 100,
       margin: const EdgeInsets.only(top: 0, bottom: 8),
       child: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF0095F6),
-                strokeWidth: 2,
-              ),
-            )
+          ? _buildLoadingShimmer()
           : ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -135,6 +148,17 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                 return _buildStoryItem(user);
               },
             ),
+    );
+  }
+
+  Widget _buildLoadingShimmer() {
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      itemCount: 8, // Show 8 shimmer items
+      itemBuilder: (context, index) {
+        return _ShimmerStoryItem(key: ValueKey('shimmer_$index'));
+      },
     );
   }
 
@@ -445,6 +469,111 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
           ],
         ),
       ),
+    );
+  }
+}
+
+// Shimmer animation for loading state
+class _ShimmerStoryItem extends StatefulWidget {
+  const _ShimmerStoryItem({super.key});
+
+  @override
+  State<_ShimmerStoryItem> createState() => _ShimmerStoryItemState();
+}
+
+class _ShimmerStoryItemState extends State<_ShimmerStoryItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: 70,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            children: [
+              // Shimmer circle
+              Opacity(
+                opacity: _animation.value,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        Color.lerp(
+                          const Color(0xFF1A1A1A),
+                          const Color(0xFF2A2A2A),
+                          _animation.value,
+                        )!,
+                        Color.lerp(
+                          const Color(0xFF2A2A2A),
+                          const Color(0xFF1A1A1A),
+                          _animation.value,
+                        )!,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              // Shimmer text
+              Opacity(
+                opacity: _animation.value,
+                child: Container(
+                  width: 50,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(5),
+                    gradient: LinearGradient(
+                      colors: [
+                        Color.lerp(
+                          const Color(0xFF1A1A1A),
+                          const Color(0xFF2A2A2A),
+                          _animation.value,
+                        )!,
+                        Color.lerp(
+                          const Color(0xFF2A2A2A),
+                          const Color(0xFF1A1A1A),
+                          _animation.value,
+                        )!,
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

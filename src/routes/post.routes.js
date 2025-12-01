@@ -1691,22 +1691,22 @@ router.get('/stories/users', validateAuth, async (req, res) => {
       }
     }
 
-    // Add hasStories flag to current user
-    const currentUserWithStories = {
-      ...currentUserProfile,
-      hasStories: userIdsWithStories.has(userId)
-    };
+    // Check if current user has active stories
+    const currentUserHasStories = userIdsWithStories.has(userId);
 
-    // Add hasStories flag to each following user
-    const followingUsersWithStories = followingUsers.map(user => ({
-      ...user,
-      hasStories: userIdsWithStories.has(user.id)
-    }));
+    // Add hasStories flag to each following user (exclude current user if they appear in following)
+    const followingUsersWithStories = followingUsers
+      .filter(user => user.id !== userId) // Remove current user from following list
+      .map(user => ({
+        ...user,
+        hasStories: userIdsWithStories.has(user.id)
+      }));
 
-    // Return current user + following users
-    const users = [currentUserWithStories, ...followingUsersWithStories];
-
-    res.json({ users });
+    // Return following users + flag for current user's stories
+    res.json({ 
+      users: followingUsersWithStories,
+      currentUserHasStories 
+    });
   } catch (error) {
     console.error('Error getting users with stories:', error);
     res.status(500).json({ error: error.message });
