@@ -1719,4 +1719,42 @@ router.get('/stories/users', validateAuth, async (req, res) => {
   }
 });
 
+// Get active stories for a specific user
+router.get('/stories/user/:userId', validateAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const now = new Date().toISOString();
+
+    // Get active stories (posts with expires_at > now) for this user
+    const { data: stories, error: storiesError } = await supabaseAdmin
+      .from('posts')
+      .select(`
+        *,
+        profiles:user_id (
+          id,
+          username,
+          name,
+          avatar_url
+        )
+      `)
+      .eq('user_id', userId)
+      .not('expires_at', 'is', null)
+      .gt('expires_at', now)
+      .order('created_at', { ascending: true });
+
+    if (storiesError) throw storiesError;
+
+    // Transform to include user data
+    const storiesWithUser = (stories || []).map(story => ({
+      ...story,
+      user: story.profiles,
+    }));
+
+    res.json({ stories: storiesWithUser });
+  } catch (error) {
+    console.error('Error getting user stories:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

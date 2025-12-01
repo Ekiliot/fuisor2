@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/camera_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/geo_stories_viewer.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../models/post.dart';
 import 'cached_network_image_with_signed_url.dart';
 
 class StoriesWidget extends StatefulWidget {
@@ -21,7 +23,6 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
   bool _isLoading = true;
   User? _currentUser;
   bool _currentUserHasStories = false;
-  DateTime? _lastLoadTime;
 
   @override
   void initState() {
@@ -39,17 +40,70 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
     super.didChangeAppLifecycleState(state);
     // Reload stories when app comes back to foreground
     if (state == AppLifecycleState.resumed) {
-      // Only reload if more than 5 seconds have passed since last load
-      if (_lastLoadTime == null || 
-          DateTime.now().difference(_lastLoadTime!) > const Duration(seconds: 5)) {
-        _loadStories();
-      }
+      print('StoriesWidget: App resumed, reloading stories');
+      // Always reload when app resumes to catch new stories
+      _loadStories();
     }
   }
 
   void _onAuthChanged() {
     // Reload stories when user changes
     _loadStories();
+  }
+
+  Future<void> _openStoriesViewer(String userId) async {
+    try {
+      print('StoriesWidget: Loading stories for user: $userId');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        print('StoriesWidget: No access token');
+        return;
+      }
+
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+      
+      final stories = await apiService.getUserStories(userId);
+      
+      if (stories.isEmpty) {
+        print('StoriesWidget: No active stories found');
+        // Если нет активных сторис, открываем профиль
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ProfileScreen(userId: userId),
+            ),
+          );
+        }
+        return;
+      }
+
+      print('StoriesWidget: Found ${stories.length} active stories');
+      
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => GeoStoriesViewer(
+              initialPost: stories.first,
+              posts: stories,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('StoriesWidget: Error opening stories viewer: $e');
+      if (mounted) {
+        // При ошибке открываем профиль
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ProfileScreen(userId: userId),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -101,7 +155,6 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
           _usersWithStories = users;
           _currentUserHasStories = currentUserHasStories;
           _isLoading = false;
-          _lastLoadTime = DateTime.now();
         });
       }
     } catch (e) {
@@ -150,15 +203,26 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
   Widget _buildAddStoryItem(BuildContext context) {
     return GestureDetector(
       onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const CameraScreen(),
-          ),
-        );
-        // Reload stories when returning from camera (with delay to allow DB to update)
-        if (mounted) {
-          await Future.delayed(const Duration(milliseconds: 800));
-          _loadStories();
+        // Если у текущего пользователя есть сторис - показываем их
+        // Иначе открываем камеру для создания нового сторис
+        if (_currentUserHasStories && _currentUser != null) {
+          print('StoriesWidget: Opening current user stories');
+          await _openStoriesViewer(_currentUser!.id);
+        } else {
+          print('StoriesWidget: Opening camera to create story');
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const CameraScreen(),
+            ),
+          );
+          // Reload stories when returning from camera (with longer delay to allow DB to update)
+          print('StoriesWidget: Returned from camera, reloading stories');
+          if (mounted) {
+            // Увеличиваем задержку до 1.5 секунд для надежности
+            await Future.delayed(const Duration(milliseconds: 1500));
+            print('StoriesWidget: Delay finished, calling _loadStories');
+            await _loadStories();
+          }
         }
       },
       child: Container(
@@ -319,12 +383,18 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
     final hasStories = user.hasStories == true;
     
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ProfileScreen(userId: user.id),
-          ),
-        );
+      onTap: () async {
+        // Если у пользователя есть сторис - открываем просмотр сторис
+        if (hasStories) {
+          await _openStoriesViewer(user.id);
+        } else {
+          // Если нет сторис - открываем профиль
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ProfileScreen(userId: user.id),
+            ),
+          );
+        }
       },
       child: Container(
         width: 70,

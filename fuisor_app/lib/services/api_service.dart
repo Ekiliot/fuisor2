@@ -852,23 +852,29 @@ class ApiService {
       print('ApiService: Media type: $mediaType');
       print('ApiService: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('ApiService: Caption: $caption');
+      print('ApiService: Visibility: ${visibility ?? "default"}');
+      print('ApiService: Expires in hours: ${expiresInHours ?? "none"}');
       print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
+
+      final requestBody = {
+        'caption': caption,
+        'media_url': mediaUrl,
+        'media_type': mediaType,
+        if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
+        if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (visibility != null) 'visibility': visibility,
+        if (expiresInHours != null) 'expires_in_hours': expiresInHours,
+      };
+      
+      print('ApiService: Request body: ${jsonEncode(requestBody)}');
 
       // Теперь отправляем простой JSON запрос с URL
       final response = await http.post(
         Uri.parse('$baseUrl/posts'),
         headers: _headers,
-        body: jsonEncode({
-          'caption': caption,
-          'media_url': mediaUrl,
-          'media_type': mediaType,
-          if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
-          if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
-          if (latitude != null) 'latitude': latitude,
-          if (longitude != null) 'longitude': longitude,
-          if (visibility != null) 'visibility': visibility,
-          if (expiresInHours != null) 'expires_in_hours': expiresInHours,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       print('ApiService: Response status: ${response.statusCode}');
@@ -2034,6 +2040,30 @@ class ApiService {
       }
     } catch (e) {
       print('ApiService: Error getting geo posts: $e');
+      rethrow;
+    }
+  }
+
+  /// Get active stories for a specific user
+  Future<List<Post>> getUserStories(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/posts/stories/user/$userId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final stories = (data['stories'] as List)
+            .map((json) => Post.fromJson(json))
+            .toList();
+        return stories;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get user stories');
+      }
+    } catch (e) {
+      print('ApiService: Error getting user stories: $e');
       rethrow;
     }
   }
