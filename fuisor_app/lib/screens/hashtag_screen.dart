@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/animated_app_bar_title.dart';
-import 'hashtag_feed_screen.dart';
+import '../widgets/post_grid_widget.dart';
 
 class HashtagScreen extends StatefulWidget {
   final String hashtag;
@@ -255,62 +253,13 @@ class _HashtagScreenState extends State<HashtagScreen> {
                           ),
                         )
                       else
-                        SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 2,
-                            mainAxisSpacing: 2,
-                            childAspectRatio: 1,
-                          ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final post = _posts[index];
-                              return GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => HashtagFeedScreen(
-                                        hashtag: widget.hashtag,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: CachedNetworkImage(
-                                  imageUrl: post.mediaUrl,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
-                                    color: const Color(0xFF1A1A1A),
-                                    child: const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFF0095F6),
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) => Container(
-                                    color: const Color(0xFF1A1A1A),
-                                    child: const Icon(
-                                      EvaIcons.imageOutline,
-                                      color: Colors.grey,
-                                      size: 32,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                            childCount: _posts.length,
-                          ),
-                        ),
-                      // Load more indicator
-                      if (_isLoadingMore)
-                        const SliverToBoxAdapter(
+                        SliverToBoxAdapter(
                           child: Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                color: Color(0xFF0095F6),
-                              ),
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: PostGridWidget(
+                              posts: _posts,
+                              isLoading: _isLoadingMore,
+                              hasMorePosts: false,
                             ),
                           ),
                         ),

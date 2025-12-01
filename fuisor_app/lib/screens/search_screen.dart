@@ -8,7 +8,7 @@ import '../providers/posts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
-import '../widgets/recommended_posts_grid.dart';
+import '../widgets/post_grid_widget.dart';
 import '../widgets/safe_avatar.dart';
 import '../widgets/animated_app_bar_title.dart';
 import 'profile_screen.dart';
@@ -266,9 +266,10 @@ class _SearchScreenState extends State<SearchScreen> {
                         const SizedBox(height: 12),
                         Consumer<PostsProvider>(
                           builder: (context, postsProvider, child) {
-                            return RecommendedPostsGrid(
+                            return PostGridWidget(
                               posts: postsProvider.feedPosts.take(12).toList(), // Show first 12 posts as recommendations
                               isLoading: postsProvider.isLoading,
+                              hasMorePosts: false,
                             );
                           },
                         ),
@@ -429,9 +430,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   child: FadeInAnimation(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: RecommendedPostsGrid(
+                      child: PostGridWidget(
                         posts: _posts,
                         isLoading: false,
+                        hasMorePosts: false,
                       ),
                     ),
                   ),

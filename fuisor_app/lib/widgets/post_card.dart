@@ -7,10 +7,11 @@ import '../screens/edit_post_screen.dart';
 import '../screens/comments_screen.dart';
 import '../screens/hashtag_screen.dart';
 import '../screens/main_screen.dart';
+import '../screens/profile_screen.dart';
 import '../providers/auth_provider.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
-import 'hashtag_text.dart';
+import '../utils/hashtag_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -115,6 +116,53 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       print('PostCard: Navigation completed');
     } catch (e) {
       print('PostCard: Navigation error: $e');
+    }
+  }
+
+  Future<void> _navigateToUserByUsername(String username) async {
+    print('PostCard: Navigating to user by username: $username');
+    try {
+      // Get access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please login to view profiles'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get user by username from API
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+      
+      final user = await apiService.getUserByUsername(username);
+      
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProfileScreen(userId: user.id),
+          ),
+        );
+      }
+    } catch (e) {
+      print('PostCard: Error navigating to user: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load user profile: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -277,30 +325,50 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Name and username in the same row
-                      Row(
-                        children: [
-                          // Name
-                          if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty) ...[
+                      // Name and username in the same row - clickable
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => ProfileScreen(userId: widget.post.userId),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            // Name
+                            if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty) ...[
+                              Text(
+                                widget.post.user!.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              // Middle dot
+                              Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.only(bottom: 2),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF8E8E8E),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            // Username
                             Text(
-                              widget.post.user!.name,
+                              '@${widget.post.user?.username ?? 'unknown'}',
                               style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Colors.white,
+                                color: Color(0xFF8E8E8E),
+                                fontSize: 12,
                               ),
                             ),
-                            const SizedBox(width: 6),
                           ],
-                          // Username
-                          Text(
-                            '@${widget.post.user?.username ?? 'unknown'}',
-                            style: const TextStyle(
-                              color: Color(0xFF8E8E8E),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Row(
@@ -527,12 +595,13 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                               ],
                             ),
                           )
-                : CachedNetworkImage(
+                : CachedNetworkImageWithSignedUrl(
                     imageUrl: widget.post.mediaUrl,
+                    postId: widget.post.id,
                     fit: BoxFit.cover,
                             width: width,
                             height: width,
-                    placeholder: (context, url) => Container(
+                    placeholder: (context) => Container(
                       color: Colors.grey[200],
                       child: const Center(
                         child: CircularProgressIndicator(),
@@ -686,14 +755,23 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                           ),
                         ),
                         Expanded(
-                          child: HashtagText(
-                            text: widget.post.caption,
-                            style: const TextStyle(color: Colors.white),
-                            hashtagStyle: const TextStyle(
-                              color: Color(0xFF0095F6),
-                              fontWeight: FontWeight.w600,
+                          child: Text.rich(
+                            TextSpan(
+                              children: HashtagUtils.parseTextWithHashtagsAndUsernames(
+                                widget.post.caption,
+                                defaultStyle: const TextStyle(color: Colors.white),
+                                hashtagStyle: const TextStyle(
+                                  color: Color(0xFF0095F6),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                usernameStyle: const TextStyle(
+                                  color: Color(0xFF0095F6),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                onHashtagTap: _navigateToHashtag,
+                                onUsernameTap: _navigateToUserByUsername,
+                              ),
                             ),
-                            onHashtagTap: _navigateToHashtag,
                           ),
                         ),
                       ],
@@ -733,14 +811,23 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                                 ),
                               ),
                               Expanded(
-                                child: HashtagText(
-                                  text: comment.content,
-                                  style: const TextStyle(color: Colors.white),
-                                  hashtagStyle: const TextStyle(
-                                    color: Color(0xFF0095F6),
-                                    fontWeight: FontWeight.w600,
+                                child: Text.rich(
+                                  TextSpan(
+                                    children: HashtagUtils.parseTextWithHashtagsAndUsernames(
+                                      comment.content,
+                                      defaultStyle: const TextStyle(color: Colors.white),
+                                      hashtagStyle: const TextStyle(
+                                        color: Color(0xFF0095F6),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      usernameStyle: const TextStyle(
+                                        color: Color(0xFF0095F6),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      onHashtagTap: _navigateToHashtag,
+                                      onUsernameTap: _navigateToUserByUsername,
+                                    ),
                                   ),
-                                  onHashtagTap: _navigateToHashtag,
                                 ),
                               ),
                             ],

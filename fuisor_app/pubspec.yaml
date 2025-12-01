@@ -26,6 +26,7 @@ dependencies:
   photo_manager: ^3.0.0
   image_cropper: ^8.0.2
   crop_your_image: ^2.0.0
+  file_picker: ^8.0.0
   
   # Navigation
   go_router: ^12.1.3

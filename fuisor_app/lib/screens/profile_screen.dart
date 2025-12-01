@@ -31,7 +31,7 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateMixin {
   final RefreshController _refreshController = RefreshController(initialRefresh: false);
   final ScrollController _scrollController = ScrollController();
   User? _viewingUser;
@@ -50,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.initState();
     // Создаем контроллер с правильной длиной (3 вкладки: Posts, Saved, Liked)
     _tabController = TabController(length: 3, vsync: this);
+    
     print('ProfileScreen: TabController initialized with length: ${_tabController.length}');
     _previousUserId = widget.userId; // Сохраняем начальный userId
     // Загружаем посты пользователя при инициализации
@@ -1097,7 +1098,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
                 const SizedBox(height: 20),
 
-                // Tabs (only for own profile) - стиль как в камере (person/people)
+                // Tabs (only for own profile) - стиль как на карте (Friends/Posts)
                 Builder(
                   builder: (context) {
                     final authProvider = context.read<AuthProvider>();
@@ -1109,105 +1110,103 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             builder: (context, child) {
                               return Center(
                                 child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16),
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF1A1A1A),
+                                    color: Colors.black.withOpacity(0.5),
                                     borderRadius: BorderRadius.circular(30),
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.2),
+                                      color: Colors.white.withOpacity(0.3),
                                       width: 1,
                                     ),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      // Posts Tab (person style)
-                                      GestureDetector(
-                                        onTap: () {
-                                          if (_tabController.index != 0) {
-                                            _tabController.animateTo(0);
-                                          }
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            color: _tabController.index == 0
-                                                ? Colors.white.withOpacity(0.2)
-                                                : Colors.transparent,
-                                            borderRadius: BorderRadius.circular(25),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
+                                      // Posts Tab
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            if (_tabController.index != 0) {
+                                              _tabController.animateTo(0);
+                                            }
+                                          },
+                                          child: AnimatedContainer(
+                                            duration: const Duration(milliseconds: 200),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tabController.index == 0
+                                                  ? Colors.white.withOpacity(0.2)
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(25),
+                                            ),
+                                            child: Center(
+                                              child: Icon(
                                                 EvaIcons.gridOutline,
                                                 color: _tabController.index == 0
                                                     ? Colors.white
                                                     : Colors.white.withOpacity(0.6),
                                                 size: 20,
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       ),
-                                      // Saved Posts Tab (people style)
-                                      GestureDetector(
-                                        onTap: () {
-                                          if (_tabController.index != 1) {
-                                            _tabController.animateTo(1);
-                                          }
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            color: _tabController.index == 1
-                                                ? Colors.white.withOpacity(0.2)
-                                                : Colors.transparent,
-                                            borderRadius: BorderRadius.circular(25),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
+                                      // Saved Posts Tab
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            if (_tabController.index != 1) {
+                                              _tabController.animateTo(1);
+                                            }
+                                          },
+                                          child: AnimatedContainer(
+                                            duration: const Duration(milliseconds: 200),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tabController.index == 1
+                                                  ? Colors.white.withOpacity(0.2)
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(25),
+                                            ),
+                                            child: Center(
+                                              child: Icon(
                                                 EvaIcons.bookmarkOutline,
                                                 color: _tabController.index == 1
                                                     ? Colors.white
                                                     : Colors.white.withOpacity(0.6),
                                                 size: 20,
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                       // Liked Posts Tab
-                                      GestureDetector(
-                                        onTap: () {
-                                          if (_tabController.index != 2) {
-                                            _tabController.animateTo(2);
-                                          }
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            color: _tabController.index == 2
-                                                ? Colors.white.withOpacity(0.2)
-                                                : Colors.transparent,
-                                            borderRadius: BorderRadius.circular(25),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            if (_tabController.index != 2) {
+                                              _tabController.animateTo(2);
+                                            }
+                                          },
+                                          child: AnimatedContainer(
+                                            duration: const Duration(milliseconds: 200),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tabController.index == 2
+                                                  ? Colors.white.withOpacity(0.2)
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(25),
+                                            ),
+                                            child: Center(
+                                              child: Icon(
                                                 EvaIcons.heartOutline,
                                                 color: _tabController.index == 2
                                                     ? Colors.white
                                                     : Colors.white.withOpacity(0.6),
                                                 size: 20,
-                              ),
-                            ],
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1225,109 +1224,150 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   },
                 ),
 
-                // Tab View and Posts Grid
+                // Tab View and Posts Grid в контейнере
                 Builder(
                   builder: (context) {
                     final authProvider = context.read<AuthProvider>();
                     // Own profile - show tabs
                     if (widget.userId == null || widget.userId == authProvider.currentUser?.id) {
-                      return SizedBox(
-                        height: MediaQuery.of(context).size.height,
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            // Posts Tab
-                            Selector<PostsProvider, Map<String, dynamic>>(
-                              selector: (_, provider) => {
-                                'userPosts': provider.userPosts,
-                                'isLoading': provider.isLoading,
-                                'isRefreshingUserPosts': provider.isRefreshingUserPosts,
-                                'hasMoreUserPosts': provider.hasMoreUserPosts,
-                              },
-                              shouldRebuild: (prev, next) {
-                                return prev['userPosts'] != next['userPosts'] ||
-                                       prev['isLoading'] != next['isLoading'] ||
-                                       prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
-                                       prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
-                              },
-                              builder: (context, data, child) {
-                                final userPosts = (data['userPosts'] as List).cast<Post>();
-                                final isLoading = data['isLoading'] as bool;
-                                final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
-                                final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
-                                
-                                final postsProvider = context.read<PostsProvider>();
-                                return PostGridWidget(
-                                  posts: userPosts,
-                                  isLoading: isLoading && !isRefreshingUserPosts,
-                                  hasMorePosts: hasMoreUserPosts,
-                                  onLoadMore: () async {
-                                    await _waitForAuthProvider();
-                                    
-                                    final authProvider = context.read<AuthProvider>();
-                                    if (authProvider.currentUser != null && authProvider.currentUser!.id.isNotEmpty) {
-                                      final prefs = await SharedPreferences.getInstance();
-                                      final accessToken = prefs.getString('access_token');
-                                      
-                                      await postsProvider.loadUserPosts(
-                                        userId: authProvider.currentUser!.id,
-                                        refresh: false,
-                                        accessToken: accessToken,
-                                      );
-                                    }
-                                  },
-                                );
-                              },
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              spreadRadius: 2,
                             ),
-                            // Saved Posts Tab
-                            const SavedPostsScreen(),
-                            // Liked Posts Tab
-                            const LikedPostsScreen(),
                           ],
+                        ),
+                        child: SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.6,
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              // Posts Tab
+                              Selector<PostsProvider, Map<String, dynamic>>(
+                                selector: (_, provider) => {
+                                  'userPosts': provider.userPosts,
+                                  'isLoading': provider.isLoading,
+                                  'isRefreshingUserPosts': provider.isRefreshingUserPosts,
+                                  'hasMoreUserPosts': provider.hasMoreUserPosts,
+                                },
+                                shouldRebuild: (prev, next) {
+                                  return prev['userPosts'] != next['userPosts'] ||
+                                         prev['isLoading'] != next['isLoading'] ||
+                                         prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
+                                         prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
+                                },
+                                builder: (context, data, child) {
+                                  final userPosts = (data['userPosts'] as List).cast<Post>();
+                                  final isLoading = data['isLoading'] as bool;
+                                  final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
+                                  final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
+                                  
+                                  final postsProvider = context.read<PostsProvider>();
+                                  return PostGridWidget(
+                                    posts: userPosts,
+                                    isLoading: isLoading && !isRefreshingUserPosts,
+                                    hasMorePosts: hasMoreUserPosts,
+                                    onLoadMore: () async {
+                                      await _waitForAuthProvider();
+                                      
+                                      final authProvider = context.read<AuthProvider>();
+                                      if (authProvider.currentUser != null && authProvider.currentUser!.id.isNotEmpty) {
+                                        final prefs = await SharedPreferences.getInstance();
+                                        final accessToken = prefs.getString('access_token');
+                                        
+                                        await postsProvider.loadUserPosts(
+                                          userId: authProvider.currentUser!.id,
+                                          refresh: false,
+                                          accessToken: accessToken,
+                                        );
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                              // Saved Posts Tab
+                              const SavedPostsScreen(),
+                              // Liked Posts Tab
+                              const LikedPostsScreen(),
+                            ],
+                          ),
                         ),
                       );
                     } else {
-                      // Other user's profile - show posts grid
-                      return Selector<PostsProvider, Map<String, dynamic>>(
-                        selector: (_, provider) => {
-                          'userPosts': provider.userPosts,
-                          'isLoading': provider.isLoading,
-                          'isRefreshingUserPosts': provider.isRefreshingUserPosts,
-                          'hasMoreUserPosts': provider.hasMoreUserPosts,
-                        },
-                        shouldRebuild: (prev, next) {
-                          return prev['userPosts'] != next['userPosts'] ||
-                                 prev['isLoading'] != next['isLoading'] ||
-                                 prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
-                                 prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
-                        },
-                        builder: (context, data, child) {
-                          final userPosts = (data['userPosts'] as List).cast<Post>();
-                          final isLoading = data['isLoading'] as bool;
-                          final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
-                          final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
-                          
-                          final postsProvider = context.read<PostsProvider>();
-                          return PostGridWidget(
-                            posts: userPosts,
-                            isLoading: isLoading && !isRefreshingUserPosts,
-                            hasMorePosts: hasMoreUserPosts,
-                            onLoadMore: () async {
-                              await _waitForAuthProvider();
-                              
-                              if (widget.userId != null) {
-                                final prefs = await SharedPreferences.getInstance();
-                                final accessToken = prefs.getString('access_token');
-                                
-                                await postsProvider.loadUserPosts(
-                                  userId: widget.userId!,
-                                  refresh: false,
-                                  accessToken: accessToken,
-                                );
-                              }
-                            },
-                          );
-                        },
+                      // Other user's profile - show posts grid в контейнере
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Selector<PostsProvider, Map<String, dynamic>>(
+                          selector: (_, provider) => {
+                            'userPosts': provider.userPosts,
+                            'isLoading': provider.isLoading,
+                            'isRefreshingUserPosts': provider.isRefreshingUserPosts,
+                            'hasMoreUserPosts': provider.hasMoreUserPosts,
+                          },
+                          shouldRebuild: (prev, next) {
+                            return prev['userPosts'] != next['userPosts'] ||
+                                   prev['isLoading'] != next['isLoading'] ||
+                                   prev['isRefreshingUserPosts'] != next['isRefreshingUserPosts'] ||
+                                   prev['hasMoreUserPosts'] != next['hasMoreUserPosts'];
+                          },
+                          builder: (context, data, child) {
+                            final userPosts = (data['userPosts'] as List).cast<Post>();
+                            final isLoading = data['isLoading'] as bool;
+                            final isRefreshingUserPosts = data['isRefreshingUserPosts'] as bool;
+                            final hasMoreUserPosts = data['hasMoreUserPosts'] as bool;
+                            
+                            final postsProvider = context.read<PostsProvider>();
+                            return SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.6,
+                              child: PostGridWidget(
+                                posts: userPosts,
+                                isLoading: isLoading && !isRefreshingUserPosts,
+                                hasMorePosts: hasMoreUserPosts,
+                                onLoadMore: () async {
+                                  await _waitForAuthProvider();
+                                  
+                                  if (widget.userId != null) {
+                                    final prefs = await SharedPreferences.getInstance();
+                                    final accessToken = prefs.getString('access_token');
+                                    
+                                    await postsProvider.loadUserPosts(
+                                      userId: widget.userId!,
+                                      refresh: false,
+                                      accessToken: accessToken,
+                                    );
+                                  }
+                                },
+                              ),
+                            );
+                          },
+                        ),
                       );
                     }
                   },

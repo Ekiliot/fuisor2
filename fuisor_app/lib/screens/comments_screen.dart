@@ -8,10 +8,10 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/safe_avatar.dart';
 import '../utils/hashtag_utils.dart';
-import '../widgets/hashtag_text.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/cached_network_image_with_signed_url.dart';
 import 'hashtag_screen.dart';
+import 'profile_screen.dart';
 
 class CommentsScreen extends StatefulWidget {
   final String postId;
@@ -523,7 +523,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                     const SizedBox(height: 4),
                     Text.rich(
                       TextSpan(
-                        children: HashtagUtils.parseTextWithHashtags(
+                        children: HashtagUtils.parseTextWithHashtagsAndUsernames(
                           comment.content,
                           defaultStyle: const TextStyle(
                             color: Colors.white,
@@ -534,7 +534,13 @@ class _CommentsScreenState extends State<CommentsScreen> {
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
+                          usernameStyle: const TextStyle(
+                            color: Color(0xFF0095F6),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                           onHashtagTap: _navigateToHashtag,
+                          onUsernameTap: _navigateToUserByUsername,
                         ),
                       ),
                     ),
@@ -746,18 +752,28 @@ class _CommentsScreenState extends State<CommentsScreen> {
                   ],
                 ),
                 const SizedBox(height: 2),
-                HashtagText(
-                  text: reply.content,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
+                Text.rich(
+                  TextSpan(
+                    children: HashtagUtils.parseTextWithHashtagsAndUsernames(
+                      reply.content,
+                      defaultStyle: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                      ),
+                      hashtagStyle: const TextStyle(
+                        color: Color(0xFF0095F6),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      usernameStyle: const TextStyle(
+                        color: Color(0xFF0095F6),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      onHashtagTap: _navigateToHashtag,
+                      onUsernameTap: _navigateToUserByUsername,
+                    ),
                   ),
-                  hashtagStyle: const TextStyle(
-                    color: Color(0xFF0095F6),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                  onHashtagTap: _navigateToHashtag,
                 ),
                 const SizedBox(height: 6),
                 // Reply button
@@ -950,15 +966,29 @@ class _CommentsScreenState extends State<CommentsScreen> {
                           ),
                         ),
                       )
-                : Image.network(
-                    post.mediaUrl,
+                : CachedNetworkImageWithSignedUrl(
+                    imageUrl: post.mediaUrl,
+                    postId: post.id,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
+                    width: 50,
+                    height: 50,
+                    placeholder: (context) => Container(
+                      color: Colors.black,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF0095F6),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
                       color: Colors.grey[800],
-                      child: const Icon(
+                      child: const Center(
+                        child: Icon(
                         EvaIcons.imageOutline,
                         color: Colors.grey,
                         size: 20,
+                        ),
                       ),
                     ),
                   ),
@@ -973,7 +1003,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
               if (post.caption.isNotEmpty)
                 Text.rich(
                   TextSpan(
-                    children: HashtagUtils.parseTextWithHashtags(
+                    children: HashtagUtils.parseTextWithHashtagsAndUsernames(
                       post.caption,
                       defaultStyle: const TextStyle(
                         color: Colors.white,
@@ -984,7 +1014,13 @@ class _CommentsScreenState extends State<CommentsScreen> {
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
+                      usernameStyle: const TextStyle(
+                        color: Color(0xFF0095F6),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                       onHashtagTap: _navigateToHashtag,
+                      onUsernameTap: _navigateToUserByUsername,
                     ),
                   ),
                   maxLines: 1,
@@ -1101,15 +1137,27 @@ class _CommentsScreenState extends State<CommentsScreen> {
                           ),
                         ),
                       )
-                : Image.network(
-                    post.mediaUrl,
+                : CachedNetworkImageWithSignedUrl(
+                    imageUrl: post.mediaUrl,
+                    postId: post.id,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
+                    placeholder: (context) => Container(
                       color: Colors.grey[800],
-                      child: const Icon(
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF0095F6),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: Colors.grey[800],
+                      child: const Center(
+                        child: Icon(
                         EvaIcons.imageOutline,
                         color: Colors.grey,
                         size: 48,
+                        ),
                       ),
                     ),
                   ),
@@ -1165,7 +1213,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
   }
 
   List<TextSpan> _buildCaptionWithHashtags(String caption) {
-    return HashtagUtils.parseTextWithHashtags(
+    return HashtagUtils.parseTextWithHashtagsAndUsernames(
       caption,
       defaultStyle: const TextStyle(
         color: Colors.white,
@@ -1176,7 +1224,13 @@ class _CommentsScreenState extends State<CommentsScreen> {
         fontSize: 14,
         fontWeight: FontWeight.w600,
       ),
+      usernameStyle: const TextStyle(
+        color: Color(0xFF0095F6),
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
       onHashtagTap: _navigateToHashtag,
+      onUsernameTap: _navigateToUserByUsername,
     );
   }
 
@@ -1193,6 +1247,52 @@ class _CommentsScreenState extends State<CommentsScreen> {
       print('CommentsScreen: Navigation completed');
     } catch (e) {
       print('CommentsScreen: Navigation error: $e');
+    }
+  }
+
+  Future<void> _navigateToUserByUsername(String username) async {
+    print('CommentsScreen: Navigating to user by username: $username');
+    try {
+      // Get access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+      
+      if (accessToken == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please login to view profiles'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get user by username from API
+      _apiService.setAccessToken(accessToken);
+      
+      final user = await _apiService.getUserByUsername(username);
+      
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProfileScreen(userId: user.id),
+          ),
+        );
+      }
+    } catch (e) {
+      print('CommentsScreen: Error navigating to user: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load user profile: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 

@@ -68,6 +68,61 @@ router.get('/profile', validateAuth, async (req, res) => {
   }
 });
 
+// Get user profile by username
+router.get('/username/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    if (!username || username.trim().length === 0) {
+      return res.status(400).json({ message: 'Username is required' });
+    }
+
+    // Get user profile by username
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('username', username.trim())
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get followers count
+    const { count: followersCount, error: followersError } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', profile.id);
+
+    if (followersError) throw followersError;
+
+    // Get following count
+    const { count: followingCount, error: followingError } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', profile.id);
+
+    if (followingError) throw followingError;
+
+    // Get posts count
+    const { count: postsCount, error: postsError } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', profile.id);
+
+    if (postsError) throw postsError;
+
+    res.json({
+      ...profile,
+      followers_count: followersCount || 0,
+      following_count: followingCount || 0,
+      posts_count: postsCount || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get user profile by ID
 router.get('/:id', validateUUID, async (req, res) => {
   try {

@@ -643,6 +643,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 addRepaintBoundaries: false, // Используем ручные RepaintBoundary
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + 20, // Pull to refresh виден ниже header
+                  bottom: MediaQuery.of(context).padding.bottom + 30, // Padding для bottom navigation bar + safe area
                 ),
               itemCount: totalItems,
               itemBuilder: (context, index) {
