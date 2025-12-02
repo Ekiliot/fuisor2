@@ -35,10 +35,33 @@
    RESEND_FROM_EMAIL=SONET <noreply@yourdomain.com>
    ```
 
-   Для разработки можно использовать:
-   ```env
-   RESEND_FROM_EMAIL=SONET <onboarding@resend.dev>
-   ```
+   **Что означает `RESEND_FROM_EMAIL`?**
+   
+   Это адрес отправителя email. Формат: `"Имя <email@домен.com>"`
+   - `SONET` — имя отправителя (будет видно в почте)
+   - `noreply@yourdomain.com` — email адрес отправителя
+   
+   **Варианты:**
+   
+   1. **Для разработки (можно использовать сразу без настройки):**
+      ```env
+      RESEND_FROM_EMAIL=SONET <onboarding@resend.dev>
+      ```
+      Это тестовый домен Resend, работает сразу.
+   
+   2. **Для продакшена (нужен свой домен):**
+      ```env
+      RESEND_FROM_EMAIL=SONET <noreply@fuisor2.vercel.app>
+      ```
+      Или если у вас свой домен:
+      ```env
+      RESEND_FROM_EMAIL=SONET <noreply@yourdomain.com>
+      ```
+      
+      **Важно:** Для продакшена нужно:
+      - Добавить домен в Resend Dashboard
+      - Настроить DNS записи (SPF, DKIM)
+      - Дождаться верификации домена
 
 5. **Перезапустите сервер:**
    ```bash
