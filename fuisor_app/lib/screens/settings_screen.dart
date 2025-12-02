@@ -15,7 +15,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool notificationsEnabled = true;
-  bool autoplayVideos = true;
   bool useCellularData = false;
   bool locationSharingEnabled = false;
   bool _isLoadingLocationSetting = false;
@@ -154,15 +153,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         type: _SettingType.switch_,
         switchValue: notificationsEnabled,
         onSwitchChanged: (v) => setState(() => notificationsEnabled = v),
-      ),
-      _SettingItem(
-        section: 'General',
-        icon: EvaIcons.playCircleOutline,
-        title: 'Autoplay videos',
-        subtitle: 'Automatically play videos in the feed',
-        type: _SettingType.switch_,
-        switchValue: autoplayVideos,
-        onSwitchChanged: (v) => setState(() => autoplayVideos = v),
       ),
       _SettingItem(
         section: 'General',
