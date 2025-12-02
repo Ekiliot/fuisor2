@@ -1,6 +1,6 @@
-# Fuisor Server Manager
+# Sonet Server Manager
 
-Красивый TUI (Terminal User Interface) для управления сервером Fuisor с категоризированными логами.
+Красивый TUI (Terminal User Interface) для управления сервером Sonet с категоризированными логами.
 
 ## Установка
 

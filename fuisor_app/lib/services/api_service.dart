@@ -123,6 +123,39 @@ class ApiService {
     _accessToken = null;
   }
 
+  // Password change endpoints
+  Future<void> requestPasswordChangeOTP() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/password/request-otp'),
+      headers: _headers,
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? error['message'] ?? 'Failed to request OTP');
+    }
+  }
+
+  Future<void> changePassword(String otpCode, String newPassword) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/password/change'),
+      headers: _headers,
+      body: jsonEncode({
+        'otp_code': otpCode,
+        'new_password': newPassword,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? error['message'] ?? 'Failed to change password');
+    }
+  }
+
   // Posts endpoints
   Future<List<Post>> getPosts({int page = 1, int limit = 10}) async {
     final response = await http.get(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../services/api_service.dart';
@@ -234,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _SettingItem(
         section: 'About',
         icon: EvaIcons.infoOutline,
-        title: 'About Fuișor',
+        title: 'About SONET',
         subtitle: 'Version, licenses and legal',
         type: _SettingType.navigation,
         onTap: () {},

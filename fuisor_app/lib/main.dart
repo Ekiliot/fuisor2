@@ -13,6 +13,7 @@ import 'services/message_cache_service.dart';
 import 'utils/themes.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
+// import 'screens/splash_screen.dart'; // Используем только нативный splash screen
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,11 +34,11 @@ void main() async {
   // Инициализация кеша сообщений
   await MessageCacheService().init();
   
-  runApp(const FuisorApp());
+  runApp(const SonetApp());
 }
 
-class FuisorApp extends StatelessWidget {
-  const FuisorApp({super.key});
+class SonetApp extends StatelessWidget {
+  const SonetApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,7 @@ class FuisorApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OnlineStatusProvider()),
       ],
       child: MaterialApp(
-        title: 'Fuișor',
+        title: 'Sonet',
         debugShowCheckedModeBanner: false,
         theme: AppThemes.darkTheme,
         home: const AuthWrapper(),
@@ -79,6 +80,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
+
     return Consumer2<AuthProvider, OnlineStatusProvider>(
       builder: (context, authProvider, onlineStatusProvider, child) {
         // Показываем загрузку пока не инициализирован

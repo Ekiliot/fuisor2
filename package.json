@@ -1,7 +1,7 @@
 {
   "name": "fuisor-backend",
   "version": "1.0.0",
-  "description": "Backend for Fuisor - Instagram-like social media application",
+  "description": "Backend for Sonet - Instagram-like social media application",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

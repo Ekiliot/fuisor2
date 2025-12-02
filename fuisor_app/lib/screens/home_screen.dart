@@ -413,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         title: const AnimatedAppBarTitle(
-          text: 'Fuișor',
+          text: 'SONET',
         ),
         actions: [
           // Geo button

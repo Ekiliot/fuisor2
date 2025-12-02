@@ -1,5 +1,5 @@
 name: fuisor_app
-description: "Fuisor - Instagram-like social media app"
+description: "Sonet - Instagram-like social media app"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -94,6 +94,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.2
 
 flutter:
   uses-material-design: true
@@ -101,6 +102,11 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+  
+  fonts:
+    - family: DelaGothicOne
+      fonts:
+        - asset: assets/fonts/DelaGothicOne-Regular.ttf
 
 flutter_launcher_icons:
   android: true
@@ -109,3 +115,29 @@ flutter_launcher_icons:
   min_sdk_android: 21
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: "assets/icons/icon.png"
+  remove_alpha_ios: true
+
+flutter_native_splash:
+  # Цвет фона
+  color: "#000000"
+  
+  # Изображение для splash screen
+  image: assets/images/SONET.png
+  
+  # Размещение изображения по центру
+  android_gravity: center
+  ios_content_mode: center
+  
+  # Платформы
+  android: true
+  ios: true
+  web: false
+  
+  # Android 12+ настройки
+  android_12:
+    color: "#000000"
+    image: assets/images/SONET.png
+    icon_background_color: "#000000"
+  
+  # Полноэкранный режим
+  fullscreen: true

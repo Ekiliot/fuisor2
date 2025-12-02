@@ -1,6 +1,6 @@
-# Fuisor Backend API
+# Sonet Backend API
 
-Backend service for Fuisor - an Instagram-like social media application using Supabase as the database.
+Backend service for Sonet - an Instagram-like social media application using Supabase as the database.
 
 **Repository:** [https://github.com/Ekiliot/fuisor2](https://github.com/Ekiliot/fuisor2)
 

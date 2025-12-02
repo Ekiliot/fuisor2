@@ -939,13 +939,47 @@ class _SignupScreenState extends State<SignupScreen> {
             SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 16.0),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                      // Back Button (слева)
+                      Container(
+                        width: 56,
+                        height: 56,
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.grey.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: () {
+                              if (_currentStep > 0) {
+                                setState(() {
+                                  _currentStep--;
+                                });
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                            child: const Center(
+                              child: Icon(
+                                EvaIcons.arrowBackOutline,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                           // Next Button (по центру)
-                          Center(
-                            child: Builder(
+                      Builder(
                               builder: (context) {
                                 bool isButtonActive = false;
                                 
@@ -1056,48 +1090,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                 );
                               },
                             ),
-                          ),
-                          // Back Button (слева от Next)
-                          Positioned(
-                            left: (constraints.maxWidth / 2) - (200 / 2) - 12 - 56,
-                            child: Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1A1A1A),
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(
-                                  color: Colors.grey.withOpacity(0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(24),
-                                  onTap: () {
-                                    if (_currentStep > 0) {
-                                      setState(() {
-                                        _currentStep--;
-                                      });
-                                    } else {
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                  child: const Center(
-                                    child: Icon(
-                                      EvaIcons.arrowBackOutline,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                    ],
                   ),
                 ),
               ),

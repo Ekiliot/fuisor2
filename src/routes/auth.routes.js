@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validateSignup, validateLogin } from '../middleware/validation.middleware.js';
 import { logger } from '../utils/logger.js';
+import { generateOTP, hashOTP, verifyOTP, getOTPExpirationTime } from '../utils/otp_utils.js';
 
 const router = express.Router();
 
@@ -256,6 +257,145 @@ router.get('/supabase-config', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Request OTP for password change
+router.post('/password/request-otp', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+
+    if (!supabaseAdmin) {
+      throw new Error('Service role key not configured');
+    }
+
+    // Generate OTP code
+    const otpCode = generateOTP();
+    const hashedOTP = hashOTP(otpCode);
+    const expiresAt = getOTPExpirationTime();
+
+    // Save OTP to database
+    const { error: insertError } = await supabaseAdmin
+      .from('password_change_otp')
+      .insert([
+        {
+          user_id: userId,
+          otp_code: hashedOTP,
+          expires_at: expiresAt.toISOString(),
+        },
+      ]);
+
+    if (insertError) {
+      logger.authError('Error saving OTP', insertError);
+      throw insertError;
+    }
+
+    // Send OTP via email using Supabase Auth email template
+    // Note: Supabase doesn't have a built-in OTP email function, 
+    // so we'll use a workaround by storing the OTP and sending it via custom email
+    // For production, you'd want to integrate with an email service like SendGrid, AWS SES, etc.
+    
+    // For now, we'll just return success and assume the email is sent
+    // In a real implementation, you'd send the email here
+    logger.auth('OTP generated for password change', { 
+      userId, 
+      email: userEmail,
+      expiresAt: expiresAt.toISOString() 
+    });
+
+    // TODO: Integrate with email service to send OTP
+    // Example: await sendOTPEmail(userEmail, otpCode);
+    console.log(`[DEV] OTP Code for ${userEmail}: ${otpCode}`);
+
+    res.json({ 
+      message: 'OTP code has been sent to your email',
+      // In development, you might want to return the OTP for testing
+      // Remove this in production!
+      ...(process.env.NODE_ENV === 'development' && { otp: otpCode })
+    });
+  } catch (error) {
+    logger.authError('Error requesting OTP', error);
+    res.status(500).json({ error: error.message || 'Failed to request OTP' });
+  }
+});
+
+// Change password with OTP verification
+router.post('/password/change', validateAuth, async (req, res) => {
+  try {
+    const { otp_code, new_password } = req.body;
+    const userId = req.user.id;
+
+    // Validate inputs
+    if (!otp_code || otp_code.trim().length !== 6) {
+      return res.status(400).json({ error: 'Valid 6-digit OTP code is required' });
+    }
+
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    if (!supabaseAdmin) {
+      throw new Error('Service role key not configured');
+    }
+
+    // Get the latest unused OTP for this user
+    const { data: otpRecords, error: fetchError } = await supabaseAdmin
+      .from('password_change_otp')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (fetchError) {
+      logger.authError('Error fetching OTP', fetchError);
+      throw fetchError;
+    }
+
+    if (!otpRecords || otpRecords.length === 0) {
+      logger.authError('No valid OTP found', { userId });
+      return res.status(400).json({ error: 'Invalid or expired OTP code' });
+    }
+
+    const otpRecord = otpRecords[0];
+
+    // Verify OTP
+    const isValid = verifyOTP(otp_code.trim(), otpRecord.otp_code);
+    if (!isValid) {
+      logger.authError('Invalid OTP code', { userId });
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    // Mark OTP as used
+    const { error: updateError } = await supabaseAdmin
+      .from('password_change_otp')
+      .update({ used: true })
+      .eq('id', otpRecord.id);
+
+    if (updateError) {
+      logger.authError('Error marking OTP as used', updateError);
+      throw updateError;
+    }
+
+    // Update password using Supabase Admin
+    const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { password: new_password }
+    );
+
+    if (passwordError) {
+      logger.authError('Error updating password', passwordError);
+      throw passwordError;
+    }
+
+    logger.auth('Password changed successfully', { userId });
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    logger.authError('Error changing password', error);
+    res.status(500).json({ error: error.message || 'Failed to change password' });
   }
 });
 

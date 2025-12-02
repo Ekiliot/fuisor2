@@ -1,4 +1,4 @@
-# 📱 Fuisor Flutter App
+# 📱 Sonet Flutter App
 
 Instagram-like social media mobile application built with Flutter.
 
@@ -134,7 +134,7 @@ lib/
 
 ## 🔌 API Integration
 
-The app connects to the Fuisor backend API:
+The app connects to the Sonet backend API:
 
 - **Production Base URL**: `https://fuisor2.vercel.app/api`
 - **Local Development**: `http://localhost:3000/api` (configure in `lib/services/api_service.dart`)

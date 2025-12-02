@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/animated_login_button.dart';
 import '../widgets/animated_text_field.dart';
@@ -15,16 +17,48 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  late AnimationController _titleAnimationController;
+  late Animation<double> _blurAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _blurAnimation = Tween<double>(
+      begin: 50.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _titleAnimationController,
+      curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+    ));
+
+    _opacityAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _titleAnimationController,
+      curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+    ));
+
+    // Запускаем анимацию при загрузке
+    _titleAnimationController.forward();
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _titleAnimationController.dispose();
     super.dispose();
   }
 
@@ -39,14 +73,49 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Title
-              Text(
-                'Fuișor',
+              // Title with blur animation
+              AnimatedBuilder(
+                animation: _titleAnimationController,
+                builder: (context, child) {
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Blur effect
+                      if (_blurAnimation.value > 0)
+                        ClipRect(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(
+                              sigmaX: _blurAnimation.value,
+                              sigmaY: _blurAnimation.value,
+                            ),
+                            child: Opacity(
+                              opacity: (1.0 - _opacityAnimation.value) * 0.8,
+                              child: Text(
+                                'Sonet',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.delaGothicOne(
+                                  fontSize: 42,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Main text
+                      Opacity(
+                        opacity: _opacityAnimation.value,
+                        child: Text(
+                          'Sonet',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.delaGothicOne(
                   fontSize: 42,
                   color: Colors.white,
                 ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 40),
 
@@ -60,6 +129,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _emailController,
                         labelText: 'Email or Username',
                       keyboardType: TextInputType.emailAddress,
+                      prefixIcon: const Icon(
+                        EvaIcons.email,
+                        color: Color(0xFF8E8E8E),
+                        size: 24,
+                      ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter email or username';
@@ -74,11 +148,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passwordController,
                       labelText: 'Password',
                       obscureText: !_isPasswordVisible,
+                      prefixIcon: const Icon(
+                        EvaIcons.lock,
+                        color: Color(0xFF8E8E8E),
+                        size: 24,
+                      ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
-                                ? Icons.visibility
-                                : Icons.visibility_off,
+                              ? EvaIcons.eye
+                              : EvaIcons.eyeOff,
                           color: Colors.grey,
                           ),
                           onPressed: () {
@@ -206,3 +285,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

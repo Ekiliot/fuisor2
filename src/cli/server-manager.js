@@ -35,7 +35,7 @@ class ServerManager {
     // Create screen
     this.screen = blessed.screen({
       smartCSR: true,
-      title: 'Fuisor Server Manager'
+      title: 'Sonet Server Manager'
     });
 
     // Create grid
@@ -286,7 +286,7 @@ class ServerManager {
     
     const filterStatus = this.filteredCategory === 'ALL' ? '{cyan-fg}ВСЕ{/cyan-fg}' : `{yellow-fg}${this.filteredCategory.substring(0, 8)}{/yellow-fg}`;
     
-    const menu = `{green-fg}FUISOR MANAGER{/green-fg}
+    const menu = `{green-fg}SONET MANAGER{/green-fg}
 {white-fg}Статус:{/white-fg} ${serverStatus} {white-fg}Порт:{/white-fg} {cyan-fg}${this.port}{/cyan-fg} {white-fg}Фильтр:{/white-fg} ${filterStatus}
 
 {white-fg}ФИЛЬТРЫ{/white-fg}

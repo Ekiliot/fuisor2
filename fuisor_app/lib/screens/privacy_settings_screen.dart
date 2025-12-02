@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../providers/auth_provider.dart';
+import '../utils/email_utils.dart';
+import 'change_password_screen.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -175,6 +179,66 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             value: showActivityStatus,
             onChanged: _isSavingActivityStatus ? null : _updateActivityStatus,
             isLoading: _isSavingActivityStatus,
+          ),
+
+          const _Divider(),
+          const _SectionHeader(title: 'Account Security'),
+          _NavTile(
+            icon: EvaIcons.lockOutline,
+            title: 'Change Password',
+            subtitle: 'Update your password using email verification',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ChangePasswordScreen(),
+                ),
+              );
+            },
+          ),
+          Builder(
+            builder: (context) {
+              final authProvider = context.watch<AuthProvider>();
+              final userEmail = authProvider.currentUser?.email ?? '';
+              final maskedEmail = EmailUtils.maskEmail(userEmail);
+              
+              return Container(
+                color: const Color(0xFF0F0F0F),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      EvaIcons.emailOutline,
+                      color: Color(0xFF8E8E8E),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Email Address',
+                            style: TextStyle(
+                              color: Color(0xFF8E8E8E),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            maskedEmail,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
 
           const _Divider(),

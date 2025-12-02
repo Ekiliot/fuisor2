@@ -1,10 +1,10 @@
-# 🚀 Fuisor - Complete Social Media Platform
+# 🚀 Sonet - Complete Social Media Platform
 
 **Instagram-like social media application with full-stack implementation**
 
 ## 📋 **Project Overview**
 
-Fuisor is a complete social media platform consisting of:
+Sonet is a complete social media platform consisting of:
 - **🔧 Backend API** (Node.js + Express + Supabase)
 - **📱 Mobile App** (Flutter)
 
@@ -60,7 +60,7 @@ fuisorbk/
 - **🛡️ Security**: JWT tokens, RLS policies, input validation
 
 ### 🆚 **vs Instagram API**
-| Feature | Fuisor API | Instagram API |
+| Feature | Sonet API | Instagram API |
 |---------|------------|---------------|
 | **Username Login** | ✅ | ❌ |
 | **Comment Replies** | ✅ | ❌ |
@@ -247,7 +247,7 @@ flutter run
 
 ## 🎉 **Conclusion**
 
-**Fuisor is a production-ready social media platform that surpasses Instagram API in many aspects!**
+**Sonet is a production-ready social media platform that surpasses Instagram API in many aspects!**
 
 ### **Key Advantages**:
 - 🚀 **More Features** than Instagram API

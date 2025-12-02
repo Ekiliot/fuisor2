@@ -181,17 +181,17 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       child: _isLoading
           ? _buildLoadingShimmer()
           : ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
               itemCount: 1 + _usersWithStories.length, // 1 for "Your Story" + users with stories
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _buildAddStoryItem(context);
-                }
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _buildAddStoryItem(context);
+          }
                 final user = _usersWithStories[index - 1];
                 return _buildStoryItem(user);
-              },
-            ),
+        },
+      ),
     );
   }
 
@@ -217,10 +217,10 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
         } else {
           print('StoriesWidget: Opening camera to create story');
           await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const CameraScreen(),
-            ),
-          );
+          MaterialPageRoute(
+            builder: (context) => const CameraScreen(),
+          ),
+        );
           // Reload stories when returning from camera (with longer delay to allow DB to update)
           print('StoriesWidget: Returned from camera, reloading stories');
           if (mounted) {
@@ -232,12 +232,12 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
         }
       },
       child: Container(
-        width: 70,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          children: [
-            Stack(
-              children: [
+      width: 70,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
+          Stack(
+            children: [
                 // Avatar with gradient border if user has active stories
                 if (_currentUserHasStories)
                   Container(
@@ -303,16 +303,16 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                     ),
                   )
                 else
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFF262626),
-                        width: 2,
-                      ),
-                    ),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF262626),
+                    width: 2,
+                  ),
+                ),
                     child: _currentUser != null && _currentUser!.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty
                         ? ClipOval(
                             child: CachedNetworkImageWithSignedUrl(
@@ -340,48 +340,48 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                             ),
                           )
                         : const CircleAvatar(
-                            backgroundColor: Color(0xFF262626),
-                            child: Icon(
-                              EvaIcons.personOutline,
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                        ),
+                  backgroundColor: Color(0xFF262626),
+                  child: Icon(
+                    EvaIcons.personOutline,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
+              ),
                 // Показываем кнопку "+" только если нет активных сторис
                 if (!_currentUserHasStories)
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF0095F6),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        EvaIcons.plus,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0095F6),
+                    shape: BoxShape.circle,
                   ),
-              ],
-            ),
-            const SizedBox(height: 4),
+                  child: const Icon(
+                    EvaIcons.plus,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
             Text(
               _currentUser?.name.isNotEmpty == true 
                   ? _currentUser!.name 
                   : (_currentUser?.username ?? 'Your Story'),
               style: const TextStyle(
-                fontSize: 12,
-                color: Colors.white,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              fontSize: 12,
+              color: Colors.white,
             ),
-          ],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
         ),
       ),
     );
@@ -405,34 +405,34 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
         }
       },
       child: Container(
-        width: 70,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          children: [
+      width: 70,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
             // Avatar with gradient border (only for users with stories)
             if (hasStories)
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF833AB4),
-                      Color(0xFFE1306C),
-                      Color(0xFFFD1D1D),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFF000000),
-                  ),
-                  padding: const EdgeInsets.all(2),
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF833AB4),
+                  Color(0xFFE1306C),
+                  Color(0xFFFD1D1D),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            padding: const EdgeInsets.all(2),
+            child: Container(
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF000000),
+              ),
+              padding: const EdgeInsets.all(2),
                   child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
                       ? ClipOval(
                           child: CachedNetworkImageWithSignedUrl(
@@ -464,13 +464,13 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                           ),
                         )
                       : const CircleAvatar(
-                          backgroundColor: Color(0xFF262626),
-                          child: Icon(
-                            EvaIcons.personOutline,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
+                backgroundColor: Color(0xFF262626),
+                child: Icon(
+                  EvaIcons.personOutline,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
                 ),
               )
             else
@@ -518,20 +518,20 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
                           color: Colors.white,
                           size: 30,
                         ),
-                      ),
-              ),
-            const SizedBox(height: 4),
-            Text(
-              user.name.isNotEmpty ? user.name : user.username,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.white,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+              user.name.isNotEmpty ? user.name : user.username,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
       ),
     );
   }
