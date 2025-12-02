@@ -10,6 +10,7 @@ import hashtagRoutes from './routes/hashtag.routes.js';
 import { router as notificationRoutes } from './routes/notification.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
 import { logger } from './utils/logger.js';
+import { initializeFCM } from './utils/fcm_service.js';
 
 dotenv.config();
 
@@ -56,6 +57,9 @@ app.use((err, req, res, next) => {
   logger.error('Server error', err);
   res.status(500).json({ message: 'Something went wrong!' });
 });
+
+// Инициализируем FCM при старте сервера
+initializeFCM();
 
 // Для деплоя используем 0.0.0.0, для локальной разработки тоже
 const host = process.env.HOST || '0.0.0.0';

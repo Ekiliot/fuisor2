@@ -10,6 +10,8 @@ import 'providers/online_status_provider.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'services/message_cache_service.dart';
+import 'services/notification_service.dart';
+import 'services/fcm_service.dart';
 import 'utils/themes.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -33,6 +35,19 @@ void main() async {
   
   // Инициализация кеша сообщений
   await MessageCacheService().init();
+  
+  // Инициализация сервиса уведомлений
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+  
+  // Инициализация FCM сервиса
+  final fcmService = FCMService();
+  try {
+    await fcmService.initialize();
+  } catch (e) {
+    print('Warning: FCM initialization failed: $e');
+    print('Make sure google-services.json is configured correctly');
+  }
   
   runApp(const SonetApp());
 }
@@ -103,6 +118,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
             final accessToken = prefs.getString('access_token');
             if (accessToken != null) {
               onlineStatusProvider.startHeartbeat(accessToken);
+              
+              // Отправляем FCM токен на сервер после входа
+              final fcmService = FCMService();
+              if (fcmService.isInitialized && fcmService.fcmToken != null) {
+                print('AuthWrapper: Sending FCM token to server...');
+                await fcmService.sendTokenToServer(accessToken);
+              }
             }
           });
           
@@ -110,6 +132,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
         } else {
           // Останавливаем heartbeat если пользователь вышел
           onlineStatusProvider.stopHeartbeat();
+          
+          // Удаляем FCM токен при выходе
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            final fcmService = FCMService();
+            if (fcmService.isInitialized) {
+              await fcmService.deleteToken();
+            }
+          });
+          
           return const LoginScreen();
         }
       },

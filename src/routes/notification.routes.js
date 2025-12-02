@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
+import { sendNotificationForEvent } from '../utils/fcm_service.js';
 
 const router = express.Router();
 
@@ -485,7 +486,7 @@ router.get('/check', validateAuth, async (req, res) => {
 });
 
 // Create notification (helper function for other routes)
-async function createNotification(userId, actorId, type, postId = null, commentId = null) {
+async function createNotification(userId, actorId, type, postId = null, commentId = null, options = {}) {
   try {
     // Don't create notification if user is notifying themselves
     if (userId === actorId) {
@@ -508,6 +509,18 @@ async function createNotification(userId, actorId, type, postId = null, commentI
     if (error) {
       console.error('Error creating notification:', error);
       return null;
+    }
+
+    // Отправляем FCM уведомление (не блокируем, если FCM недоступен)
+    try {
+      await sendNotificationForEvent(userId, actorId, type, {
+        postId,
+        commentId,
+        ...options,
+      });
+    } catch (fcmError) {
+      // Логируем ошибку, но не прерываем создание уведомления в БД
+      console.error('[FCM] Error sending push notification:', fcmError.message);
     }
 
     return data;

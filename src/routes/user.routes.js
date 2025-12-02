@@ -1283,4 +1283,33 @@ router.delete('/close-friends/:friendId', validateAuth, validateFriendId, async 
   }
 });
 
+// Update FCM token
+router.put('/fcm-token', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { fcm_token } = req.body;
+
+    if (!fcm_token || typeof fcm_token !== 'string') {
+      return res.status(400).json({ error: 'fcm_token is required and must be a string' });
+    }
+
+    // Update FCM token in profile
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({ fcm_token: fcm_token })
+      .eq('id', userId);
+
+    if (updateError) {
+      console.error('Error updating FCM token:', updateError);
+      return res.status(500).json({ error: 'Failed to update FCM token' });
+    }
+
+    console.log(`[FCM] FCM token updated for user ${userId}`);
+    res.json({ success: true, message: 'FCM token updated successfully' });
+  } catch (error) {
+    console.error('Error updating FCM token:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

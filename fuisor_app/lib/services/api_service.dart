@@ -2297,6 +2297,29 @@ class ApiService {
     }
   }
 
+  /// Send FCM token to server
+  Future<void> sendFCMToken(String fcmToken) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/fcm-token'),
+        headers: _headers,
+        body: jsonEncode({
+          'fcm_token': fcmToken,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('ApiService: FCM token sent successfully');
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to send FCM token');
+      }
+    } catch (e) {
+      print('ApiService: Error sending FCM token: $e');
+      rethrow;
+    }
+  }
+
   /// Update location visibility setting
   Future<void> updateLocationVisibility(String visibility) async {
     try {

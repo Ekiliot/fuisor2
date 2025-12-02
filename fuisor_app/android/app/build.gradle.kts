@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -12,6 +13,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -27,12 +29,22 @@ android {
     }
 
     buildTypes {
-        release {
-            // --- [ВАЖНО] ДОБАВЛЕНЫ ЭТИ ДВЕ СТРОКИ ---
-            // Это запрещает удалять код плагинов (Hive, PathProvider) при сборке
+        debug {
+            // Отключаем оптимизацию для debug сборки
+            // Это гарантирует, что все platform channels и плагины работают корректно
             isMinifyEnabled = false
             isShrinkResources = false
-            // ----------------------------------------
+            isDebuggable = true
+        }
+        
+        release {
+            // --- [КРИТИЧНО] ОТКЛЮЧЕНА ОПТИМИЗАЦИЯ КОДА ---
+            // Это ОБЯЗАТЕЛЬНО для работы platform channels и плагинов
+            // Без этого Flutter плагины могут не найти методы через reflection
+            // и platform channels могут перестать работать
+            isMinifyEnabled = false
+            isShrinkResources = false
+            // -----------------------------------------------
 
             // Signing with the debug keys for now
             signingConfig = signingConfigs.getByName("debug")
@@ -56,4 +68,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

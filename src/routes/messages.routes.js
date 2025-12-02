@@ -3,6 +3,7 @@ import multer from 'multer';
 import { supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validateChatId, validateMessageId } from '../middleware/validation.middleware.js';
+import { sendNotificationForEvent } from '../utils/fcm_service.js';
 
 const router = express.Router();
 
@@ -644,6 +645,45 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
     // Триггеры автоматически:
     // - Обновят chats.updated_at
     // - Увеличат unread_count для получателей
+
+    // Отправляем FCM уведомления всем участникам чата кроме отправителя
+    try {
+      const { data: participants, error: participantsError } = await supabaseAdmin
+        .from('chat_participants')
+        .select(`
+          user_id,
+          unread_count,
+          profiles:user_id(username, name)
+        `)
+        .eq('chat_id', chatId)
+        .neq('user_id', userId);
+
+      if (!participantsError && participants && participants.length > 0) {
+        const senderName = message.sender?.name || message.sender?.username || 'Someone';
+        const messageContent = message.content || 
+          (message.message_type === 'voice' ? 'Voice message' :
+           message.message_type === 'image' ? 'Image' :
+           message.message_type === 'video' ? 'Video' :
+           'New message');
+
+        // Отправляем уведомления всем участникам
+        const notificationPromises = participants.map(async (participant) => {
+          const unreadCount = participant.unread_count || 0;
+          
+          await sendNotificationForEvent(participant.user_id, userId, 'message', {
+            otherUserName: senderName,
+            messageContent: messageContent,
+            chatId: chatId,
+            unreadCount: unreadCount,
+          });
+        });
+
+        await Promise.all(notificationPromises);
+      }
+    } catch (fcmError) {
+      // Логируем ошибку, но не прерываем создание сообщения
+      console.error('[FCM] Error sending message notifications:', fcmError.message);
+    }
 
     res.status(201).json({ message });
   } catch (error) {

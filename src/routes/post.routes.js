@@ -1006,7 +1006,9 @@ router.post('/:id/comments', validateAuth, validateUUID, validateComment, async 
 
     // Create notification for post owner
     if (post.user_id !== userId) {
-      await createNotification(post.user_id, userId, 'comment', id, data.id);
+      await createNotification(post.user_id, userId, 'comment', id, data.id, {
+        commentContent: content.trim(),
+      });
     }
 
     res.status(201).json(data);
