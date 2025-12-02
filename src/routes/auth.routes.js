@@ -535,7 +535,7 @@ router.post('/password/reset/send-otp', async (req, res) => {
 
     // Send OTP via email
     try {
-      await sendOTPEmail(profile.email, otpCode);
+      await sendOTPEmail(profile.email, otpCode, 'password_reset');
       logger.auth('Password reset OTP sent successfully', { 
         userId: profile.id, 
         email: profile.email,

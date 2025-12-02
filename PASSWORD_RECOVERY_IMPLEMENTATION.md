@@ -20,7 +20,8 @@
 
 **POST `/api/auth/password/reset/initiate`**
 - Принимает username или email
-- Возвращает профиль пользователя (username, name, avatar_url, email)
+- Возвращает профиль пользователя (username, name, avatar_url, **masked_email**)
+- Email маскируется на стороне сервера для безопасности
 - Не требует авторизации
 
 **POST `/api/auth/password/reset/send-otp`**
@@ -92,7 +93,8 @@ LoginScreen (успешное восстановление)
    - Подтверждение пароля
 
 3. **Защита данных:**
-   - Email маскируется при отображении
+   - Email маскируется **на стороне сервера** перед отправкой клиенту
+   - Полный email никогда не передается во frontend
    - RLS политики в базе данных
    - Не требуется авторизация для восстановления
 
@@ -180,12 +182,13 @@ curl -X POST http://localhost:3000/api/auth/password/reset/confirm \
 
 ### Новые файлы:
 - `supabase/migrations/add_password_reset_otp.sql`
+- `src/utils/email_mask_utils.js` - утилита маскировки email на сервере
 - `fuisor_app/lib/screens/forgot_password_screen.dart`
 - `fuisor_app/lib/screens/confirm_identity_screen.dart`
 - `fuisor_app/lib/screens/reset_password_otp_screen.dart`
 
 ### Изменённые файлы:
-- `src/routes/auth.routes.js` - 3 новых endpoint
+- `src/routes/auth.routes.js` - 3 новых endpoint + маскировка email
 - `fuisor_app/lib/screens/login_screen.dart` - кнопка "Forgot Password?"
 - `fuisor_app/lib/services/api_service.dart` - 3 новых метода
 
