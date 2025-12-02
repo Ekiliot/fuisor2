@@ -5,6 +5,7 @@ import { validateSignup, validateLogin } from '../middleware/validation.middlewa
 import { logger } from '../utils/logger.js';
 import { generateOTP, hashOTP, verifyOTP, getOTPExpirationTime } from '../utils/otp_utils.js';
 import { sendOTPEmail } from '../utils/email_service.js';
+import { maskEmail } from '../utils/email_mask_utils.js';
 
 const router = express.Router();
 
@@ -450,11 +451,12 @@ router.post('/password/reset/initiate', async (req, res) => {
     logger.auth('Password reset initiated', { userId: profile.id, identifier: trimmedIdentifier });
 
     // Return user profile info for confirmation
+    // Mask email for security - only show partial email
     res.json({
       username: profile.username,
       name: profile.name,
       avatar_url: profile.avatar_url,
-      email: profile.email
+      email: maskEmail(profile.email) // Return masked email for security
     });
   } catch (error) {
     logger.authError('Error initiating password reset', error);
