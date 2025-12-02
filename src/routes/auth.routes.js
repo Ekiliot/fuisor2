@@ -4,6 +4,7 @@ import { validateAuth } from '../middleware/auth.middleware.js';
 import { validateSignup, validateLogin } from '../middleware/validation.middleware.js';
 import { logger } from '../utils/logger.js';
 import { generateOTP, hashOTP, verifyOTP, getOTPExpirationTime } from '../utils/otp_utils.js';
+import { sendOTPEmail } from '../utils/email_service.js';
 
 const router = express.Router();
 
@@ -291,28 +292,27 @@ router.post('/password/request-otp', validateAuth, async (req, res) => {
       throw insertError;
     }
 
-    // Send OTP via email using Supabase Auth email template
-    // Note: Supabase doesn't have a built-in OTP email function, 
-    // so we'll use a workaround by storing the OTP and sending it via custom email
-    // For production, you'd want to integrate with an email service like SendGrid, AWS SES, etc.
-    
-    // For now, we'll just return success and assume the email is sent
-    // In a real implementation, you'd send the email here
-    logger.auth('OTP generated for password change', { 
-      userId, 
-      email: userEmail,
-      expiresAt: expiresAt.toISOString() 
-    });
-
-    // TODO: Integrate with email service to send OTP
-    // Example: await sendOTPEmail(userEmail, otpCode);
-    console.log(`[DEV] OTP Code for ${userEmail}: ${otpCode}`);
+    // Send OTP via email
+    try {
+      await sendOTPEmail(userEmail, otpCode);
+      logger.auth('OTP email sent successfully', { 
+        userId, 
+        email: userEmail,
+        expiresAt: expiresAt.toISOString() 
+      });
+    } catch (emailError) {
+      // Log error but don't fail the request
+      // OTP is saved in DB, user can still use it
+      logger.authError('Failed to send OTP email', emailError);
+      console.error(`[EMAIL] Failed to send OTP email to ${userEmail}:`, emailError);
+      // In development, log the OTP
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV] OTP Code for ${userEmail}: ${otpCode}`);
+      }
+    }
 
     res.json({ 
-      message: 'OTP code has been sent to your email',
-      // In development, you might want to return the OTP for testing
-      // Remove this in production!
-      ...(process.env.NODE_ENV === 'development' && { otp: otpCode })
+      message: 'OTP code has been sent to your email'
     });
   } catch (error) {
     logger.authError('Error requesting OTP', error);
