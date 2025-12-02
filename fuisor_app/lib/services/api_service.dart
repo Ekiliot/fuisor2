@@ -21,11 +21,22 @@ class ApiService {
   }
 
   Map<String, String> get _headers {
-    final headers = {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
     };
-    if (_accessToken != null) {
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_accessToken';
+    }
+    return headers;
+  }
+  
+  // Method to get headers with explicit token (for debugging)
+  Map<String, String> getHeadersWithToken(String? token) {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
     }
     return headers;
   }
@@ -125,10 +136,21 @@ class ApiService {
 
   // Password change endpoints
   Future<void> requestPasswordChangeOTP() async {
+    // Ensure token is set before making request
+    if (_accessToken == null) {
+      throw Exception('Authentication required. Please log in again.');
+    }
+
+    print('ApiService: Requesting OTP with token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
+    print('ApiService: Headers: $_headers');
+
     final response = await http.post(
       Uri.parse('$baseUrl/auth/password/request-otp'),
       headers: _headers,
     );
+
+    print('ApiService: OTP request response status: ${response.statusCode}');
+    print('ApiService: OTP request response body: ${response.body}');
 
     if (response.statusCode == 200) {
       return;
@@ -139,6 +161,13 @@ class ApiService {
   }
 
   Future<void> changePassword(String otpCode, String newPassword) async {
+    // Ensure token is set before making request
+    if (_accessToken == null) {
+      throw Exception('Authentication required. Please log in again.');
+    }
+
+    print('ApiService: Changing password with token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
+
     final response = await http.post(
       Uri.parse('$baseUrl/auth/password/change'),
       headers: _headers,
@@ -147,6 +176,9 @@ class ApiService {
         'new_password': newPassword,
       }),
     );
+
+    print('ApiService: Change password response status: ${response.statusCode}');
+    print('ApiService: Change password response body: ${response.body}');
 
     if (response.statusCode == 200) {
       return;
