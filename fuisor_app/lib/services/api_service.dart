@@ -12,7 +12,7 @@ class ApiService {
   // Для Android эмулятора: 'http://10.0.2.2:3000/api'
   // Для реального устройства: 'http://192.168.X.X:3000/api' (замените X.X на IP вашего ПК)
   // Production API URL (Vercel): 'https://fuisor2.vercel.app/api'
-  static const String baseUrl = 'https://fuisor2.vercel.app/api';
+  static const String baseUrl = 'https://sonetapp.vercel.app/api';
   String? _accessToken;
 
   void setAccessToken(String? token) {
@@ -162,6 +162,68 @@ class ApiService {
     } else {
       final error = jsonDecode(response.body);
       throw Exception(error['error'] ?? error['message'] ?? 'Failed to change password');
+    }
+  }
+
+  // Password Reset Flow (no authentication required)
+  
+  /// Initiate password reset - returns user profile info for confirmation
+  Future<Map<String, dynamic>> initiatePasswordReset(String identifier) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/password/reset/initiate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'identifier': identifier,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? error['message'] ?? 'User not found');
+    }
+  }
+
+  /// Send OTP code to user's email for password reset
+  Future<void> sendPasswordResetOTP(String identifier) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/password/reset/send-otp'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'identifier': identifier,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? error['message'] ?? 'Failed to send OTP');
+    }
+  }
+
+  /// Confirm password reset with OTP code and new password
+  Future<void> confirmPasswordReset(
+    String identifier,
+    String otpCode,
+    String newPassword,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/password/reset/confirm'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'identifier': identifier,
+        'otp_code': otpCode,
+        'new_password': newPassword,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? error['message'] ?? 'Failed to reset password');
     }
   }
 

@@ -399,4 +399,279 @@ router.post('/password/change', validateAuth, async (req, res) => {
   }
 });
 
+// Password Reset Flow (without authentication)
+
+// Step 1: Initiate password reset - verify user exists and return profile info
+router.post('/password/reset/initiate', async (req, res) => {
+  try {
+    const { identifier } = req.body;
+
+    if (!identifier || identifier.trim().length === 0) {
+      return res.status(400).json({ error: 'Username or email is required' });
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    
+    // Determine if identifier is email or username
+    const isEmail = trimmedIdentifier.includes('@');
+    
+    let profile;
+    
+    if (isEmail) {
+      // Search by email
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, username, name, avatar_url, email')
+        .eq('email', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        logger.authError('Password reset initiate - user not found by email', { identifier: trimmedIdentifier });
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    } else {
+      // Search by username
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, username, name, avatar_url, email')
+        .ilike('username', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        logger.authError('Password reset initiate - user not found by username', { identifier: trimmedIdentifier });
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    }
+
+    logger.auth('Password reset initiated', { userId: profile.id, identifier: trimmedIdentifier });
+
+    // Return user profile info for confirmation
+    res.json({
+      username: profile.username,
+      name: profile.name,
+      avatar_url: profile.avatar_url,
+      email: profile.email
+    });
+  } catch (error) {
+    logger.authError('Error initiating password reset', error);
+    res.status(500).json({ error: error.message || 'Failed to initiate password reset' });
+  }
+});
+
+// Step 2: Send OTP code to user's email
+router.post('/password/reset/send-otp', async (req, res) => {
+  try {
+    const { identifier } = req.body;
+
+    if (!identifier || identifier.trim().length === 0) {
+      return res.status(400).json({ error: 'Username or email is required' });
+    }
+
+    if (!supabaseAdmin) {
+      throw new Error('Service role key not configured');
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    
+    // Determine if identifier is email or username
+    const isEmail = trimmedIdentifier.includes('@');
+    
+    let profile;
+    
+    if (isEmail) {
+      // Search by email
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    } else {
+      // Search by username
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .ilike('username', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    }
+
+    // Generate OTP
+    const otpCode = generateOTP();
+    const hashedOTP = hashOTP(otpCode);
+    const expiresAt = getOTPExpirationTime();
+
+    // Save OTP to database
+    const { error: insertError } = await supabaseAdmin
+      .from('password_reset_otp')
+      .insert([
+        {
+          user_id: profile.id,
+          otp_code: hashedOTP,
+          expires_at: expiresAt.toISOString(),
+        },
+      ]);
+
+    if (insertError) {
+      logger.authError('Error saving reset OTP', insertError);
+      throw insertError;
+    }
+
+    // Send OTP via email
+    try {
+      await sendOTPEmail(profile.email, otpCode);
+      logger.auth('Password reset OTP sent successfully', { 
+        userId: profile.id, 
+        email: profile.email,
+        expiresAt: expiresAt.toISOString() 
+      });
+    } catch (emailError) {
+      // Log error but don't fail the request
+      logger.authError('Failed to send reset OTP email', emailError);
+      console.error(`[EMAIL] Failed to send reset OTP email to ${profile.email}:`, emailError);
+      // In development, log the OTP
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV] Reset OTP Code for ${profile.email}: ${otpCode}`);
+      }
+    }
+
+    res.json({ 
+      message: 'OTP code has been sent to your email'
+    });
+  } catch (error) {
+    logger.authError('Error sending reset OTP', error);
+    res.status(500).json({ error: error.message || 'Failed to send OTP' });
+  }
+});
+
+// Step 3: Confirm password reset with OTP and new password
+router.post('/password/reset/confirm', async (req, res) => {
+  try {
+    const { identifier, otp_code, new_password } = req.body;
+
+    if (!identifier || identifier.trim().length === 0) {
+      return res.status(400).json({ error: 'Username or email is required' });
+    }
+
+    if (!otp_code || otp_code.trim().length !== 6) {
+      return res.status(400).json({ error: 'Valid 6-digit OTP code is required' });
+    }
+
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    if (!supabaseAdmin) {
+      throw new Error('Service role key not configured');
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    
+    // Determine if identifier is email or username
+    const isEmail = trimmedIdentifier.includes('@');
+    
+    let profile;
+    
+    if (isEmail) {
+      // Search by email
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    } else {
+      // Search by username
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .ilike('username', trimmedIdentifier)
+        .single();
+      
+      if (error || !data) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      profile = data;
+    }
+
+    // Get the latest unused OTP for this user
+    const { data: otpRecords, error: fetchError } = await supabaseAdmin
+      .from('password_reset_otp')
+      .select('*')
+      .eq('user_id', profile.id)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (fetchError) {
+      logger.authError('Error fetching reset OTP', fetchError);
+      throw fetchError;
+    }
+
+    if (!otpRecords || otpRecords.length === 0) {
+      logger.authError('No valid reset OTP found', { userId: profile.id });
+      return res.status(400).json({ error: 'Invalid or expired OTP code' });
+    }
+
+    const otpRecord = otpRecords[0];
+
+    // Verify OTP
+    const isValid = verifyOTP(otp_code.trim(), otpRecord.otp_code);
+    if (!isValid) {
+      logger.authError('Invalid reset OTP code', { userId: profile.id });
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    // Mark OTP as used
+    const { error: updateError } = await supabaseAdmin
+      .from('password_reset_otp')
+      .update({ used: true })
+      .eq('id', otpRecord.id);
+
+    if (updateError) {
+      logger.authError('Error marking reset OTP as used', updateError);
+      throw updateError;
+    }
+
+    // Update password using Supabase Admin
+    const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+      profile.id,
+      { password: new_password }
+    );
+
+    if (passwordError) {
+      logger.authError('Error updating password via reset', passwordError);
+      throw passwordError;
+    }
+
+    logger.auth('Password reset successfully', { userId: profile.id });
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    logger.authError('Error confirming password reset', error);
+    res.status(500).json({ error: error.message || 'Failed to reset password' });
+  }
+});
+
 export default router;

@@ -9,6 +9,7 @@ import '../widgets/animated_text_field.dart';
 import '../widgets/error_message_widget.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -232,11 +233,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     key: ValueKey(authProvider.error),
                                     message: authProvider.error!,
                                     onForgotPassword: () {
-                                      // TODO: Implement forgot password functionality
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Forgot password feature coming soon!'),
-                                          backgroundColor: Color(0xFF0095F6),
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => const ForgotPasswordScreen(),
                                         ),
                                       );
                                     },
