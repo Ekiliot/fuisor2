@@ -333,15 +333,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             notification.post!.caption!.isNotEmpty)
                           Flexible(
                             child: Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Text(
-                                '• ${notification.post!.caption!.length > 30 ? notification.post!.caption!.substring(0, 30) + '...' : notification.post!.caption!}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF8E8E8E),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              '• ${notification.post!.caption!.length > 30 ? notification.post!.caption!.substring(0, 30) + '...' : notification.post!.caption!}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF8E8E8E),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),

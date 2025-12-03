@@ -1468,9 +1468,9 @@ class ApiService {
       } else {
         // Безопасная обработка ошибки
         try {
-          final error = jsonDecode(response.body);
+        final error = jsonDecode(response.body);
           if (error is Map<String, dynamic>) {
-            throw Exception(error['error'] ?? 'Failed to load messages');
+        throw Exception(error['error'] ?? 'Failed to load messages');
           } else {
             throw Exception('Failed to load messages (status: ${response.statusCode})');
           }

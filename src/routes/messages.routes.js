@@ -487,18 +487,22 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
     });
 
     // Обрабатываем удаленные сообщения в reply_to - очищаем content и другие чувствительные данные
+    let processedMessages = messages;
     if (messages && messages.length > 0) {
-      messages = messages.map(msg => {
+      processedMessages = messages.map(msg => {
         if (msg.reply_to && msg.reply_to.deleted_at) {
           // Если reply_to сообщение удалено, очищаем чувствительные данные
-          msg.reply_to = {
-            id: msg.reply_to.id,
-            deleted_at: msg.reply_to.deleted_at,
-            message_type: msg.reply_to.message_type || 'text',
-            sender: msg.reply_to.sender ? {
-              id: msg.reply_to.sender.id,
-              username: msg.reply_to.sender.username
-            } : null
+          return {
+            ...msg,
+            reply_to: {
+              id: msg.reply_to.id,
+              deleted_at: msg.reply_to.deleted_at,
+              message_type: msg.reply_to.message_type || 'text',
+              sender: msg.reply_to.sender ? {
+                id: msg.reply_to.sender.id,
+                username: msg.reply_to.sender.username
+              } : null
+            }
           };
         }
         return msg;
@@ -507,7 +511,7 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
 
     // Возвращаем пустой массив если сообщений нет (для нового чата это нормально)
     res.json({
-      messages: messages && messages.length > 0 ? messages.reverse() : [], // Возвращаем в хронологическом порядке (старые -> новые)
+      messages: processedMessages && processedMessages.length > 0 ? processedMessages.reverse() : [], // Возвращаем в хронологическом порядке (старые -> новые)
       page,
       limit,
     });
