@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
+import { createNotification } from './notification.routes.js';
 
 const router = express.Router();
 
@@ -42,19 +43,19 @@ router.post('/:userId', validateAuth, async (req, res) => {
       return res.status(500).json({ error: followError.message });
     }
 
-    // Create notification for the followed user
-    const { error: notificationError } = await supabaseAdmin
-      .from('notifications')
-      .insert({
-        user_id: followingId,
-        actor_id: followerId,
-        type: 'follow',
-        is_read: false
-      });
+    // Get actor info for notification
+    const { data: actorInfo } = await supabaseAdmin
+      .from('profiles')
+      .select('username, name')
+      .eq('id', followerId)
+      .single();
 
-    if (notificationError) {
-      console.error('Error creating notification:', notificationError);
-    }
+    const actorName = actorInfo?.name || actorInfo?.username || 'Someone';
+
+    // Create notification for the followed user (using createNotification which handles FCM)
+    await createNotification(followingId, followerId, 'follow', null, null, {
+      actorName,
+    });
 
     res.status(201).json(follow);
   } catch (error) {

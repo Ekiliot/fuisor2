@@ -2,6 +2,7 @@ import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { sendNotificationForEvent } from '../utils/fcm_service.js';
+import { isNotificationEnabled } from '../utils/notification_preferences.js';
 
 const router = express.Router();
 
@@ -490,6 +491,13 @@ async function createNotification(userId, actorId, type, postId = null, commentI
   try {
     // Don't create notification if user is notifying themselves
     if (userId === actorId) {
+      return null;
+    }
+
+    // Check if this notification type is enabled for the user
+    const isEnabled = await isNotificationEnabled(userId, type);
+    if (!isEnabled) {
+      console.log(`[Notification] Notification type "${type}" is disabled for user ${userId}. Skipping.`);
       return null;
     }
 

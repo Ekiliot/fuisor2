@@ -1313,4 +1313,78 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
   }
 });
 
+// Get notification preferences
+router.get('/notification-preferences', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const preferences = await getUserNotificationPreferences(userId);
+
+    if (!preferences) {
+      return res.status(500).json({ error: 'Failed to get notification preferences' });
+    }
+
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error getting notification preferences:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update notification preferences
+router.put('/notification-preferences', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updates = req.body;
+
+    // Validate updates object
+    const validKeys = [
+      'mention_enabled',
+      'comment_mention_enabled',
+      'new_post_enabled',
+      'new_story_enabled',
+      'follow_enabled',
+      'like_enabled',
+      'comment_enabled',
+      'comment_reply_enabled',
+      'comment_like_enabled',
+    ];
+
+    const updateKeys = Object.keys(updates);
+    const invalidKeys = updateKeys.filter(key => !validKeys.includes(key));
+
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ 
+        error: `Invalid preference keys: ${invalidKeys.join(', ')}` 
+      });
+    }
+
+    // Validate boolean values
+    for (const key of updateKeys) {
+      if (typeof updates[key] !== 'boolean') {
+        return res.status(400).json({ 
+          error: `Preference "${key}" must be a boolean` 
+        });
+      }
+    }
+
+    const { updateNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const success = await updateNotificationPreferences(userId, updates);
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to update notification preferences' });
+    }
+
+    // Return updated preferences
+    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const preferences = await getUserNotificationPreferences(userId);
+
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error updating notification preferences:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

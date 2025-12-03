@@ -4,6 +4,7 @@ import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { validateAuth } from '../middleware/auth.middleware.js';
 import { validatePost, validatePostUpdate, validateComment, validateUUID, validateCommentId } from '../middleware/validation.middleware.js';
 import { createNotification } from './notification.routes.js';
+import { extractMentions } from '../utils/mention_utils.js';
 import { logger } from '../utils/logger.js';
 
 const router = express.Router();
@@ -457,14 +458,97 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
           .eq('username', username)
           .single();
 
-        if (mentionedUser) {
+        if (mentionedUser && mentionedUser.id !== req.user.id) {
           await supabaseAdmin
             .from('post_mentions')
             .insert([{
               post_id: data.id,
               mentioned_user_id: mentionedUser.id
             }]);
+
+          // Create mention notification
+          await createNotification(mentionedUser.id, req.user.id, 'mention', data.id, null, {
+            actorName: req.user.name || req.user.username,
+          });
         }
+      }
+    }
+
+    // Extract mentions from caption if not provided in mentions array
+    if (caption) {
+      const extractedMentions = extractMentions(caption);
+      
+      for (const username of extractedMentions) {
+        // Skip if already processed
+        if (mentions && Array.isArray(mentions) && mentions.includes(username)) {
+          continue;
+        }
+
+        const { data: mentionedUser } = await supabaseAdmin
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .single();
+
+        if (mentionedUser && mentionedUser.id !== req.user.id) {
+          // Check if mention already exists
+          const { data: existingMention } = await supabaseAdmin
+            .from('post_mentions')
+            .select('id')
+            .eq('post_id', data.id)
+            .eq('mentioned_user_id', mentionedUser.id)
+            .single();
+
+          if (!existingMention) {
+            await supabaseAdmin
+              .from('post_mentions')
+              .insert([{
+                post_id: data.id,
+                mentioned_user_id: mentionedUser.id
+              }]);
+
+            // Create mention notification
+            await createNotification(mentionedUser.id, req.user.id, 'mention', data.id, null, {
+              actorName: req.user.name || req.user.username,
+            });
+          }
+        }
+      }
+    }
+
+    // Notify followers about new post or story
+    const isStory = expiresAt !== null;
+    const notificationType = isStory ? 'new_story' : 'new_post';
+
+    // Get all followers
+    const { data: followers, error: followersError } = await supabaseAdmin
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', req.user.id);
+
+    if (!followersError && followers && followers.length > 0) {
+      // Get actor info for notification
+      const { data: actorInfo } = await supabaseAdmin
+        .from('profiles')
+        .select('username, name')
+        .eq('id', req.user.id)
+        .single();
+
+      const actorName = actorInfo?.name || actorInfo?.username || 'Someone';
+
+      // Create notifications for all followers (in batches to avoid overwhelming)
+      const batchSize = 50;
+      for (let i = 0; i < followers.length; i += batchSize) {
+        const batch = followers.slice(i, i + batchSize);
+        
+        await Promise.all(
+          batch.map(follower => 
+            createNotification(follower.follower_id, req.user.id, notificationType, data.id, null, {
+              actorName,
+              content: caption || (isStory ? 'New story' : 'New post'),
+            })
+          )
+        );
       }
     }
 
@@ -1004,11 +1088,80 @@ router.post('/:id/comments', validateAuth, validateUUID, validateComment, async 
 
     if (error) throw error;
 
-    // Create notification for post owner
+    // Get actor info for notifications
+    const { data: actorInfo } = await supabaseAdmin
+      .from('profiles')
+      .select('username, name')
+      .eq('id', userId)
+      .single();
+
+    const actorName = actorInfo?.name || actorInfo?.username || 'Someone';
+
+    // Create notification for post owner (if not self-comment)
     if (post.user_id !== userId) {
       await createNotification(post.user_id, userId, 'comment', id, data.id, {
+        actorName,
         commentContent: content.trim(),
       });
+    }
+
+    // If this is a reply, notify the parent comment owner
+    if (parent_comment_id) {
+      const { data: parentComment } = await supabaseAdmin
+        .from('comments')
+        .select('user_id')
+        .eq('id', parent_comment_id)
+        .single();
+
+      if (parentComment && parentComment.user_id !== userId && parentComment.user_id !== post.user_id) {
+        // Notify parent comment owner (only if not already notified as post owner)
+        await createNotification(parentComment.user_id, userId, 'comment_reply', id, data.id, {
+          actorName,
+          commentContent: content.trim(),
+        });
+      }
+    }
+
+    // Extract and process mentions in comment
+    const mentions = extractMentions(content.trim());
+    for (const username of mentions) {
+      const { data: mentionedUser } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .single();
+
+      if (mentionedUser && mentionedUser.id !== userId) {
+        // Don't notify if mentioned user is the post owner (already notified about comment)
+        // or parent comment owner (already notified about reply)
+        const shouldNotify = mentionedUser.id !== post.user_id && 
+          (!parent_comment_id || mentionedUser.id !== (parentComment?.user_id));
+
+        if (shouldNotify) {
+          // Check if mention already exists
+          const { data: existingMention } = await supabaseAdmin
+            .from('comment_mentions')
+            .select('id')
+            .eq('comment_id', data.id)
+            .eq('mentioned_user_id', mentionedUser.id)
+            .single();
+
+          if (!existingMention) {
+            await supabaseAdmin
+              .from('comment_mentions')
+              .insert([{
+                comment_id: data.id,
+                mentioned_user_id: mentionedUser.id
+              }]);
+
+            // Create mention notification
+            await createNotification(mentionedUser.id, userId, 'comment_mention', id, data.id, {
+              actorName,
+              commentContent: content.trim(),
+            });
+          }
+        }
+      }
     }
 
     res.status(201).json(data);

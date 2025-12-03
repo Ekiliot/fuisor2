@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/fcm_service.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
+import 'notification_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -241,11 +242,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         section: 'General',
         icon: EvaIcons.bellOutline,
         title: 'Notifications',
-        subtitle: 'Receive activity and system notifications',
+        subtitle: 'Enable or disable all notifications',
         type: _SettingType.switch_,
         switchValue: notificationsEnabled,
         isLoading: _isLoadingNotificationSetting,
         onSwitchChanged: _toggleNotifications,
+      ),
+      _SettingItem(
+        section: 'General',
+        icon: EvaIcons.settingsOutline,
+        title: 'Notification Settings',
+        subtitle: 'Customize notification preferences',
+        type: _SettingType.navigation,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const NotificationSettingsScreen(),
+            ),
+          );
+        },
       ),
       _SettingItem(
         section: 'General',

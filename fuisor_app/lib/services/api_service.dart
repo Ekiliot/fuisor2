@@ -2320,6 +2320,47 @@ class ApiService {
     }
   }
 
+  /// Get notification preferences
+  Future<Map<String, dynamic>> getNotificationPreferences() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/notification-preferences'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get notification preferences');
+      }
+    } catch (e) {
+      print('ApiService: Error getting notification preferences: $e');
+      rethrow;
+    }
+  }
+
+  /// Update notification preferences
+  Future<void> updateNotificationPreferences(Map<String, dynamic> updates) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/notification-preferences'),
+        headers: _headers,
+        body: jsonEncode(updates),
+      );
+
+      if (response.statusCode == 200) {
+        print('ApiService: Notification preferences updated successfully');
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to update notification preferences');
+      }
+    } catch (e) {
+      print('ApiService: Error updating notification preferences: $e');
+      rethrow;
+    }
+  }
+
   /// Update location visibility setting
   Future<void> updateLocationVisibility(String visibility) async {
     try {
