@@ -948,6 +948,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                   );
                                   
                                   if (result != null && mounted) {
+                                    try {
                                     final authProvider = context.read<AuthProvider>();
                                     final success = await authProvider.updateProfile(
                                       websiteUrl: result.isEmpty ? null : result,
@@ -955,6 +956,29 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                     
                                     if (success && mounted) {
                                       await authProvider.refreshProfile();
+                                      } else {
+                                        // Показываем техническую ошибку
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Failed to save. Server is not responding. Please try again later or use a different link.'),
+                                              backgroundColor: Colors.red,
+                                              duration: Duration(seconds: 4),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    } catch (e) {
+                                      // Показываем техническую ошибку при исключении
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Failed to save. Server is not responding. Please try again later or use a different link.'),
+                                            backgroundColor: Colors.red,
+                                            duration: Duration(seconds: 4),
+                                          ),
+                                        );
+                                      }
                                     }
                                   }
                                 } : null,

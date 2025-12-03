@@ -567,18 +567,9 @@ class _SwitchTile extends StatelessWidget {
                 subtitle!,
                 style: const TextStyle(color: Color(0xFF8E8E8E), fontSize: 12),
               ),
-        trailing: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFF0095F6),
-                ),
-              )
-            : Switch(
+        trailing: Switch(
           value: value,
-          onChanged: onChanged,
+          onChanged: isLoading ? null : onChanged,
           activeColor: const Color(0xFF0095F6),
         ),
       ),

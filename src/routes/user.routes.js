@@ -1325,7 +1325,9 @@ router.get('/notification-preferences', validateAuth, async (req, res) => {
       return res.status(500).json({ error: 'Failed to get notification preferences' });
     }
 
-    res.json(preferences);
+    // Ensure we return a single object, not an array
+    const response = Array.isArray(preferences) ? preferences[0] : preferences;
+    res.json(response);
   } catch (error) {
     console.error('Error getting notification preferences:', error);
     res.status(500).json({ error: error.message });

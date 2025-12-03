@@ -89,39 +89,98 @@ async function createDefaultPreferences(userId) {
  */
 export async function getUserNotificationPreferences(userId) {
   try {
-    const { data: preferences, error } = await supabaseAdmin
+    const { data: preferencesData, error } = await supabaseAdmin
       .from('notification_preferences')
       .select('*')
-      .eq('user_id', userId)
-      .single();
+      .eq('user_id', userId);
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // Preferences don't exist, create default ones
-        await createDefaultPreferences(userId);
-        // Return default preferences
-        return {
-          user_id: userId,
-          mention_enabled: true,
-          comment_mention_enabled: true,
-          new_post_enabled: true,
-          new_story_enabled: true,
-          follow_enabled: true,
-          like_enabled: true,
-          comment_enabled: true,
-          comment_reply_enabled: true,
-          comment_like_enabled: true,
-        };
-      }
-      
-      console.error(`[NotificationPreferences] Error getting preferences: ${error.message}`);
-      return null;
+      console.error(`[NotificationPreferences] Error getting preferences: ${error.message}, code: ${error.code}`);
+      // Return default preferences instead of null
+      return {
+        user_id: userId,
+        mention_enabled: true,
+        comment_mention_enabled: true,
+        new_post_enabled: true,
+        new_story_enabled: true,
+        follow_enabled: true,
+        like_enabled: true,
+        comment_enabled: true,
+        comment_reply_enabled: true,
+        comment_like_enabled: true,
+      };
     }
 
-    return preferences;
+    // Handle case where data is an array (shouldn't happen with .single(), but just in case)
+    let preferences;
+    if (Array.isArray(preferencesData)) {
+      if (preferencesData.length === 0) {
+        // Preferences don't exist, create default ones
+        console.log(`[NotificationPreferences] Preferences not found for user ${userId}, creating defaults...`);
+        await createDefaultPreferences(userId);
+        // Try to fetch again after creation
+        const { data: newPreferencesData, error: fetchError } = await supabaseAdmin
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', userId);
+        
+        if (fetchError || !newPreferencesData || newPreferencesData.length === 0) {
+          // If still can't fetch, return defaults
+          console.warn(`[NotificationPreferences] Could not fetch after creation, returning defaults`);
+          return {
+            user_id: userId,
+            mention_enabled: true,
+            comment_mention_enabled: true,
+            new_post_enabled: true,
+            new_story_enabled: true,
+            follow_enabled: true,
+            like_enabled: true,
+            comment_enabled: true,
+            comment_reply_enabled: true,
+            comment_like_enabled: true,
+          };
+        }
+        
+        preferences = newPreferencesData[0];
+      } else {
+        // Take the first item if multiple exist (shouldn't happen due to UNIQUE constraint, but handle it)
+        preferences = preferencesData[0];
+        if (preferencesData.length > 1) {
+          console.warn(`[NotificationPreferences] Multiple preference records found for user ${userId}, using first one`);
+        }
+      }
+    } else {
+      preferences = preferencesData;
+    }
+
+    // Ensure all fields are present (in case table structure changed)
+    return {
+      user_id: preferences.user_id || userId,
+      mention_enabled: preferences.mention_enabled ?? true,
+      comment_mention_enabled: preferences.comment_mention_enabled ?? true,
+      new_post_enabled: preferences.new_post_enabled ?? true,
+      new_story_enabled: preferences.new_story_enabled ?? true,
+      follow_enabled: preferences.follow_enabled ?? true,
+      like_enabled: preferences.like_enabled ?? true,
+      comment_enabled: preferences.comment_enabled ?? true,
+      comment_reply_enabled: preferences.comment_reply_enabled ?? true,
+      comment_like_enabled: preferences.comment_like_enabled ?? true,
+    };
   } catch (error) {
     console.error(`[NotificationPreferences] Exception getting preferences: ${error.message}`);
-    return null;
+    // Return default preferences instead of null
+    return {
+      user_id: userId,
+      mention_enabled: true,
+      comment_mention_enabled: true,
+      new_post_enabled: true,
+      new_story_enabled: true,
+      follow_enabled: true,
+      like_enabled: true,
+      comment_enabled: true,
+      comment_reply_enabled: true,
+      comment_like_enabled: true,
+    };
   }
 }
 

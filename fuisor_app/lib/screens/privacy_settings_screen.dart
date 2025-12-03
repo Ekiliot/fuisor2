@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
 import '../utils/email_utils.dart';
+import '../widgets/animated_app_bar_title.dart';
 import 'change_password_screen.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
@@ -24,7 +25,6 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool hideFromSearchEngines = false;
   
   bool _isLoading = true;
-  bool _isSavingActivityStatus = false;
   final ApiService _apiService = ApiService();
 
   @override
@@ -60,8 +60,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   }
 
   Future<void> _updateActivityStatus(bool value) async {
+    // Optimistically update UI
     setState(() {
-      _isSavingActivityStatus = true;
+      showActivityStatus = value;
     });
 
     try {
@@ -75,18 +76,13 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       _apiService.setAccessToken(accessToken);
       await _apiService.updateOnlineStatusSetting(value);
 
-      setState(() {
-        showActivityStatus = value;
-        _isSavingActivityStatus = false;
-      });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               value 
-                ? 'Статус активности включен' 
-                : 'Статус активности отключен',
+                ? 'Activity status enabled' 
+                : 'Activity status disabled',
             ),
             backgroundColor: const Color(0xFF262626),
             duration: const Duration(seconds: 2),
@@ -95,14 +91,15 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       }
     } catch (e) {
       print('Error updating activity status: $e');
+      // Revert change on error
       setState(() {
-        _isSavingActivityStatus = false;
+        showActivityStatus = !value;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Не удалось обновить настройку'),
+            content: Text('Failed to update setting'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
           ),
@@ -123,13 +120,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
             onPressed: () => Navigator.pop(context),
           ),
-          title: const Text(
-            'Privacy Settings',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+          title: const AnimatedAppBarTitle(
+            text: 'Privacy',
           ),
           centerTitle: true,
         ),
@@ -150,13 +142,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           icon: const Icon(EvaIcons.arrowBack, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Privacy Settings',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
+        title: const AnimatedAppBarTitle(
+          text: 'Privacy',
         ),
         centerTitle: true,
       ),
@@ -173,12 +160,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           _SwitchTile(
             icon: EvaIcons.eyeOutline,
             title: 'Show Activity Status',
-            subtitle: _isSavingActivityStatus 
-              ? 'Сохранение...'
-              : 'Позволить другим видеть когда вы активны. Если отключено, вы не сможете видеть точное время активности других.',
+            subtitle: 'Allow others to see when you are active. If disabled, you will not be able to see the exact activity time of others.',
             value: showActivityStatus,
-            onChanged: _isSavingActivityStatus ? null : _updateActivityStatus,
-            isLoading: _isSavingActivityStatus,
+            onChanged: _updateActivityStatus,
           ),
 
           const _Divider(),
@@ -388,15 +372,12 @@ class _SwitchTile extends StatelessWidget {
   final String? subtitle;
   final bool value;
   final ValueChanged<bool>? onChanged;
-  final bool isLoading;
-
   const _SwitchTile({
     required this.icon,
     required this.title,
     this.subtitle,
     required this.value,
     required this.onChanged,
-    this.isLoading = false,
   });
 
   @override
@@ -413,8 +394,8 @@ class _SwitchTile extends StatelessWidget {
             ? null
             : Text(
                 subtitle!,
-                style: TextStyle(
-                  color: isLoading ? const Color(0xFF0095F6) : const Color(0xFF8E8E8E),
+                style: const TextStyle(
+                  color: Color(0xFF8E8E8E),
                   fontSize: 12,
                 ),
               ),
