@@ -461,11 +461,11 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
           name,
           avatar_url
         ),
-        reply_to:messages!reply_to_id(
+        reply_to:reply_to_id(
           id,
           content,
           message_type,
-          sender:profiles!sender_id(
+          sender:sender_id(
             id,
             username
           )
@@ -638,11 +638,11 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
           name,
           avatar_url
         ),
-        reply_to:messages!reply_to_id(
+        reply_to:reply_to_id(
           id,
           content,
           message_type,
-          sender:profiles!sender_id(
+          sender:sender_id(
             id,
             username
           )

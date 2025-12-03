@@ -1417,19 +1417,70 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> messagesData = data['messages'] ?? [];
-        final messages = messagesData.map((json) => Message.fromJson(json)).toList();
+        final decoded = jsonDecode(response.body);
+        
+        // Обрабатываем оба случая: когда ответ - это Map или List
+        List<dynamic> messagesData;
+        int? responsePage;
+        int? responseLimit;
+        
+        if (decoded is Map<String, dynamic>) {
+          // Стандартный формат: {messages: [...], page: ..., limit: ...}
+          final messagesField = decoded['messages'];
+          if (messagesField is List) {
+            messagesData = messagesField;
+          } else {
+            messagesData = [];
+          }
+          responsePage = decoded['page'] is int ? decoded['page'] : null;
+          responseLimit = decoded['limit'] is int ? decoded['limit'] : null;
+        } else if (decoded is List) {
+          // Прямой массив сообщений
+          messagesData = decoded;
+          responsePage = page;
+          responseLimit = limit;
+        } else {
+          print('ApiService: Unexpected response format: ${decoded.runtimeType}');
+          print('ApiService: Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+          throw Exception('Unexpected response format: ${decoded.runtimeType}');
+        }
+        
+        // Безопасно парсим сообщения
+        final messages = <Message>[];
+        for (var json in messagesData) {
+          try {
+            if (json is Map<String, dynamic>) {
+              messages.add(Message.fromJson(json));
+            } else {
+              print('ApiService: Skipping invalid message format: ${json.runtimeType}');
+            }
+          } catch (e) {
+            print('ApiService: Error parsing message: $e');
+            print('ApiService: Message data: $json');
+          }
+        }
+        
         return {
           'messages': messages,
-          'page': data['page'] ?? page,
-          'limit': data['limit'] ?? limit,
+          'page': responsePage ?? page,
+          'limit': responseLimit ?? limit,
         };
       } else {
-        final error = jsonDecode(response.body);
-        throw Exception(error['error'] ?? 'Failed to load messages');
+        // Безопасная обработка ошибки
+        try {
+          final error = jsonDecode(response.body);
+          if (error is Map<String, dynamic>) {
+            throw Exception(error['error'] ?? 'Failed to load messages');
+          } else {
+            throw Exception('Failed to load messages (status: ${response.statusCode})');
+          }
+        } catch (jsonError) {
+          throw Exception('Failed to load messages (status: ${response.statusCode}): ${response.body}');
+        }
       }
     } catch (e) {
+      print('ApiService: Exception in getMessages: $e');
+      print('ApiService: Exception type: ${e.runtimeType}');
       throw Exception('Failed to load messages: $e');
     }
   }
