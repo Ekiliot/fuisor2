@@ -10,6 +10,7 @@ import 'providers/online_status_provider.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'services/message_cache_service.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'services/notification_service.dart';
 import 'services/fcm_service.dart';
 import 'utils/themes.dart';
@@ -36,17 +37,34 @@ void main() async {
   // Инициализация кеша сообщений
   await MessageCacheService().init();
   
+  // Инициализация Firebase ПЕРЕД использованием FCM
+  try {
+    await Firebase.initializeApp();
+    print('Firebase initialized successfully');
+  } catch (e) {
+    print('Warning: Firebase initialization failed: $e');
+    print('Make sure google-services.json is configured correctly');
+  }
+  
   // Инициализация сервиса уведомлений
   final notificationService = NotificationService();
   await notificationService.initialize();
   
-  // Инициализация FCM сервиса
-  final fcmService = FCMService();
-  try {
-    await fcmService.initialize();
-  } catch (e) {
-    print('Warning: FCM initialization failed: $e');
-    print('Make sure google-services.json is configured correctly');
+  // Инициализация FCM сервиса (после Firebase.initializeApp)
+  // Проверяем настройку уведомлений перед инициализацией
+  final prefs = await SharedPreferences.getInstance();
+  final notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+  
+  if (notificationsEnabled) {
+    final fcmService = FCMService();
+    try {
+      await fcmService.initialize();
+    } catch (e) {
+      print('Warning: FCM initialization failed: $e');
+      print('Make sure google-services.json is configured correctly');
+    }
+  } else {
+    print('Notifications are disabled in settings. Skipping FCM initialization.');
   }
   
   runApp(const SonetApp());
@@ -119,11 +137,26 @@ class _AuthWrapperState extends State<AuthWrapper> {
             if (accessToken != null) {
               onlineStatusProvider.startHeartbeat(accessToken);
               
-              // Отправляем FCM токен на сервер после входа
-              final fcmService = FCMService();
-              if (fcmService.isInitialized && fcmService.fcmToken != null) {
-                print('AuthWrapper: Sending FCM token to server...');
-                await fcmService.sendTokenToServer(accessToken);
+              // Отправляем FCM токен на сервер после входа (если уведомления включены)
+              final prefs = await SharedPreferences.getInstance();
+              final notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+              
+              if (notificationsEnabled) {
+                final fcmService = FCMService();
+                if (fcmService.isInitialized && fcmService.fcmToken != null) {
+                  print('AuthWrapper: Sending FCM token to server...');
+                  await fcmService.sendTokenToServer(accessToken);
+                } else if (!fcmService.isInitialized) {
+                  // Инициализируем FCM, если еще не инициализирован
+                  try {
+                    await fcmService.initialize();
+                    if (fcmService.fcmToken != null) {
+                      await fcmService.sendTokenToServer(accessToken);
+                    }
+                  } catch (e) {
+                    print('AuthWrapper: Error initializing FCM: $e');
+                  }
+                }
               }
             }
           });

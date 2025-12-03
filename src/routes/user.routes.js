@@ -1289,14 +1289,15 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
     const userId = req.user.id;
     const { fcm_token } = req.body;
 
-    if (!fcm_token || typeof fcm_token !== 'string') {
-      return res.status(400).json({ error: 'fcm_token is required and must be a string' });
+    if (typeof fcm_token !== 'string') {
+      return res.status(400).json({ error: 'fcm_token must be a string' });
     }
 
-    // Update FCM token in profile
+    // Update FCM token in profile (empty string means remove token)
+    const tokenValue = fcm_token.trim() === '' ? null : fcm_token;
     const { error: updateError } = await supabaseAdmin
       .from('profiles')
-      .update({ fcm_token: fcm_token })
+      .update({ fcm_token: tokenValue })
       .eq('id', userId);
 
     if (updateError) {

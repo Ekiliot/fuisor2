@@ -3,6 +3,7 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../services/api_service.dart';
+import '../services/fcm_service.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 
@@ -18,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool useCellularData = false;
   bool locationSharingEnabled = false;
   bool _isLoadingLocationSetting = false;
+  bool _isLoadingNotificationSetting = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   final ApiService _apiService = ApiService();
@@ -26,6 +28,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadLocationSharingSetting();
+    _loadNotificationSetting();
+  }
+
+  Future<void> _loadNotificationSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('notifications_enabled') ?? true;
+      setState(() {
+        notificationsEnabled = enabled;
+      });
+    } catch (e) {
+      print('SettingsScreen: Error loading notification setting: $e');
+    }
+  }
+
+  Future<void> _toggleNotifications(bool value) async {
+    if (_isLoadingNotificationSetting) return;
+
+    setState(() {
+      _isLoadingNotificationSetting = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('notifications_enabled', value);
+
+      final fcmService = FCMService();
+
+      if (value) {
+        // Включаем уведомления
+        if (!fcmService.isInitialized) {
+          await fcmService.initialize();
+        }
+
+        // Отправляем токен на сервер
+        final accessToken = prefs.getString('access_token');
+        if (accessToken != null && fcmService.fcmToken != null) {
+          await fcmService.sendTokenToServer(accessToken);
+        }
+      } else {
+        // Отключаем уведомления - удаляем токен с сервера
+        final accessToken = prefs.getString('access_token');
+        if (accessToken != null) {
+          try {
+            await fcmService.deleteToken();
+            
+            // Также удаляем токен с сервера
+            _apiService.setAccessToken(accessToken);
+            await _apiService.sendFCMToken(''); // Отправляем пустую строку для удаления
+          } catch (e) {
+            print('SettingsScreen: Error deleting FCM token: $e');
+          }
+        }
+      }
+
+      setState(() {
+        notificationsEnabled = value;
+        _isLoadingNotificationSetting = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value 
+                ? 'Notifications enabled'
+                : 'Notifications disabled',
+            ),
+            backgroundColor: const Color(0xFF0095F6),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('SettingsScreen: Error toggling notifications: $e');
+      setState(() {
+        notificationsEnabled = !value; // Откатываем изменение
+        _isLoadingNotificationSetting = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadLocationSharingSetting() async {
@@ -152,7 +244,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Receive activity and system notifications',
         type: _SettingType.switch_,
         switchValue: notificationsEnabled,
-        onSwitchChanged: (v) => setState(() => notificationsEnabled = v),
+        isLoading: _isLoadingNotificationSetting,
+        onSwitchChanged: _toggleNotifications,
       ),
       _SettingItem(
         section: 'General',
@@ -350,6 +443,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: item.title,
           subtitle: item.subtitle,
           value: item.switchValue ?? false,
+          isLoading: item.isLoading ?? false,
           onChanged: item.onSwitchChanged ?? (v) {},
         );
       case _SettingType.navigation:
@@ -375,6 +469,7 @@ class _SettingItem {
   final String subtitle;
   final _SettingType type;
   final bool? switchValue;
+  final bool? isLoading;
   final ValueChanged<bool>? onSwitchChanged;
   final VoidCallback? onTap;
 
@@ -385,6 +480,7 @@ class _SettingItem {
     required this.subtitle,
     required this.type,
     this.switchValue,
+    this.isLoading,
     this.onSwitchChanged,
     this.onTap,
   });
@@ -428,6 +524,7 @@ class _SwitchTile extends StatelessWidget {
   final String title;
   final String? subtitle;
   final bool value;
+  final bool isLoading;
   final ValueChanged<bool> onChanged;
 
   const _SwitchTile({
@@ -435,6 +532,7 @@ class _SwitchTile extends StatelessWidget {
     required this.title,
     this.subtitle,
     required this.value,
+    this.isLoading = false,
     required this.onChanged,
   });
 
@@ -454,11 +552,20 @@ class _SwitchTile extends StatelessWidget {
                 subtitle!,
                 style: const TextStyle(color: Color(0xFF8E8E8E), fontSize: 12),
               ),
-        trailing: Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: const Color(0xFF0095F6),
-        ),
+        trailing: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF0095F6),
+                ),
+              )
+            : Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: const Color(0xFF0095F6),
+              ),
       ),
     );
   }
