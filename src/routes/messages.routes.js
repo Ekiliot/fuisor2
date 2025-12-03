@@ -463,6 +463,7 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
         ),
         reply_to:reply_to_id(
           id,
+          deleted_at,
           content,
           message_type,
           sender:sender_id(
@@ -484,6 +485,25 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
       messagesCount: messages?.length || 0,
       hasMessages: !!messages && messages.length > 0,
     });
+
+    // Обрабатываем удаленные сообщения в reply_to - очищаем content и другие чувствительные данные
+    if (messages && messages.length > 0) {
+      messages = messages.map(msg => {
+        if (msg.reply_to && msg.reply_to.deleted_at) {
+          // Если reply_to сообщение удалено, очищаем чувствительные данные
+          msg.reply_to = {
+            id: msg.reply_to.id,
+            deleted_at: msg.reply_to.deleted_at,
+            message_type: msg.reply_to.message_type || 'text',
+            sender: msg.reply_to.sender ? {
+              id: msg.reply_to.sender.id,
+              username: msg.reply_to.sender.username
+            } : null
+          };
+        }
+        return msg;
+      });
+    }
 
     // Возвращаем пустой массив если сообщений нет (для нового чата это нормально)
     res.json({
@@ -640,6 +660,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
         ),
         reply_to:reply_to_id(
           id,
+          deleted_at,
           content,
           message_type,
           sender:sender_id(
@@ -653,6 +674,19 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
     if (messageError) {
       console.error('Error creating message:', messageError);
       return res.status(500).json({ error: messageError.message });
+    }
+
+    // Обрабатываем удаленные сообщения в reply_to - очищаем content и другие чувствительные данные
+    if (message.reply_to && message.reply_to.deleted_at) {
+      message.reply_to = {
+        id: message.reply_to.id,
+        deleted_at: message.reply_to.deleted_at,
+        message_type: message.reply_to.message_type || 'text',
+        sender: message.reply_to.sender ? {
+          id: message.reply_to.sender.id,
+          username: message.reply_to.sender.username
+        } : null
+      };
     }
 
     console.log('POST /chats/:chatId/messages - Created message:', {
