@@ -10,6 +10,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'create_post_screen.dart';
 import 'video_editor_screen.dart';
 import '../widgets/custom_image_cropper.dart';
@@ -496,7 +497,81 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         return;
       }
 
-      // Упрощенная версия: берем первый альбом (обычно "Recent" или "All")
+      // Для вкладки Videos: собираем видео из всех альбомов, а не только из первого
+      if (_currentTabIndex == 1) {
+        // Если уже загрузили видео и пытаемся подгрузить еще — просто выходим
+        if (loadMore && _mediaAssets.isNotEmpty) {
+          setState(() {
+            _isLoadingMedia = false;
+          });
+          return;
+        }
+
+        const int pageSize = _pageSize;
+        const int maxVideosToLoad = 300; // ограничение для производительности
+        final List<AssetEntity> videos = [];
+
+        for (final album in albums) {
+          final int albumCount = await album.assetCountAsync;
+          print('Scanning album for videos: ${album.name}, count: $albumCount');
+          if (albumCount == 0) continue;
+
+          for (int start = 0; start < albumCount && videos.length < maxVideosToLoad; start += pageSize) {
+            final int end = (start + pageSize).clamp(0, albumCount);
+            print('Loading assets from album ${album.name}: range=[$start, $end)');
+
+            final batch = await album.getAssetListRange(
+              start: start,
+              end: end,
+            );
+
+            // Некоторые устройства/версии Android помечают видео не как AssetType.video,
+            // но при этом у них duration > 0. Используем duration как основной критерий.
+            final batchVideos = batch.where((a) => a.duration > 0).toList();
+            print('Found ${batchVideos.length} videos in this batch');
+
+            // Отладка: выведем типы и длительности первых 5 ассетов
+            for (int i = 0; i < math.min(5, batch.length); i++) {
+              final a = batch[i];
+              print('Asset $i: type=${a.type}, duration=${a.duration}, width=${a.width}, height=${a.height}, path=${a.relativePath ?? "no path"}');
+            }
+
+            videos.addAll(batchVideos);
+          }
+
+          if (videos.length >= maxVideosToLoad) {
+            print('Reached maxVideosToLoad=$maxVideosToLoad, stopping album scan');
+            break;
+          }
+        }
+
+        setState(() {
+          _mediaAssets = videos;
+          _thumbnailCache.clear();
+          _hasMore = false; // мы уже просканировали все доступные альбомы
+          _isLoadingMedia = false;
+        });
+
+        print('Video loading completed across albums: ${_mediaAssets.length} videos total');
+
+        // Если видео не найдены, попробуем другой подход - запросить через image_picker
+        if (_mediaAssets.isEmpty) {
+          print('No videos found via PhotoManager, trying image_picker fallback...');
+          try {
+            final XFile? video = await _picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 5));
+            if (video != null) {
+              print('Fallback image_picker found video: ${video.path}');
+              // Создадим AssetEntity из файла (упрощённо)
+              // Но это сложно, лучше просто показать что видео доступны через picker
+            }
+          } catch (e) {
+            print('Fallback image_picker failed: $e');
+          }
+        }
+        return;
+      }
+
+      // Для фото (Photos вкладка) используем первый альбом (обычно "Recent" или "All")
       AssetPathEntity recentAlbum = albums.first;
 
       int totalCount = await recentAlbum.assetCountAsync;
@@ -516,7 +591,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
 
       // Определяем начальную позицию и количество для загрузки
       final int currentCount = loadMore ? _mediaAssets.length : 0;
-      final int pageSize = 50; // Размер страницы
+      final int pageSize = _pageSize; // Размер страницы
       final int startIndex = currentCount;
       final int endIndex = (startIndex + pageSize).clamp(0, totalCount);
       
@@ -538,38 +613,53 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         
         // Для видео: если после фильтрации получили 0, но еще не достигли конца альбома,
         // продолжаем загрузку (видео могут быть разбросаны)
-        if (assets.isEmpty && endIndex < totalCount) {
-          print('No videos in this batch, but more assets available. Loading next batch...');
-          // Загружаем следующую порцию сразу
-          final nextStartIndex = endIndex;
+        int currentEndIndex = endIndex;
+        while (assets.isEmpty && currentEndIndex < totalCount) {
+          print('No videos in this batch, loading next batch...');
+          final nextStartIndex = currentEndIndex;
           final nextEndIndex = (nextStartIndex + pageSize).clamp(0, totalCount);
           
-          if (nextStartIndex < totalCount) {
+          if (nextStartIndex >= totalCount) break;
+          
             final nextAssets = await recentAlbum.getAssetListRange(
               start: nextStartIndex,
             end: nextEndIndex,
           );
+          
             final nextVideos = nextAssets.where((asset) => asset.type == AssetType.video).toList();
+          print('Next batch [$nextStartIndex, $nextEndIndex): found ${nextVideos.length} videos from ${nextAssets.length} assets');
             
             if (nextVideos.isNotEmpty) {
               assets = nextVideos;
-              // Обновляем endIndex для правильной проверки _hasMore
-              final updatedEndIndex = nextEndIndex;
+            currentEndIndex = nextEndIndex;
+            break;
+          }
+          
+          currentEndIndex = nextEndIndex;
+          
+          // Ограничение: не более 10 попыток (500 ассетов)
+          if (currentEndIndex - endIndex > pageSize * 10) {
+            print('Reached maximum search depth for videos');
+            break;
+          }
+        }
+        
+        // Обновляем состояние
               setState(() {
                 if (loadMore) {
-                  _mediaAssets.addAll(assets);
+            final existingIds = _mediaAssets.map((a) => a.id).toSet();
+            final newAssets = assets.where((a) => !existingIds.contains(a.id)).toList();
+            _mediaAssets.addAll(newAssets);
+            print('Added ${newAssets.length} new video assets');
                 } else {
                   _mediaAssets = assets;
                   _thumbnailCache.clear();
                 }
-                _hasMore = updatedEndIndex < totalCount;
+          _hasMore = currentEndIndex < totalCount;
                 _isLoadingMedia = false;
               });
-              print('Loaded ${assets.length} videos from next batch, total: ${_mediaAssets.length}');
+        print('Video loading completed: ${_mediaAssets.length} videos total, hasMore: $_hasMore');
               return;
-        }
-      }
-        }
       } else {
         // Для фото фильтруем только изображения
         final originalCount = assets.length;
@@ -1356,6 +1446,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         crossAxisCount: 3,
         crossAxisSpacing: 2,
         mainAxisSpacing: 2,
+        childAspectRatio: 1.0, // Явно задаём квадратные ячейки 1:1
       ),
       itemCount: _mediaAssets.length + (_hasMore && !_isLoadingMedia ? 1 : 0),
       itemBuilder: (context, index) {
@@ -1397,11 +1488,25 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
     final screenWidth = MediaQuery.of(context).size.width;
     final thumbnailSize = (screenWidth / 3).round(); // Размер одной ячейки grid
     
+    // Вычисляем размеры thumbnail с сохранением пропорций, чтобы избежать искажений
+    // Минимальная сторона должна быть равна thumbnailSize
+    final double aspect = asset.width / asset.height;
+    int w, h;
+    if (aspect > 1) {
+       // Landscape: height = size, width = size * aspect
+       h = thumbnailSize;
+       w = (thumbnailSize * aspect).round();
+    } else {
+       // Portrait: width = size, height = size / aspect
+       w = thumbnailSize;
+       h = (thumbnailSize / aspect).round();
+    }
+    
     // Кешируем Future для предотвращения перезагрузки
-    final cacheKey = '${asset.id}_$thumbnailSize';
+    final cacheKey = '${asset.id}_${w}x$h';
     if (!_thumbnailCache.containsKey(cacheKey)) {
       _thumbnailCache[cacheKey] = asset.thumbnailDataWithSize(
-        ThumbnailSize(thumbnailSize, thumbnailSize),
+        ThumbnailSize(w, h),
       );
     }
     
@@ -1416,14 +1521,27 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.done &&
                   snapshot.hasData) {
-                return Image.memory(
-                  snapshot.data!,
-                  fit: BoxFit.cover,
-                  // Оптимизация изображения
-                  gaplessPlayback: true, // Плавная замена изображений
-                  filterQuality: FilterQuality.low, // Низкое качество фильтрации для производительности
-                  cacheWidth: thumbnailSize, // Кеширование с правильным размером
-                  cacheHeight: thumbnailSize,
+                // Рисуем thumbnail с сохранением пропорций без искажений:
+                // - bitmap генерим с правильным aspect (w x h)
+                // - FittedBox с BoxFit.cover вписывает это изображение в квадрат ячейки,
+                //   показывая только центральную часть, без "сплющивания".
+                return ClipRect(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width: w.toDouble(),
+                      height: h.toDouble(),
+                    child: Image.memory(
+                      snapshot.data!,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.low,
+                        cacheWidth: w,
+                        cacheHeight: h,
+                      ),
+                    ),
+                  ),
                 );
               }
               return Container(
@@ -1438,7 +1556,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             },
           ),
           // Индикатор видео
-          if (asset.type == AssetType.video)
+          if (asset.duration > 0)
             Positioned(
               bottom: 4,
               right: 4,

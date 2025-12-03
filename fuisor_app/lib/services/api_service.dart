@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import '../models/user.dart';
@@ -2377,16 +2378,25 @@ class ApiService {
   /// Get notification preferences
   Future<Map<String, dynamic>> getNotificationPreferences() async {
     try {
+      final url = '$baseUrl/users/notification-preferences';
+      final headers = _headers;
+      
+      print('ApiService: Getting notification preferences from: $url');
+      print('ApiService: Headers: ${headers.containsKey('Authorization') ? 'Authorization: Bearer ${headers['Authorization']?.substring(7, 27)}...' : 'No Authorization header'}');
+      
       final response = await http.get(
-        Uri.parse('$baseUrl/users/notification-preferences'),
-        headers: _headers,
+        Uri.parse(url),
+        headers: headers,
       );
+
+      print('ApiService: Response status: ${response.statusCode}');
+      print('ApiService: Response body: ${response.body.substring(0, math.min(200, response.body.length))}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        final error = jsonDecode(response.body);
-        throw Exception(error['error'] ?? 'Failed to get notification preferences');
+        final errorBody = response.body.isNotEmpty ? jsonDecode(response.body) : {'error': 'Unknown error'};
+        throw Exception(errorBody['error'] ?? 'Failed to get notification preferences');
       }
     } catch (e) {
       print('ApiService: Error getting notification preferences: $e');

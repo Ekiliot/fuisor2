@@ -1316,17 +1316,34 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
 // Get notification preferences
 router.get('/notification-preferences', validateAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /notification-preferences: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    console.log('GET /notification-preferences - Request:', {
+      userId,
+      hasUser: !!req.user,
+    });
     
     const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
     const preferences = await getUserNotificationPreferences(userId);
 
     if (!preferences) {
+      console.error('GET /notification-preferences: Failed to get preferences');
       return res.status(500).json({ error: 'Failed to get notification preferences' });
     }
 
     // Ensure we return a single object, not an array
     const response = Array.isArray(preferences) ? preferences[0] : preferences;
+    
+    console.log('GET /notification-preferences - Response:', { 
+      hasPreferences: !!response,
+      keys: Object.keys(response || {})
+    });
+    
     res.json(response);
   } catch (error) {
     console.error('Error getting notification preferences:', error);
