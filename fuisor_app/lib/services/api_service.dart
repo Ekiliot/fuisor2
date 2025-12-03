@@ -1435,15 +1435,18 @@ class ApiService {
   }
 
   /// Отправить сообщение
-  Future<Message> sendMessage(String chatId, String content) async {
+  Future<Message> sendMessage(String chatId, String content, {String? replyToId}) async {
     try {
+      final requestBody = {
+        'content': content,
+        'messageType': 'text', // Указываем тип сообщения как текст
+        if (replyToId != null) 'replyToId': replyToId,
+      };
+      
       final response = await http.post(
         Uri.parse('$baseUrl/messages/chats/$chatId/messages'),
         headers: _headers,
-        body: jsonEncode({
-          'content': content,
-          'messageType': 'text', // Указываем тип сообщения как текст
-        }),
+        body: jsonEncode(requestBody),
       );
 
       if (response.statusCode == 201) {

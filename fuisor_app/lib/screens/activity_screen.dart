@@ -179,6 +179,23 @@ class _ActivityScreenState extends State<ActivityScreen> {
         icon = EvaIcons.messageCircleOutline;
         iconColor = const Color(0xFF0095F6);
         break;
+      case 'comment_reply':
+        message = 'replied to your comment: ${notification.comment?.content ?? ""}';
+        icon = EvaIcons.cornerUpLeftOutline;
+        iconColor = const Color(0xFF0095F6);
+        break;
+      case 'comment_like':
+        message = 'liked your comment';
+        icon = EvaIcons.heart;
+        iconColor = const Color(0xFFED4956);
+        break;
+      case 'comment_mention':
+        // Show that they were mentioned in a comment on a post
+        // Post thumbnail will be displayed if available
+        message = 'mentioned you in a comment on their post';
+        icon = EvaIcons.atOutline;
+        iconColor = const Color(0xFF0095F6);
+        break;
       case 'follow':
         message = 'started following you';
         icon = EvaIcons.personAddOutline;
@@ -187,6 +204,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
       case 'mention':
         message = 'mentioned you in a post';
         icon = EvaIcons.atOutline;
+        iconColor = const Color(0xFF0095F6);
+        break;
+      case 'new_post':
+        message = 'posted something new';
+        icon = EvaIcons.imageOutline;
+        iconColor = const Color(0xFF0095F6);
+        break;
+      case 'new_story':
+        message = 'posted a story';
+        icon = EvaIcons.playCircleOutline;
+        iconColor = const Color(0xFF0095F6);
+        break;
+      default:
+        message = 'has a new notification';
+        icon = EvaIcons.bellOutline;
         iconColor = const Color(0xFF0095F6);
         break;
     }
@@ -228,20 +260,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
               break;
             case 'like':
             case 'comment':
+            case 'comment_reply':
             case 'comment_like':
-              // Navigate to post comments
-              if (notification.postId != null) {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => CommentsScreen(
-                      postId: notification.postId!,
-                    ),
-                  ),
-                );
-              }
-              break;
+            case 'comment_mention':
             case 'mention':
-              // Navigate to post comments
+            case 'new_post':
+            case 'new_story':
+              // Navigate to post comments or post view
               if (notification.postId != null) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -292,12 +317,33 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      timeago.format(notification.createdAt),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF8E8E8E),
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          timeago.format(notification.createdAt),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8E8E8E),
+                          ),
+                        ),
+                        // Show post caption preview for comment_mention if available
+                        if (notification.type == 'comment_mention' && 
+                            notification.post != null &&
+                            notification.post!.caption != null &&
+                            notification.post!.caption!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              '• ${notification.post!.caption!.length > 30 ? notification.post!.caption!.substring(0, 30) + '...' : notification.post!.caption!}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF8E8E8E),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),

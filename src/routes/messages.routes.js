@@ -452,6 +452,7 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
         is_liked,
         deleted_at,
         deleted_by_ids,
+        reply_to_id,
         created_at,
         updated_at,
         sender:profiles!sender_id(
@@ -459,6 +460,15 @@ router.get('/chats/:chatId/messages', validateAuth, validateChatId, async (req, 
           username,
           name,
           avatar_url
+        ),
+        reply_to:messages!reply_to_id(
+          id,
+          content,
+          message_type,
+          sender:profiles!sender_id(
+            id,
+            username
+          )
         )
       `)
       .eq('chat_id', chatId)
@@ -548,7 +558,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
   try {
     const chatId = req.params.chatId;
     const userId = req.user.id;
-    const { content, messageType, mediaUrl, thumbnailUrl, postId, mediaDuration, mediaSize } = req.body;
+    const { content, messageType, mediaUrl, thumbnailUrl, postId, mediaDuration, mediaSize, replyToId } = req.body;
 
     console.log('POST /chats/:chatId/messages - Request:', {
       chatId,
@@ -556,6 +566,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
       hasContent: !!content,
       messageType: messageType || 'text',
       hasMedia: !!mediaUrl,
+      replyToId: replyToId || null,
     });
 
     if (messageType === 'text' && (!content || content.trim().length === 0)) {
@@ -595,6 +606,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
       post_id: postId || null,
       media_duration: typeof mediaDuration === 'number' ? mediaDuration : null,
       media_size: typeof mediaSize === 'number' ? mediaSize : null,
+      reply_to_id: replyToId || null,
     };
     
     console.log('POST /chats/:chatId/messages - Message data:', messageData);
@@ -617,6 +629,7 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
         is_liked,
         deleted_at,
         deleted_by_ids,
+        reply_to_id,
         created_at,
         updated_at,
         sender:profiles!sender_id(
@@ -624,6 +637,15 @@ router.post('/chats/:chatId/messages', validateAuth, validateChatId, async (req,
           username,
           name,
           avatar_url
+        ),
+        reply_to:messages!reply_to_id(
+          id,
+          content,
+          message_type,
+          sender:profiles!sender_id(
+            id,
+            username
+          )
         )
       `)
       .single();
