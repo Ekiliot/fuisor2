@@ -170,6 +170,99 @@ router.get('/username/:username', async (req, res) => {
   }
 });
 
+// Get notification preferences
+router.get('/notification-preferences', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /notification-preferences: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    console.log('GET /notification-preferences - Request:', {
+      userId,
+      hasUser: !!req.user,
+    });
+    
+    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const preferences = await getUserNotificationPreferences(userId);
+
+    if (!preferences) {
+      console.error('GET /notification-preferences: Failed to get preferences');
+      return res.status(500).json({ error: 'Failed to get notification preferences' });
+    }
+
+    // Ensure we return a single object, not an array
+    const response = Array.isArray(preferences) ? preferences[0] : preferences;
+    
+    console.log('GET /notification-preferences - Response:', { 
+      hasPreferences: !!response,
+      keys: Object.keys(response || {})
+    });
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting notification preferences:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update notification preferences
+router.put('/notification-preferences', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updates = req.body;
+
+    // Validate updates object
+    const validKeys = [
+      'mention_enabled',
+      'comment_mention_enabled',
+      'new_post_enabled',
+      'new_story_enabled',
+      'follow_enabled',
+      'like_enabled',
+      'comment_enabled',
+      'comment_reply_enabled',
+      'comment_like_enabled',
+    ];
+
+    const updateKeys = Object.keys(updates);
+    const invalidKeys = updateKeys.filter(key => !validKeys.includes(key));
+
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ 
+        error: `Invalid preference keys: ${invalidKeys.join(', ')}` 
+      });
+    }
+
+    // Validate boolean values
+    for (const key of updateKeys) {
+      if (typeof updates[key] !== 'boolean') {
+        return res.status(400).json({ 
+          error: `Preference "${key}" must be a boolean` 
+        });
+      }
+    }
+
+    const { updateNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const success = await updateNotificationPreferences(userId, updates);
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to update notification preferences' });
+    }
+
+    // Return updated preferences
+    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
+    const preferences = await getUserNotificationPreferences(userId);
+
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error updating notification preferences:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get user profile by ID
 router.get('/:id', validateUUID, async (req, res) => {
   try {
@@ -1309,99 +1402,6 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
     res.json({ success: true, message: 'FCM token updated successfully' });
   } catch (error) {
     console.error('Error updating FCM token:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get notification preferences
-router.get('/notification-preferences', validateAuth, async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      console.error('GET /notification-preferences: No user ID in request');
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
-    
-    console.log('GET /notification-preferences - Request:', {
-      userId,
-      hasUser: !!req.user,
-    });
-    
-    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
-    const preferences = await getUserNotificationPreferences(userId);
-
-    if (!preferences) {
-      console.error('GET /notification-preferences: Failed to get preferences');
-      return res.status(500).json({ error: 'Failed to get notification preferences' });
-    }
-
-    // Ensure we return a single object, not an array
-    const response = Array.isArray(preferences) ? preferences[0] : preferences;
-    
-    console.log('GET /notification-preferences - Response:', { 
-      hasPreferences: !!response,
-      keys: Object.keys(response || {})
-    });
-    
-    res.json(response);
-  } catch (error) {
-    console.error('Error getting notification preferences:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update notification preferences
-router.put('/notification-preferences', validateAuth, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const updates = req.body;
-
-    // Validate updates object
-    const validKeys = [
-      'mention_enabled',
-      'comment_mention_enabled',
-      'new_post_enabled',
-      'new_story_enabled',
-      'follow_enabled',
-      'like_enabled',
-      'comment_enabled',
-      'comment_reply_enabled',
-      'comment_like_enabled',
-    ];
-
-    const updateKeys = Object.keys(updates);
-    const invalidKeys = updateKeys.filter(key => !validKeys.includes(key));
-
-    if (invalidKeys.length > 0) {
-      return res.status(400).json({ 
-        error: `Invalid preference keys: ${invalidKeys.join(', ')}` 
-      });
-    }
-
-    // Validate boolean values
-    for (const key of updateKeys) {
-      if (typeof updates[key] !== 'boolean') {
-        return res.status(400).json({ 
-          error: `Preference "${key}" must be a boolean` 
-        });
-      }
-    }
-
-    const { updateNotificationPreferences } = await import('../utils/notification_preferences.js');
-    const success = await updateNotificationPreferences(userId, updates);
-
-    if (!success) {
-      return res.status(500).json({ error: 'Failed to update notification preferences' });
-    }
-
-    // Return updated preferences
-    const { getUserNotificationPreferences } = await import('../utils/notification_preferences.js');
-    const preferences = await getUserNotificationPreferences(userId);
-
-    res.json(preferences);
-  } catch (error) {
-    console.error('Error updating notification preferences:', error);
     res.status(500).json({ error: error.message });
   }
 });
