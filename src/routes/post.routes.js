@@ -125,11 +125,45 @@ router.get('/', validateAuth, async (req, res) => {
 
     const likedPostIds = new Set(userLikes.map(like => like.post_id));
 
+    // Get coauthors for all posts separately
+    const { data: coauthorsData, error: coauthorsError } = await supabaseAdmin
+      .from('post_coauthors')
+      .select(`
+        post_id,
+        profiles:coauthor_user_id (id, username, name, avatar_url)
+      `)
+      .in('post_id', postIds);
+
+    if (coauthorsError) {
+      logger.postError('Error fetching coauthors', coauthorsError);
+    }
+
+    // Create a map of post_id -> coauthor
+    const coauthorsMap = {};
+    if (coauthorsData) {
+      coauthorsData.forEach(item => {
+        if (item.profiles) {
+          coauthorsMap[item.post_id] = item.profiles;
+        }
+      });
+    }
+
     // Transform data to include likes count, is_liked status, and coauthor
     const postsWithLikes = data.map(post => {
-      const transformed = transformPostWithCoauthor(post);
+      // Try to get coauthor from JOIN first, then from separate query
+      let coauthor = null;
+      if (post.post_coauthors && Array.isArray(post.post_coauthors) && post.post_coauthors.length > 0) {
+        coauthor = post.post_coauthors[0]?.profiles || post.post_coauthors[0]?.coauthor || null;
+      }
+      // Fallback to separate query result
+      if (!coauthor && coauthorsMap[post.id]) {
+        coauthor = coauthorsMap[post.id];
+      }
+
       return {
-        ...transformed,
+        ...post,
+        coauthor: coauthor,
+        post_coauthors: undefined, // Remove the raw coauthors array
         likes_count: post.likes?.[0]?.count || 0,
         is_liked: likedPostIds.has(post.id),
         likes: undefined // Remove the likes array from response
@@ -845,11 +879,45 @@ router.get('/feed', validateAuth, async (req, res) => {
       });
     }
 
+    // Get coauthors for all posts separately
+    const { data: coauthorsData, error: coauthorsError } = await supabaseAdmin
+      .from('post_coauthors')
+      .select(`
+        post_id,
+        profiles:coauthor_user_id (id, username, name, avatar_url)
+      `)
+      .in('post_id', postIds);
+
+    if (coauthorsError) {
+      logger.recommendationsError('Error fetching coauthors', coauthorsError);
+    }
+
+    // Create a map of post_id -> coauthor
+    const coauthorsMap = {};
+    if (coauthorsData) {
+      coauthorsData.forEach(item => {
+        if (item.profiles) {
+          coauthorsMap[item.post_id] = item.profiles;
+        }
+      });
+    }
+
     // Transform data to include likes count, comments count, is_liked status, and coauthor
     const postsWithLikes = data.map(post => {
-      const transformed = transformPostWithCoauthor(post);
+      // Try to get coauthor from JOIN first, then from separate query
+      let coauthor = null;
+      if (post.post_coauthors && Array.isArray(post.post_coauthors) && post.post_coauthors.length > 0) {
+        coauthor = post.post_coauthors[0]?.profiles || post.post_coauthors[0]?.coauthor || null;
+      }
+      // Fallback to separate query result
+      if (!coauthor && coauthorsMap[post.id]) {
+        coauthor = coauthorsMap[post.id];
+      }
+
       return {
-        ...transformed,
+        ...post,
+        coauthor: coauthor,
+        post_coauthors: undefined, // Remove the raw coauthors array
         likes_count: post.likes?.[0]?.count || 0,
         comments_count: commentsCountMap[post.id] || 0,
         is_liked: likedPostIds.has(post.id),
@@ -1713,23 +1781,46 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       }
     }
 
-    // Fetch updated post with coauthor
+    // Fetch updated post
     const { data: updatedPost, error: fetchError2 } = await supabaseAdmin
       .from('posts')
       .select(`
         *,
-        profiles:user_id (username, name, avatar_url),
-        post_coauthors!left (
-          profiles:coauthor_user_id (id, username, name, avatar_url)
-        )
+        profiles:user_id (username, name, avatar_url)
       `)
       .eq('id', id)
       .single();
 
     if (fetchError2) throw fetchError2;
 
-    // Transform post with coauthor
-    const transformedPost = transformPostWithCoauthor(updatedPost);
+    // Fetch coauthor separately
+    const { data: coauthorData, error: coauthorError } = await supabaseAdmin
+      .from('post_coauthors')
+      .select(`
+        profiles:coauthor_user_id (id, username, name, avatar_url)
+      `)
+      .eq('post_id', id)
+      .maybeSingle();
+
+    if (coauthorError) {
+      logger.postError('Error fetching coauthor', coauthorError);
+    }
+
+    // Add coauthor to post
+    const coauthor = coauthorData?.profiles || null;
+    const transformedPost = {
+      ...updatedPost,
+      coauthor: coauthor
+    };
+
+    // Debug log
+    if (id === '5bad2462-d6a1-4644-abe6-6f4f8c59994c') {
+      logger.post('Update post: coauthor data', {
+        postId: id,
+        coauthorData: JSON.stringify(coauthorData),
+        coauthor: JSON.stringify(coauthor),
+      });
+    }
 
     res.json(transformedPost);
   } catch (error) {
