@@ -17,6 +17,7 @@ import '../utils/hashtag_utils.dart';
 import '../widgets/username_error_notification.dart';
 import '../widgets/app_notification.dart';
 import '../widgets/share_video_sheet.dart';
+import '../services/geocoding_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -497,13 +498,43 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                     if (value == 'edit') {
                       final result = await Navigator.of(context).push<bool>(
                         MaterialPageRoute(
-                          builder: (context) => EditPostScreen(
-                            postId: widget.post.id,
-                            currentCaption: widget.post.caption,
-                            currentCoauthor: widget.post.coauthor,
-                            currentExternalLinkUrl: widget.post.externalLinkUrl,
-                            currentExternalLinkText: widget.post.externalLinkText,
-                          ),
+                          builder: (context) {
+                            // Формируем LocationInfo из данных поста
+                            LocationInfo? locationInfo;
+                            if (widget.post.city != null || 
+                                widget.post.district != null || 
+                                widget.post.street != null || 
+                                widget.post.address != null || 
+                                widget.post.country != null) {
+                              locationInfo = LocationInfo(
+                                country: widget.post.country,
+                                city: widget.post.city,
+                                district: widget.post.district,
+                                street: widget.post.street,
+                                address: widget.post.address,
+                              );
+                            }
+                            
+                            // Формируем Set из location_visibility
+                            Set<String>? locationVisibility;
+                            if (widget.post.locationVisibility != null && 
+                                widget.post.locationVisibility!.isNotEmpty) {
+                              locationVisibility = widget.post.locationVisibility!
+                                  .split(',')
+                                  .where((e) => e.isNotEmpty)
+                                  .toSet();
+                            }
+                            
+                            return EditPostScreen(
+                              postId: widget.post.id,
+                              currentCaption: widget.post.caption,
+                              currentCoauthor: widget.post.coauthor,
+                              currentExternalLinkUrl: widget.post.externalLinkUrl,
+                              currentExternalLinkText: widget.post.externalLinkText,
+                              currentLocation: locationInfo,
+                              currentLocationVisibility: locationVisibility,
+                            );
+                          },
                         ),
                       );
                       
@@ -718,6 +749,12 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
               },
                   ),
           ),
+
+          // Location (под медиа)
+          if (widget.post.locationVisibility != null && 
+              widget.post.locationVisibility!.isNotEmpty) ...[
+            _buildLocationText(),
+          ],
 
           // Actions
           Padding(
@@ -1165,6 +1202,75 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
     );
   }
   
+  // Build location text based on location_visibility
+  Widget _buildLocationText() {
+    if (widget.post.locationVisibility == null || 
+        widget.post.locationVisibility!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final visibilityParts = widget.post.locationVisibility!.split(',');
+    final locationParts = <String>[];
+
+    for (final part in visibilityParts) {
+      final trimmed = part.trim();
+      switch (trimmed) {
+        case 'country':
+          if (widget.post.country != null && widget.post.country!.isNotEmpty) {
+            locationParts.add(widget.post.country!);
+          }
+          break;
+        case 'city':
+          if (widget.post.city != null && widget.post.city!.isNotEmpty) {
+            locationParts.add(widget.post.city!);
+          }
+          break;
+        case 'district':
+          if (widget.post.district != null && widget.post.district!.isNotEmpty) {
+            locationParts.add(widget.post.district!);
+          }
+          break;
+        case 'street':
+          if (widget.post.street != null && widget.post.street!.isNotEmpty) {
+            locationParts.add(widget.post.street!);
+          }
+          break;
+        case 'address':
+          if (widget.post.address != null && widget.post.address!.isNotEmpty) {
+            locationParts.add(widget.post.address!);
+          }
+          break;
+      }
+    }
+
+    if (locationParts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(
+            EvaIcons.pinOutline,
+            size: 16,
+            color: Colors.white70,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              locationParts.join(', '),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSingleAvatar(String? avatarUrl, {double size = 48}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),

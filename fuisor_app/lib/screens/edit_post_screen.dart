@@ -3,6 +3,8 @@ import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../widgets/location_selector.dart';
+import '../services/geocoding_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +14,8 @@ class EditPostScreen extends StatefulWidget {
   final User? currentCoauthor;
   final String? currentExternalLinkUrl;
   final String? currentExternalLinkText;
+  final LocationInfo? currentLocation;
+  final Set<String>? currentLocationVisibility;
 
   const EditPostScreen({
     Key? key,
@@ -20,6 +24,8 @@ class EditPostScreen extends StatefulWidget {
     this.currentCoauthor,
     this.currentExternalLinkUrl,
     this.currentExternalLinkText,
+    this.currentLocation,
+    this.currentLocationVisibility,
   }) : super(key: key);
 
   @override
@@ -34,6 +40,8 @@ class _EditPostScreenState extends State<EditPostScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   User? _selectedCoauthor;
+  LocationInfo? _locationInfo;
+  Set<String> _locationVisibility = {};
 
   @override
   void initState() {
@@ -42,6 +50,10 @@ class _EditPostScreenState extends State<EditPostScreen> {
     _selectedCoauthor = widget.currentCoauthor;
     _linkUrlController.text = widget.currentExternalLinkUrl ?? '';
     _linkTextController.text = widget.currentExternalLinkText ?? '';
+    _locationInfo = widget.currentLocation;
+    _locationVisibility = widget.currentLocationVisibility != null 
+        ? Set<String>.from(widget.currentLocationVisibility!)
+        : <String>{};
   }
 
   @override
@@ -101,6 +113,13 @@ class _EditPostScreenState extends State<EditPostScreen> {
         }
       }
 
+      // Формируем строку location_visibility из выбранных элементов
+      // Если ничего не выбрано, не передаем данные локации (удаляем локацию)
+      String? locationVisibilityStr;
+      if (_locationVisibility.isNotEmpty && _locationInfo != null) {
+        locationVisibilityStr = _locationVisibility.join(',');
+      }
+      
       final postsProvider = context.read<PostsProvider>();
       await postsProvider.updatePost(
         postId: widget.postId,
@@ -109,6 +128,12 @@ class _EditPostScreenState extends State<EditPostScreen> {
         coauthor: _selectedCoauthor?.id,
         externalLinkUrl: linkUrl.isNotEmpty ? linkUrl : null,
         externalLinkText: linkText.isNotEmpty ? linkText : null,
+        city: locationVisibilityStr != null ? _locationInfo?.city : null,
+        district: locationVisibilityStr != null ? _locationInfo?.district : null,
+        street: locationVisibilityStr != null ? _locationInfo?.street : null,
+        address: locationVisibilityStr != null ? _locationInfo?.address : null,
+        country: locationVisibilityStr != null ? _locationInfo?.country : null,
+        locationVisibility: locationVisibilityStr,
       );
 
       if (mounted) {
@@ -644,6 +669,19 @@ class _EditPostScreenState extends State<EditPostScreen> {
                     ],
                   ),
                 ),
+              ),
+              
+              // Location selector section
+              const SizedBox(height: 24),
+              LocationSelector(
+                initialLocation: _locationInfo,
+                initialVisibility: _locationVisibility,
+                onLocationChanged: (locationInfo, visibility) {
+                  setState(() {
+                    _locationInfo = locationInfo;
+                    _locationVisibility = visibility;
+                  });
+                },
               ),
               
               if (_errorMessage != null) ...[

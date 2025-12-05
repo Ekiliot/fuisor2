@@ -17,7 +17,9 @@ import '../services/api_service.dart';
 import '../services/supabase_storage_service.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/app_notification.dart';
+import '../widgets/location_selector.dart';
 import '../models/user.dart';
+import '../services/geocoding_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -44,6 +46,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   VideoPlayerController? _webVideoController;
   VideoPlayerController? _mobileVideoController;
   User? _selectedCoauthor;
+  LocationInfo? _locationInfo;
+  Set<String> _locationVisibility = {};
 
   @override
   void initState() {
@@ -784,35 +788,37 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Hashtags are stored directly in the caption text
       final captionText = _captionController.text.trim();
       
-      // Получаем геолокацию (опционально, не блокируем создание поста при ошибке)
+      // Получаем геолокацию только если включен Post Booster
       double? latitude;
       double? longitude;
-      try {
-        print('CreatePostScreen: Getting current location...');
-        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (serviceEnabled) {
-          LocationPermission permission = await Geolocator.checkPermission();
-          if (permission == LocationPermission.denied) {
-            permission = await Geolocator.requestPermission();
-          }
-          
-          if (permission == LocationPermission.whileInUse || 
-              permission == LocationPermission.always) {
-            Position position = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high,
-            );
-            latitude = position.latitude;
-            longitude = position.longitude;
-            print('CreatePostScreen: Location obtained: lat=$latitude, lng=$longitude');
+      if (_locationInfo != null && _locationVisibility.isNotEmpty) {
+        try {
+          print('CreatePostScreen: Getting current location for Post Booster...');
+          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+          if (serviceEnabled) {
+            LocationPermission permission = await Geolocator.checkPermission();
+            if (permission == LocationPermission.denied) {
+              permission = await Geolocator.requestPermission();
+            }
+            
+            if (permission == LocationPermission.whileInUse || 
+                permission == LocationPermission.always) {
+              Position position = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high,
+              );
+              latitude = position.latitude;
+              longitude = position.longitude;
+              print('CreatePostScreen: Location obtained: lat=$latitude, lng=$longitude');
+            } else {
+              print('CreatePostScreen: Location permission denied, creating post without location');
+            }
           } else {
-            print('CreatePostScreen: Location permission denied, creating post without location');
+            print('CreatePostScreen: Location services disabled, creating post without location');
           }
-        } else {
-          print('CreatePostScreen: Location services disabled, creating post without location');
+        } catch (e) {
+          print('CreatePostScreen: Error getting location: $e, creating post without location');
+          // Не блокируем создание поста при ошибке получения геолокации
         }
-      } catch (e) {
-        print('CreatePostScreen: Error getting location: $e, creating post without location');
-        // Не блокируем создание поста при ошибке получения геолокации
       }
       
       // Validate external link fields
@@ -850,7 +856,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('CreatePostScreen: Coauthor Username: ${_selectedCoauthor?.username ?? "None"}');
       print('CreatePostScreen: External link URL: $linkUrl');
       print('CreatePostScreen: External link Text: $linkText');
+      print('CreatePostScreen: Location info: ${_locationInfo != null ? "Present" : "None"}');
+      print('CreatePostScreen: Location visibility: $_locationVisibility');
       print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
+      
+      // Формируем строку location_visibility из выбранных элементов
+      // Если ничего не выбрано, не передаем данные локации
+      String? locationVisibilityStr;
+      if (_locationVisibility.isNotEmpty && _locationInfo != null) {
+        locationVisibilityStr = _locationVisibility.join(',');
+      }
       
       await postsProvider.createPost(
         caption: captionText,
@@ -858,12 +873,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mediaType: mediaType,
         thumbnailUrl: thumbnailUrl,
         accessToken: accessToken,
-        latitude: latitude,
-        longitude: longitude,
+        latitude: locationVisibilityStr != null ? latitude : null,
+        longitude: locationVisibilityStr != null ? longitude : null,
         currentUser: authProvider.currentUser, // Передаем данные текущего пользователя
         coauthor: _selectedCoauthor?.id,
         externalLinkUrl: linkUrl,
         externalLinkText: linkText,
+        city: locationVisibilityStr != null ? _locationInfo?.city : null,
+        district: locationVisibilityStr != null ? _locationInfo?.district : null,
+        street: locationVisibilityStr != null ? _locationInfo?.street : null,
+        address: locationVisibilityStr != null ? _locationInfo?.address : null,
+        country: locationVisibilityStr != null ? _locationInfo?.country : null,
+        locationVisibility: locationVisibilityStr,
       );
 
       print('CreatePostScreen: Post created successfully!');
@@ -1146,6 +1167,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ],
                     ),
                   ),
+                ),
+                
+                // Location selector section
+                const SizedBox(height: 16),
+                LocationSelector(
+                  initialLocation: _locationInfo,
+                  initialVisibility: _locationVisibility,
+                  onLocationChanged: (locationInfo, visibility) {
+                    setState(() {
+                      _locationInfo = locationInfo;
+                      _locationVisibility = visibility;
+                    });
+                  },
                 ),
                 
                 // Ошибка

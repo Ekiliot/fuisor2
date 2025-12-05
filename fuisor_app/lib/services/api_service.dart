@@ -954,6 +954,12 @@ class ApiService {
     String? coauthor,
     String? externalLinkUrl,
     String? externalLinkText,
+    String? city,
+    String? district,
+    String? street,
+    String? address,
+    String? country,
+    String? locationVisibility,
   }) async {
     try {
       print('ApiService: Creating post with media URL: $mediaUrl');
@@ -977,6 +983,12 @@ class ApiService {
         if (coauthor != null) 'coauthors': [coauthor],
         if (externalLinkUrl != null) 'external_link_url': externalLinkUrl,
         if (externalLinkText != null) 'external_link_text': externalLinkText,
+        if (city != null) 'city': city,
+        if (district != null) 'district': district,
+        if (street != null) 'street': street,
+        if (address != null) 'address': address,
+        if (country != null) 'country': country,
+        if (locationVisibility != null) 'location_visibility': locationVisibility,
       };
       
       print('ApiService: Request body: ${jsonEncode(requestBody)}');
@@ -1034,6 +1046,12 @@ class ApiService {
     String? coauthor,
     String? externalLinkUrl,
     String? externalLinkText,
+    String? city,
+    String? district,
+    String? street,
+    String? address,
+    String? country,
+    String? locationVisibility,
   }) async {
     try {
       print('ApiService: Updating post $postId...');
@@ -1061,6 +1079,24 @@ class ApiService {
         // Отправляем null для удаления внешней ссылки
         requestBody['external_link_url'] = null;
         requestBody['external_link_text'] = null;
+      }
+      
+      // Обработка локации
+      if (city != null) requestBody['city'] = city;
+      if (district != null) requestBody['district'] = district;
+      if (street != null) requestBody['street'] = street;
+      if (address != null) requestBody['address'] = address;
+      if (country != null) requestBody['country'] = country;
+      if (locationVisibility != null) {
+        requestBody['location_visibility'] = locationVisibility;
+      } else {
+        // Если locationVisibility null, удаляем локацию
+        requestBody['city'] = null;
+        requestBody['district'] = null;
+        requestBody['street'] = null;
+        requestBody['address'] = null;
+        requestBody['country'] = null;
+        requestBody['location_visibility'] = null;
       }
       
       final response = await http.put(

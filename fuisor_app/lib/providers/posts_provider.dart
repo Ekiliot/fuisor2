@@ -444,20 +444,8 @@ class PostsProvider extends ChangeNotifier {
     final postIndex = list.indexWhere((p) => p.id == postId);
     if (postIndex != -1) {
       final post = list[postIndex];
-      list[postIndex] = Post(
-        id: post.id,
-        userId: post.userId,
-        caption: post.caption,
-        mediaUrl: post.mediaUrl,
-        mediaType: post.mediaType,
+      list[postIndex] = post.copyWith(
         likesCount: likesCount, // Используем актуальный счетчик с сервера
-        commentsCount: post.commentsCount,
-        mentions: post.mentions,
-        hashtags: post.hashtags,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-        user: post.user,
-        comments: post.comments,
         isLiked: isLiked, // Используем актуальный статус с сервера
       );
       print('PostsProvider: Updated post $postId - isLiked: $isLiked, likesCount: $likesCount');
@@ -663,21 +651,9 @@ class PostsProvider extends ChangeNotifier {
         final updatedComments = List<Comment>.from(post.comments ?? []);
         updatedComments.add(comment);
         
-        _posts[postIndex] = Post(
-          id: post.id,
-          userId: post.userId,
-          caption: post.caption,
-          mediaUrl: post.mediaUrl,
-          mediaType: post.mediaType,
-          likesCount: post.likesCount,
+        _posts[postIndex] = post.copyWith(
           commentsCount: post.commentsCount + 1,
-          mentions: post.mentions,
-          hashtags: post.hashtags,
-          createdAt: post.createdAt,
-          updatedAt: post.updatedAt,
-          user: post.user,
           comments: updatedComments,
-          isLiked: post.isLiked,
         );
         notifyListeners();
       }
@@ -703,6 +679,12 @@ class PostsProvider extends ChangeNotifier {
     String? coauthor, // Coauthor user ID
     String? externalLinkUrl, // External link URL
     String? externalLinkText, // External link button text
+    String? city, // City name
+    String? district, // District/neighborhood
+    String? street, // Street name
+    String? address, // Specific address
+    String? country, // Country name
+    String? locationVisibility, // What to show: comma-separated values
   }) async {
     try {
       print('PostsProvider: createPost called');
@@ -740,6 +722,12 @@ class PostsProvider extends ChangeNotifier {
         coauthor: coauthor,
         externalLinkUrl: externalLinkUrl,
         externalLinkText: externalLinkText,
+        city: city,
+        district: district,
+        street: street,
+        address: address,
+        country: country,
+        locationVisibility: locationVisibility,
       );
 
       print('PostsProvider: Post created successfully, adding to lists...');
@@ -769,6 +757,15 @@ class PostsProvider extends ChangeNotifier {
           longitude: newPost.longitude,
           visibility: newPost.visibility,
           expiresAt: newPost.expiresAt,
+          coauthor: newPost.coauthor,
+          externalLinkUrl: newPost.externalLinkUrl,
+          externalLinkText: newPost.externalLinkText,
+          city: newPost.city,
+          district: newPost.district,
+          street: newPost.street,
+          address: newPost.address,
+          country: newPost.country,
+          locationVisibility: newPost.locationVisibility,
         );
       }
       
@@ -801,6 +798,12 @@ class PostsProvider extends ChangeNotifier {
     String? coauthor,
     String? externalLinkUrl,
     String? externalLinkText,
+    String? city,
+    String? district,
+    String? street,
+    String? address,
+    String? country,
+    String? locationVisibility,
   }) async {
     try {
       print('PostsProvider: Updating post with access token check...');
@@ -815,6 +818,12 @@ class PostsProvider extends ChangeNotifier {
         coauthor: coauthor,
         externalLinkUrl: externalLinkUrl,
         externalLinkText: externalLinkText,
+        city: city,
+        district: district,
+        street: street,
+        address: address,
+        country: country,
+        locationVisibility: locationVisibility,
       );
 
       // Update in all lists

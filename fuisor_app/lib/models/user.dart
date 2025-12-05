@@ -117,6 +117,12 @@ class Post {
   final User? coauthor; // Post coauthor
   final String? externalLinkUrl; // External link URL
   final String? externalLinkText; // External link button text (6-8 characters)
+  final String? city; // City name
+  final String? district; // District/neighborhood
+  final String? street; // Street name
+  final String? address; // Specific address
+  final String? country; // Country name
+  final String? locationVisibility; // What to show: 'country', 'city', 'district', 'street', 'address' or comma-separated combination
 
   Post({
     required this.id,
@@ -142,6 +148,12 @@ class Post {
     this.coauthor,
     this.externalLinkUrl,
     this.externalLinkText,
+    this.city,
+    this.district,
+    this.street,
+    this.address,
+    this.country,
+    this.locationVisibility,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -176,6 +188,12 @@ class Post {
       coauthor: json['coauthor'] != null ? User.fromJson(json['coauthor']) : null,
       externalLinkUrl: json['external_link_url'],
       externalLinkText: json['external_link_text'],
+      city: json['city'],
+      district: json['district'],
+      street: json['street'],
+      address: json['address'],
+      country: json['country'],
+      locationVisibility: json['location_visibility'],
     );
   }
 
@@ -204,6 +222,12 @@ class Post {
       'coauthor': coauthor?.toJson(),
       'external_link_url': externalLinkUrl,
       'external_link_text': externalLinkText,
+      'city': city,
+      'district': district,
+      'street': street,
+      'address': address,
+      'country': country,
+      'location_visibility': locationVisibility,
     };
   }
 
@@ -231,6 +255,12 @@ class Post {
     User? coauthor,
     String? externalLinkUrl,
     String? externalLinkText,
+    String? city,
+    String? district,
+    String? street,
+    String? address,
+    String? country,
+    String? locationVisibility,
   }) {
     return Post(
       id: id ?? this.id,
@@ -256,6 +286,12 @@ class Post {
       coauthor: coauthor ?? this.coauthor,
       externalLinkUrl: externalLinkUrl ?? this.externalLinkUrl,
       externalLinkText: externalLinkText ?? this.externalLinkText,
+      city: city ?? this.city,
+      district: district ?? this.district,
+      street: street ?? this.street,
+      address: address ?? this.address,
+      country: country ?? this.country,
+      locationVisibility: locationVisibility ?? this.locationVisibility,
     );
   }
 }

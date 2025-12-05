@@ -329,7 +329,7 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       hasThumbnailUrl: !!req.body.thumbnail_url,
     });
     
-    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude, coauthors, external_link_url, external_link_text } = req.body;
+    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude, coauthors, external_link_url, external_link_text, city, district, street, address, country, location_visibility } = req.body;
 
     if (!media_url) {
       logger.postError('No media URL provided', { userId: req.user.id });
@@ -502,6 +502,17 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
         postData.coauthor_user_id = coauthorUser.id;
       }
     }
+
+    // Add location fields if provided and location_visibility is not empty
+    if (location_visibility && location_visibility.trim() !== '') {
+      if (city) postData.city = city;
+      if (district) postData.district = district;
+      if (street) postData.street = street;
+      if (address) postData.address = address;
+      if (country) postData.country = country;
+      postData.location_visibility = location_visibility;
+    }
+    // Если location_visibility пустой или null, поля локации не добавляются
     
     const { data, error } = await supabaseAdmin
       .from('posts')
@@ -1530,7 +1541,7 @@ router.post('/:id/comments/:commentId/dislike', validateAuth, validateUUID, vali
 router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { caption, coauthors, external_link_url, external_link_text } = req.body;
+    const { caption, coauthors, external_link_url, external_link_text, city, district, street, address, country, location_visibility } = req.body;
     const userId = req.user.id;
 
     // Check if post exists and belongs to user
@@ -1617,6 +1628,27 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       } else {
         // Empty array means remove coauthor
         updateData.coauthor_user_id = null;
+      }
+    }
+
+    // Handle location fields update
+    if (location_visibility !== undefined) {
+      if (location_visibility && location_visibility.trim() !== '') {
+        // Update location fields
+        if (city !== undefined) updateData.city = city || null;
+        if (district !== undefined) updateData.district = district || null;
+        if (street !== undefined) updateData.street = street || null;
+        if (address !== undefined) updateData.address = address || null;
+        if (country !== undefined) updateData.country = country || null;
+        updateData.location_visibility = location_visibility;
+      } else {
+        // Remove location if location_visibility is empty
+        updateData.city = null;
+        updateData.district = null;
+        updateData.street = null;
+        updateData.address = null;
+        updateData.country = null;
+        updateData.location_visibility = null;
       }
     }
 
