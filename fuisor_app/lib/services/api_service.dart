@@ -1031,17 +1031,42 @@ class ApiService {
   Future<Post> updatePost({
     required String postId,
     required String caption,
+    String? coauthor,
+    String? externalLinkUrl,
+    String? externalLinkText,
   }) async {
     try {
       print('ApiService: Updating post $postId...');
       print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
       
+      final requestBody = <String, dynamic>{
+        'caption': caption,
+      };
+      
+      // Обработка соавтора
+      if (coauthor != null) {
+        requestBody['coauthors'] = [coauthor];
+      } else {
+        // Отправляем пустой массив для удаления соавтора
+        requestBody['coauthors'] = [];
+      }
+      
+      // Обработка внешней ссылки
+      if (externalLinkUrl != null && externalLinkUrl.isNotEmpty) {
+        requestBody['external_link_url'] = externalLinkUrl;
+        if (externalLinkText != null && externalLinkText.isNotEmpty) {
+          requestBody['external_link_text'] = externalLinkText;
+        }
+      } else {
+        // Отправляем null для удаления внешней ссылки
+        requestBody['external_link_url'] = null;
+        requestBody['external_link_text'] = null;
+      }
+      
       final response = await http.put(
         Uri.parse('$baseUrl/posts/$postId'),
         headers: _headers,
-        body: jsonEncode({
-          'caption': caption,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       print('ApiService: Update response status: ${response.statusCode}');

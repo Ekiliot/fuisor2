@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'cached_network_image_with_signed_url.dart';
@@ -51,6 +52,11 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
   late AnimationController _commentsAnimationController;
   late Animation<double> _likesScaleAnimation;
   late Animation<double> _commentsScaleAnimation;
+  
+  // Анимация для аватарок соавторов
+  late AnimationController _avatarSwapController;
+  Timer? _avatarSwapTimer;
+  bool _showAuthorFirst = true;
 
   @override
   void initState() {
@@ -86,6 +92,24 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       parent: _commentsAnimationController,
       curve: Curves.elasticOut,
     ));
+    
+    // Анимация для аватарок соавторов
+    _avatarSwapController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    
+    // Запускаем таймер смены аватарок только если есть соавтор
+    if (widget.post.coauthor != null) {
+      _avatarSwapTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (mounted) {
+          setState(() {
+            _showAuthorFirst = !_showAuthorFirst;
+          });
+          _avatarSwapController.forward(from: 0.0);
+        }
+      });
+    }
   }
 
   @override
@@ -105,6 +129,8 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
     _commentController.dispose();
     _likesAnimationController.dispose();
     _commentsAnimationController.dispose();
+    _avatarSwapController.dispose();
+    _avatarSwapTimer?.cancel();
     _hideUsernameErrorNotification();
     super.dispose();
   }
@@ -309,126 +335,21 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                // Square avatar with rounded corners
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    color: const Color(0xFF262626),
-                    child: widget.post.user?.avatarUrl != null && widget.post.user!.avatarUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: widget.post.user!.avatarUrl!,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              width: 48,
-                              height: 48,
-                              color: const Color(0xFF262626),
-                              child: const Icon(
-                                EvaIcons.personOutline,
-                                size: 24,
-                                color: Colors.white,
-                              ),
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              width: 48,
-                              height: 48,
-                              color: const Color(0xFF262626),
-                              child: const Icon(
-                                EvaIcons.personOutline,
-                                size: 24,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        : const Icon(
-                            EvaIcons.personOutline,
-                            size: 24,
-                            color: Colors.white,
-                          ),
-                  ),
-                ),
+                // Avatar(s) - одна или две наложенные если есть соавтор
+                _buildAvatars(),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Name and username in the same row - clickable
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => ProfileScreen(userId: widget.post.userId),
-                            ),
-                          );
-                        },
-                        child: Row(
-                          children: [
-                            // Name
-                            if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty) ...[
-                              Text(
-                                widget.post.user!.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              // Middle dot
-                              Container(
-                                width: 4,
-                                height: 4,
-                                margin: const EdgeInsets.only(bottom: 2),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            // Username
-                            Text(
-                              '@${widget.post.user?.username ?? 'unknown'}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                            // Coauthor
-                            if (widget.post.coauthor != null) ...[
-                              const SizedBox(width: 6),
-                              const Text(
-                                'с',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF8E8E8E),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => ProfileScreen(userId: widget.post.coauthor!.id),
-                                    ),
-                                  );
-                                },
-                                child: Text(
-                                  '@${widget.post.coauthor!.username}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    color: Color(0xFF0095F6),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                      // Name and username in capsule
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF262626),
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                        child: _buildNamesSection(),
                       ),
                       const SizedBox(height: 2),
                       Row(
@@ -467,6 +388,9 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                           builder: (context) => EditPostScreen(
                             postId: widget.post.id,
                             currentCaption: widget.post.caption,
+                            currentCoauthor: widget.post.coauthor,
+                            currentExternalLinkUrl: widget.post.externalLinkUrl,
+                            currentExternalLinkText: widget.post.externalLinkText,
                           ),
                         ),
                       );
@@ -1017,6 +941,198 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
         ],
         ),
       ),
+    );
+  }
+
+  // Build overlapping avatars for author and coauthor
+  Widget _buildAvatars() {
+    if (widget.post.coauthor == null) {
+      // Single avatar
+      return _buildSingleAvatar(widget.post.user?.avatarUrl);
+    }
+    
+    // Two overlapping avatars with animation
+    return AnimatedBuilder(
+      animation: _avatarSwapController,
+      builder: (context, child) {
+        final firstAvatar = _showAuthorFirst ? widget.post.user?.avatarUrl : widget.post.coauthor?.avatarUrl;
+        final secondAvatar = _showAuthorFirst ? widget.post.coauthor?.avatarUrl : widget.post.user?.avatarUrl;
+        
+        return SizedBox(
+          width: 62,
+          height: 48,
+          child: Stack(
+            children: [
+              // Back avatar
+              Positioned(
+                right: 0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: 1.0 - _avatarSwapController.value * 0.3,
+                  child: _buildSingleAvatar(secondAvatar, size: 42),
+                ),
+              ),
+              // Front avatar
+              Positioned(
+                left: 0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: 0.7 + _avatarSwapController.value * 0.3,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black, width: 2),
+                    ),
+                    child: _buildSingleAvatar(firstAvatar),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  
+  Widget _buildSingleAvatar(String? avatarUrl, {double size = 48}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: size,
+        height: size,
+        color: const Color(0xFF262626),
+        child: avatarUrl != null && avatarUrl.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: avatarUrl,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: size,
+                  height: size,
+                  color: const Color(0xFF262626),
+                  child: Icon(
+                    EvaIcons.personOutline,
+                    size: size * 0.5,
+                    color: Colors.white,
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  width: size,
+                  height: size,
+                  color: const Color(0xFF262626),
+                  child: Icon(
+                    EvaIcons.personOutline,
+                    size: size * 0.5,
+                    color: Colors.white,
+                  ),
+                ),
+              )
+            : Icon(
+                EvaIcons.personOutline,
+                size: size * 0.5,
+                color: Colors.white,
+              ),
+      ),
+    );
+  }
+  
+  // Build names section in capsule
+  Widget _buildNamesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Author name and username
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => ProfileScreen(userId: widget.post.userId),
+              ),
+            );
+          },
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.post.user?.name != null && widget.post.user!.name.isNotEmpty) ...[
+                Text(
+                  widget.post.user!.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  width: 3,
+                  height: 3,
+                  decoration: const BoxDecoration(
+                    color: Colors.white54,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                '@${widget.post.user?.username ?? 'unknown'}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Coauthor name and username (if exists)
+        if (widget.post.coauthor != null) ...[
+          const SizedBox(height: 2),
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(userId: widget.post.coauthor!.id),
+                ),
+              );
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.post.coauthor!.name.isNotEmpty) ...[
+                  Text(
+                    widget.post.coauthor!.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: Color(0xFF0095F6),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 3,
+                    height: 3,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF0095F6),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  '@${widget.post.coauthor!.username}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: Color(0xFF0095F6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 

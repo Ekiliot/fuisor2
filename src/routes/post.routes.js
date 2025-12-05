@@ -1548,7 +1548,7 @@ router.post('/:id/comments/:commentId/dislike', validateAuth, validateUUID, vali
 router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { caption } = req.body;
+    const { caption, coauthors, external_link_url, external_link_text } = req.body;
     const userId = req.user.id;
 
     // Check if post exists and belongs to user
@@ -1566,23 +1566,121 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       return res.status(403).json({ message: 'Unauthorized to update this post' });
     }
 
+    // Validate coauthors if provided
+    if (coauthors !== undefined) {
+      if (Array.isArray(coauthors) && coauthors.length > 1) {
+        return res.status(400).json({ 
+          message: 'Maximum 1 coauthor per post is allowed' 
+        });
+      }
+    }
+
+    // Validate external link if provided
+    if (external_link_url) {
+      try {
+        new URL(external_link_url);
+      } catch (urlError) {
+        return res.status(400).json({ 
+          message: 'Invalid external link URL format' 
+        });
+      }
+    }
+
+    // Validate external link text (6-8 characters)
+    if (external_link_text) {
+      if (external_link_text.length < 6 || external_link_text.length > 8) {
+        return res.status(400).json({ 
+          message: 'External link text must be between 6 and 8 characters' 
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateData = {
+      caption: caption || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Add external link fields if provided
+    if (external_link_url !== undefined) {
+      updateData.external_link_url = external_link_url || null;
+      updateData.external_link_text = external_link_text || null;
+    }
+
     // Update post
     const { data, error } = await supabaseAdmin
       .from('posts')
-      .update({
-        caption: caption || null,
-        updated_at: new Date()
-      })
+      .update(updateData)
       .eq('id', id)
       .select(`
         *,
-        profiles:user_id (username, name, avatar_url)
+        profiles:user_id (username, name, avatar_url),
+        post_coauthors!left (
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        )
       `)
       .single();
 
     if (error) throw error;
 
-    res.json(data);
+    // Handle coauthors update
+    if (coauthors !== undefined) {
+      // Delete existing coauthors
+      await supabaseAdmin
+        .from('post_coauthors')
+        .delete()
+        .eq('post_id', id);
+
+      // Add new coauthor if provided
+      if (coauthors && Array.isArray(coauthors) && coauthors.length > 0) {
+        const coauthorUsername = coauthors[0];
+        
+        // Find user by username or user_id
+        let coauthorQuery = supabaseAdmin
+          .from('profiles')
+          .select('id, username');
+        
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(coauthorUsername);
+        
+        if (isUUID) {
+          coauthorQuery = coauthorQuery.eq('id', coauthorUsername);
+        } else {
+          coauthorQuery = coauthorQuery.eq('username', coauthorUsername);
+        }
+        
+        const { data: coauthorUser } = await coauthorQuery.single();
+
+        if (coauthorUser && coauthorUser.id !== userId) {
+          // Insert coauthor
+          await supabaseAdmin
+            .from('post_coauthors')
+            .insert([{
+              post_id: id,
+              coauthor_user_id: coauthorUser.id
+            }]);
+        }
+      }
+    }
+
+    // Fetch updated post with coauthor
+    const { data: updatedPost, error: fetchError2 } = await supabaseAdmin
+      .from('posts')
+      .select(`
+        *,
+        profiles:user_id (username, name, avatar_url),
+        post_coauthors!left (
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (fetchError2) throw fetchError2;
+
+    // Transform post with coauthor
+    const transformedPost = transformPostWithCoauthor(updatedPost);
+
+    res.json(transformedPost);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

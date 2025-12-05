@@ -798,6 +798,9 @@ class PostsProvider extends ChangeNotifier {
     required String postId,
     required String caption,
     required String accessToken,
+    String? coauthor,
+    String? externalLinkUrl,
+    String? externalLinkText,
   }) async {
     try {
       print('PostsProvider: Updating post with access token check...');
@@ -809,6 +812,9 @@ class PostsProvider extends ChangeNotifier {
       final updatedPost = await _apiService.updatePost(
         postId: postId,
         caption: caption,
+        coauthor: coauthor,
+        externalLinkUrl: externalLinkUrl,
+        externalLinkText: externalLinkText,
       );
 
       // Update in all lists

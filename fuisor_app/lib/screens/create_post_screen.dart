@@ -44,7 +44,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   VideoPlayerController? _webVideoController;
   VideoPlayerController? _mobileVideoController;
   User? _selectedCoauthor;
-  bool _showLinkFields = false;
 
   @override
   void initState() {
@@ -162,6 +161,174 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('Error getting access token: $e');
       return null;
     }
+  }
+
+  // Show external link bottom sheet
+  Future<void> _showExternalLinkSheet() async {
+    final TextEditingController urlController = TextEditingController(text: _linkUrlController.text);
+    final TextEditingController textController = TextEditingController(text: _linkTextController.text);
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with close button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'External Link',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(EvaIcons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // URL field
+                  const Text(
+                    'Link URL',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: urlController,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      hintText: 'https://example.com',
+                      hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: Color(0xFF262626),
+                      prefixIcon: Icon(EvaIcons.link, color: Color(0xFF8E8E8E)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Button text field
+                  const Text(
+                    'Button Text',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: textController,
+                    maxLength: 8,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '6-8 characters',
+                      hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                      border: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF262626),
+                      counterText: '${textController.text.length}/8',
+                      counterStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                    ),
+                    onChanged: (value) {
+                      setModalState(() {}); // Update counter in modal
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Button text will be displayed on the post',
+                    style: TextStyle(
+                      color: Color(0xFF8E8E8E),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Save button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0095F6),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _linkUrlController.text = urlController.text;
+                          _linkTextController.text = textController.text;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        'Save',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // Show user search dialog
@@ -651,20 +818,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Validate external link fields
       String? linkUrl;
       String? linkText;
-      if (_showLinkFields) {
-        linkUrl = _linkUrlController.text.trim();
-        linkText = _linkTextController.text.trim();
+      
+      linkUrl = _linkUrlController.text.trim();
+      linkText = _linkTextController.text.trim();
+      
+      if (linkUrl.isNotEmpty) {
+        // Add https:// if no protocol specified
+        if (!linkUrl.startsWith('http://') && !linkUrl.startsWith('https://')) {
+          linkUrl = 'https://$linkUrl';
+        }
         
-        if (linkUrl.isNotEmpty) {
-          // Validate URL
-          if (!Uri.tryParse(linkUrl)!.hasAbsolutePath) {
-            throw Exception('Invalid URL format');
-          }
-          
-          // Validate link text length
-          if (linkText.isNotEmpty && (linkText.length < 6 || linkText.length > 8)) {
-            throw Exception('Button text must be 6-8 characters');
-          }
+        // Validate URL
+        final uri = Uri.tryParse(linkUrl);
+        if (uri == null || !uri.hasAbsolutePath) {
+          throw Exception('Invalid URL format');
+        }
+        
+        // Validate link text length
+        if (linkText.isNotEmpty && (linkText.length < 6 || linkText.length > 8)) {
+          throw Exception('Button text must be 6-8 characters');
         }
       }
       
@@ -674,8 +846,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('CreatePostScreen: Media URL: $mediaUrl');
       print('CreatePostScreen: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('CreatePostScreen: Location: ${latitude != null ? "lat=$latitude, lng=$longitude" : "None"}');
-      print('CreatePostScreen: Coauthor: ${_selectedCoauthor?.username ?? "None"}');
-      print('CreatePostScreen: External link: ${linkUrl ?? "None"}');
+      print('CreatePostScreen: Coauthor ID: ${_selectedCoauthor?.id ?? "None"}');
+      print('CreatePostScreen: Coauthor Username: ${_selectedCoauthor?.username ?? "None"}');
+      print('CreatePostScreen: External link URL: $linkUrl');
+      print('CreatePostScreen: External link Text: $linkText');
       print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       await postsProvider.createPost(
@@ -781,12 +955,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               child: _buildMediaPreview(),
             ),
           
-          // Поле для подписи
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          // Поле для подписи и другие опции
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 const Text(
                   'Caption',
                   style: TextStyle(
@@ -909,87 +1085,68 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 
                 // External link section
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'External Link',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Switch(
-                      value: _showLinkFields,
-                      onChanged: (value) {
-                        setState(() {
-                          _showLinkFields = value;
-                          if (!value) {
-                            _linkUrlController.clear();
-                            _linkTextController.clear();
-                          }
-                        });
-                      },
-                      activeColor: const Color(0xFF0095F6),
-                    ),
-                  ],
+                const Text(
+                  'External Link',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
-                if (_showLinkFields) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _linkUrlController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'https://example.com',
-                      hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF262626)),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => _showExternalLinkSheet(),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF262626),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _linkUrlController.text.isNotEmpty 
+                            ? const Color(0xFF0095F6)
+                            : const Color(0xFF404040),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF262626)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF0095F6)),
-                      ),
-                      filled: true,
-                      fillColor: Color(0xFF1A1A1A),
-                      prefixIcon: Icon(EvaIcons.link, color: Color(0xFF8E8E8E)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          EvaIcons.link,
+                          color: _linkUrlController.text.isNotEmpty 
+                              ? const Color(0xFF0095F6)
+                              : const Color(0xFF8E8E8E),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _linkUrlController.text.isNotEmpty
+                                ? _linkTextController.text.isNotEmpty
+                                    ? '${_linkTextController.text} • ${_linkUrlController.text}'
+                                    : _linkUrlController.text
+                                : 'Add external link (optional)',
+                            style: TextStyle(
+                              color: _linkUrlController.text.isNotEmpty
+                                  ? Colors.white
+                                  : const Color(0xFF8E8E8E),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (_linkUrlController.text.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(EvaIcons.close, color: Colors.white, size: 20),
+                            onPressed: () {
+                              setState(() {
+                                _linkUrlController.clear();
+                                _linkTextController.clear();
+                              });
+                            },
+                          )
+                        else
+                          const Icon(EvaIcons.arrowIosForward, color: Color(0xFF8E8E8E)),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _linkTextController,
-                    maxLength: 8,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Button text (6-8 chars)',
-                      hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
-                      border: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF262626)),
-                      ),
-                      enabledBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF262626)),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Color(0xFF0095F6)),
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
-                      counterText: '${_linkTextController.text.length}/8',
-                      counterStyle: const TextStyle(color: Color(0xFF8E8E8E)),
-                    ),
-                    onChanged: (value) {
-                      setState(() {}); // Update counter
-                    },
-                  ),
-                ],
+                ),
                 
                 // Ошибка
                 if (_error != null) ...[
@@ -1007,7 +1164,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ),
                 ],
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         ],

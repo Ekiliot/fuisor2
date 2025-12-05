@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import '../providers/posts_provider.dart';
+import '../services/api_service.dart';
+import '../models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
 class EditPostScreen extends StatefulWidget {
   final String postId;
   final String currentCaption;
+  final User? currentCoauthor;
+  final String? currentExternalLinkUrl;
+  final String? currentExternalLinkText;
 
   const EditPostScreen({
     Key? key,
     required this.postId,
     required this.currentCaption,
+    this.currentCoauthor,
+    this.currentExternalLinkUrl,
+    this.currentExternalLinkText,
   }) : super(key: key);
 
   @override
@@ -20,19 +28,27 @@ class EditPostScreen extends StatefulWidget {
 
 class _EditPostScreenState extends State<EditPostScreen> {
   final _captionController = TextEditingController();
+  final _linkUrlController = TextEditingController();
+  final _linkTextController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   String? _errorMessage;
+  User? _selectedCoauthor;
 
   @override
   void initState() {
     super.initState();
     _captionController.text = widget.currentCaption;
+    _selectedCoauthor = widget.currentCoauthor;
+    _linkUrlController.text = widget.currentExternalLinkUrl ?? '';
+    _linkTextController.text = widget.currentExternalLinkText ?? '';
   }
 
   @override
   void dispose() {
     _captionController.dispose();
+    _linkUrlController.dispose();
+    _linkTextController.dispose();
     super.dispose();
   }
 
@@ -60,11 +76,39 @@ class _EditPostScreenState extends State<EditPostScreen> {
         throw Exception('No access token found');
       }
 
+      // Validate external link fields
+      String? linkUrl;
+      String? linkText;
+      
+      linkUrl = _linkUrlController.text.trim();
+      linkText = _linkTextController.text.trim();
+      
+      if (linkUrl.isNotEmpty) {
+        // Add https:// if no protocol specified
+        if (!linkUrl.startsWith('http://') && !linkUrl.startsWith('https://')) {
+          linkUrl = 'https://$linkUrl';
+        }
+        
+        // Validate URL
+        final uri = Uri.tryParse(linkUrl);
+        if (uri == null || !uri.hasAbsolutePath) {
+          throw Exception('Invalid URL format');
+        }
+        
+        // Validate link text length
+        if (linkText.isNotEmpty && (linkText.length < 6 || linkText.length > 8)) {
+          throw Exception('Button text must be 6-8 characters');
+        }
+      }
+
       final postsProvider = context.read<PostsProvider>();
       await postsProvider.updatePost(
         postId: widget.postId,
         caption: _captionController.text.trim(),
         accessToken: accessToken,
+        coauthor: _selectedCoauthor?.id,
+        externalLinkUrl: linkUrl.isNotEmpty ? linkUrl : null,
+        externalLinkText: linkText.isNotEmpty ? linkText : null,
       );
 
       if (mounted) {
@@ -79,6 +123,291 @@ class _EditPostScreenState extends State<EditPostScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  // Show user search dialog
+  Future<void> _showUserSearch() async {
+    final TextEditingController searchController = TextEditingController();
+    List<User> searchResults = [];
+    bool isSearching = false;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Search Coauthor',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        hintText: 'Search by username...',
+                        hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                        prefixIcon: Icon(EvaIcons.search, color: Color(0xFF8E8E8E)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF262626),
+                      ),
+                      onChanged: (value) async {
+                        if (value.length >= 2) {
+                          setState(() {
+                            isSearching = true;
+                          });
+                          
+                          try {
+                            final token = await _getAccessTokenFromAuthProvider();
+                            if (token != null) {
+                              final apiService = ApiService();
+                              apiService.setAccessToken(token);
+                              final results = await apiService.searchUsers(value, limit: 10);
+                              
+                              setState(() {
+                                searchResults = results;
+                                isSearching = false;
+                              });
+                            }
+                          } catch (e) {
+                            print('Error searching users: $e');
+                            setState(() {
+                              isSearching = false;
+                            });
+                          }
+                        } else {
+                          setState(() {
+                            searchResults = [];
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (isSearching)
+                      const CircularProgressIndicator(
+                        color: Color(0xFF0095F6),
+                      )
+                    else if (searchResults.isNotEmpty)
+                      SizedBox(
+                        height: 300,
+                        child: ListView.builder(
+                          itemCount: searchResults.length,
+                          itemBuilder: (context, index) {
+                            final user = searchResults[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: user.avatarUrl != null
+                                    ? NetworkImage(user.avatarUrl!)
+                                    : null,
+                                child: user.avatarUrl == null
+                                    ? const Icon(EvaIcons.personOutline)
+                                    : null,
+                              ),
+                              title: Text(
+                                user.name,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '@${user.username}',
+                                style: const TextStyle(color: Color(0xFF8E8E8E)),
+                              ),
+                              onTap: () {
+                                this.setState(() {
+                                  _selectedCoauthor = user;
+                                });
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Show external link bottom sheet
+  Future<void> _showExternalLinkSheet() async {
+    final TextEditingController urlController = TextEditingController(text: _linkUrlController.text);
+    final TextEditingController textController = TextEditingController(text: _linkTextController.text);
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'External Link',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(EvaIcons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Link URL',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: urlController,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      hintText: 'https://example.com',
+                      hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: Color(0xFF262626),
+                      prefixIcon: Icon(EvaIcons.link, color: Color(0xFF8E8E8E)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Button Text',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: textController,
+                    maxLength: 8,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: '6-8 characters',
+                      hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                      border: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF262626),
+                      counterText: '${textController.text.length}/8',
+                      counterStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                    ),
+                    onChanged: (value) {
+                      setModalState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Button text will be displayed on the post',
+                    style: TextStyle(
+                      color: Color(0xFF8E8E8E),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0095F6),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _linkUrlController.text = urlController.text;
+                          _linkTextController.text = textController.text;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        'Save',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -119,7 +448,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
@@ -164,6 +493,159 @@ class _EditPostScreenState extends State<EditPostScreen> {
                   return null;
                 },
               ),
+              
+              // Coauthor section
+              const SizedBox(height: 24),
+              const Text(
+                'Coauthor',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (_selectedCoauthor != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF262626),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundImage: _selectedCoauthor!.avatarUrl != null
+                            ? NetworkImage(_selectedCoauthor!.avatarUrl!)
+                            : null,
+                        child: _selectedCoauthor!.avatarUrl == null
+                            ? const Icon(EvaIcons.personOutline, size: 20)
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedCoauthor!.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '@${_selectedCoauthor!.username}',
+                              style: const TextStyle(
+                                color: Color(0xFF8E8E8E),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(EvaIcons.close, color: Colors.white),
+                        onPressed: () {
+                          setState(() {
+                            _selectedCoauthor = null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => _showUserSearch(),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF262626),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF404040),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(EvaIcons.personAddOutline, color: Color(0xFF8E8E8E)),
+                        SizedBox(width: 12),
+                        Text(
+                          'Add coauthor (optional)',
+                          style: TextStyle(color: Color(0xFF8E8E8E)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              
+              // External link section
+              const SizedBox(height: 24),
+              const Text(
+                'External Link',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => _showExternalLinkSheet(),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF262626),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _linkUrlController.text.isNotEmpty 
+                          ? const Color(0xFF0095F6)
+                          : const Color(0xFF404040),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        EvaIcons.link,
+                        color: _linkUrlController.text.isNotEmpty 
+                            ? const Color(0xFF0095F6)
+                            : const Color(0xFF8E8E8E),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _linkUrlController.text.isNotEmpty
+                              ? _linkTextController.text.isNotEmpty
+                                  ? '${_linkTextController.text} • ${_linkUrlController.text}'
+                                  : _linkUrlController.text
+                              : 'Add external link (optional)',
+                          style: TextStyle(
+                            color: _linkUrlController.text.isNotEmpty
+                                ? Colors.white
+                                : const Color(0xFF8E8E8E),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (_linkUrlController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(EvaIcons.close, color: Colors.white, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _linkUrlController.clear();
+                              _linkTextController.clear();
+                            });
+                          },
+                        )
+                      else
+                        const Icon(EvaIcons.arrowIosForward, color: Color(0xFF8E8E8E)),
+                    ],
+                  ),
+                ),
+              ),
+              
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),
                 Container(
