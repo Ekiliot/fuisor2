@@ -36,6 +36,10 @@
 Файл: `supabase/migrations/add_coauthor_notification_type.sql`
 
 - Добавлен новый тип уведомления `coauthor`
+- Обновлен CHECK constraint с учетом всех существующих типов:
+  - `like`, `comment`, `comment_like`, `comment_reply`, `comment_mention`
+  - `follow`, `mention`, `new_post`, `new_story`
+  - **`coauthor`** (новый)
 - Уведомление отправляется пользователю, когда его добавляют как соавтора
 
 ## 2. Backend API
