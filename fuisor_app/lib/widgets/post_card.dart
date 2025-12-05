@@ -290,23 +290,63 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
 
   Future<void> _openExternalLink(String url) async {
     try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          AppNotification.showError(
-            context,
-            'Could not open link',
-            duration: const Duration(seconds: 2),
+      // Убеждаемся, что URL имеет протокол
+      String finalUrl = url.trim();
+      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        finalUrl = 'https://$finalUrl';
+      }
+      
+      final uri = Uri.parse(finalUrl);
+      print('Opening URL: $finalUrl');
+      
+      // Пробуем открыть с externalApplication (открывает в браузере)
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        
+        if (!launched) {
+          // Если не получилось, пробуем platformDefault
+          print('externalApplication failed, trying platformDefault');
+          final launched2 = await launchUrl(
+            uri,
+            mode: LaunchMode.platformDefault,
           );
+          
+          if (!launched2 && mounted) {
+            AppNotification.showError(
+              context,
+              'Could not open link. Please check if you have a browser installed.',
+              duration: const Duration(seconds: 3),
+            );
+          }
+        }
+      } catch (e) {
+        print('Error launching URL: $e');
+        // Пробуем platformDefault как fallback
+        try {
+          await launchUrl(
+            uri,
+            mode: LaunchMode.platformDefault,
+          );
+        } catch (e2) {
+          print('Error with platformDefault: $e2');
+          if (mounted) {
+            AppNotification.showError(
+              context,
+              'Failed to open link. Please try again.',
+              duration: const Duration(seconds: 2),
+            );
+          }
         }
       }
     } catch (e) {
+      print('Error parsing/opening link: $e');
       if (mounted) {
         AppNotification.showError(
           context,
-          'Failed to open link: $e',
+          'Invalid link format',
           duration: const Duration(seconds: 2),
         );
       }

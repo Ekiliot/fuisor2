@@ -145,6 +145,21 @@ class Post {
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
+    // Debug: log coauthor data for specific post
+    final postId = json['id'] ?? '';
+    if (postId == '5bad2462-d6a1-4644-abe6-6f4f8c59994c') {
+      print('Post.fromJson DEBUG for post $postId:');
+      print('  - coauthor field: ${json['coauthor']}');
+      print('  - post_coauthors field: ${json['post_coauthors']}');
+      if (json['post_coauthors'] != null) {
+        print('  - post_coauthors type: ${json['post_coauthors'].runtimeType}');
+        if (json['post_coauthors'] is List && (json['post_coauthors'] as List).isNotEmpty) {
+          print('  - first post_coauthor: ${json['post_coauthors'][0]}');
+          print('  - first coauthor field: ${json['post_coauthors'][0]?['coauthor']}');
+        }
+      }
+    }
+    
     return Post(
       id: json['id'] ?? '',
       userId: json['user_id'] ?? '',
@@ -177,6 +192,20 @@ class Post {
       externalLinkUrl: json['external_link_url'],
       externalLinkText: json['external_link_text'],
     );
+  }
+  
+  // Debug method to log coauthor data
+  static void logCoauthorData(Map<String, dynamic> json, String postId) {
+    print('Post.fromJson DEBUG for post $postId:');
+    print('  - coauthor field: ${json['coauthor']}');
+    print('  - post_coauthors field: ${json['post_coauthors']}');
+    if (json['post_coauthors'] != null) {
+      print('  - post_coauthors type: ${json['post_coauthors'].runtimeType}');
+      if (json['post_coauthors'] is List && (json['post_coauthors'] as List).isNotEmpty) {
+        print('  - first post_coauthor: ${json['post_coauthors'][0]}');
+        print('  - first coauthor field: ${json['post_coauthors'][0]?['coauthor']}');
+      }
+    }
   }
 
   Map<String, dynamic> toJson() {

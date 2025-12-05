@@ -599,7 +599,7 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
         profiles:user_id (username, name, avatar_url),
         likes(count),
         post_coauthors!left (
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          profiles:coauthor_user_id (id, username, name, avatar_url)
         )
       `, { count: 'exact' })
       .eq('user_id', id)
@@ -631,7 +631,7 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
       likes_count: post.likes?.[0]?.count || 0,
       is_liked: likedPostIds.has(post.id),
       likes: undefined, // Remove the likes array from response
-      coauthor: post.post_coauthors?.[0]?.coauthor || null,
+      coauthor: post.post_coauthors?.[0]?.profiles || post.post_coauthors?.[0]?.coauthor || null,
       post_coauthors: undefined // Remove the raw coauthors array
     }));
 

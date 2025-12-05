@@ -19,9 +19,60 @@ const upload = multer({
 
 // Helper function to transform post with coauthor data
 function transformPostWithCoauthor(post) {
+  // Debug: log the structure for all posts (temporarily for debugging)
+  if (post.id === '5bad2462-d6a1-4644-abe6-6f4f8c59994c') {
+    logger.post('TransformPostWithCoauthor: DEBUG for specific post', {
+      postId: post.id,
+      hasPostCoauthors: !!post.post_coauthors,
+      postCoauthorsType: typeof post.post_coauthors,
+      postCoauthorsIsArray: Array.isArray(post.post_coauthors),
+      postCoauthorsLength: post.post_coauthors?.length,
+      postCoauthorsFull: JSON.stringify(post.post_coauthors, null, 2),
+      firstEntry: post.post_coauthors?.[0] ? JSON.stringify(post.post_coauthors[0], null, 2) : 'null',
+      hasProfiles: !!post.post_coauthors?.[0]?.profiles,
+      hasCoauthor: !!post.post_coauthors?.[0]?.coauthor,
+    });
+  }
+  
+  // Handle different possible structures from Supabase
+  let coauthor = null;
+  
+  if (post.post_coauthors) {
+    if (Array.isArray(post.post_coauthors) && post.post_coauthors.length > 0) {
+      const firstCoauthorEntry = post.post_coauthors[0];
+      
+      // Try different possible structures
+      // Structure 1: post_coauthors: [{ coauthor: { ... } }]
+      if (firstCoauthorEntry.coauthor) {
+        coauthor = firstCoauthorEntry.coauthor;
+      }
+      // Structure 2: post_coauthors: [{ profiles: { ... } }] (when using profiles:coauthor_user_id)
+      else if (firstCoauthorEntry.profiles) {
+        coauthor = firstCoauthorEntry.profiles;
+      }
+      // Structure 3: post_coauthors: [{ id, username, ... }] (flat structure)
+      else if (firstCoauthorEntry.id && firstCoauthorEntry.username) {
+        coauthor = firstCoauthorEntry;
+      }
+      // Structure 4: only ID (shouldn't happen with JOIN, but handle it)
+      else if (firstCoauthorEntry.coauthor_user_id) {
+        // We'd need to fetch the profile, but this shouldn't happen
+        coauthor = null;
+      }
+    }
+  }
+  
+  // Debug: log what we extracted
+  if (post.id === '5bad2462-d6a1-4644-abe6-6f4f8c59994c') {
+    logger.post('TransformPostWithCoauthor: Extracted coauthor', {
+      postId: post.id,
+      coauthor: coauthor ? JSON.stringify(coauthor) : 'null',
+    });
+  }
+  
   return {
     ...post,
-    coauthor: post.post_coauthors?.[0]?.coauthor || null,
+    coauthor: coauthor,
     post_coauthors: undefined // Remove the raw coauthors array
   };
 }
@@ -53,7 +104,7 @@ router.get('/', validateAuth, async (req, res) => {
         profiles:user_id (username, name, avatar_url),
         likes(count),
         post_coauthors!left (
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          profiles:coauthor_user_id (id, username, name, avatar_url)
         )
       `, { count: 'exact' })
       .is('expires_at', null) // Исключаем сторис (посты с expires_at)
@@ -719,7 +770,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         profiles:user_id (username, name, avatar_url),
         likes(count),
         post_coauthors!left (
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          profiles:coauthor_user_id (id, username, name, avatar_url)
         )
       `, { count: 'exact' })
       .is('expires_at', null); // Исключаем сторис (посты с expires_at)
@@ -1616,7 +1667,7 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
         *,
         profiles:user_id (username, name, avatar_url),
         post_coauthors!left (
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          profiles:coauthor_user_id (id, username, name, avatar_url)
         )
       `)
       .single();
@@ -1669,7 +1720,7 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
         *,
         profiles:user_id (username, name, avatar_url),
         post_coauthors!left (
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          profiles:coauthor_user_id (id, username, name, avatar_url)
         )
       `)
       .eq('id', id)
