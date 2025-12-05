@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'cached_network_image_with_signed_url.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/user.dart';
 import '../screens/edit_post_screen.dart';
 import '../screens/comments_screen.dart';
@@ -13,6 +14,8 @@ import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import '../utils/hashtag_utils.dart';
 import '../widgets/username_error_notification.dart';
+import '../widgets/app_notification.dart';
+import '../widgets/share_video_sheet.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -161,12 +164,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       
       if (accessToken == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to view profiles'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppNotification.showError(context, 'Please login to view profiles');
         }
         return;
       }
@@ -217,12 +215,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       
       if (accessToken == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to save posts'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppNotification.showError(context, 'Please login to save posts');
         }
         return;
       }
@@ -246,14 +239,10 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(saved 
-                ? 'Post saved' 
-                : 'Post unsaved'),
-            backgroundColor: const Color(0xFF0095F6),
-            duration: const Duration(seconds: 1),
-          ),
+        AppNotification.showSuccess(
+          context,
+          saved ? 'Post saved' : 'Post unsaved',
+          duration: const Duration(seconds: 1),
         );
       }
     } catch (e) {
@@ -264,12 +253,35 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${newSavedState ? "save" : "unsave"} post: $e'),
-            backgroundColor: Colors.red,
+        AppNotification.showError(
+          context,
+          'Failed to ${newSavedState ? "save" : "unsave"} post: $e',
+          duration: const Duration(seconds: 2),
+        );
+      }
+    }
+  }
+
+  Future<void> _openExternalLink(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          AppNotification.showError(
+            context,
+            'Could not open link',
             duration: const Duration(seconds: 2),
-          ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppNotification.showError(
+          context,
+          'Failed to open link: $e',
+          duration: const Duration(seconds: 2),
         );
       }
     }
@@ -278,26 +290,17 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 10,
-            spreadRadius: 0,
-            offset: const Offset(0, 4),
+        color: Colors.black.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1,
           ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -395,6 +398,35 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                                 color: Colors.white,
                               ),
                             ),
+                            // Coauthor
+                            if (widget.post.coauthor != null) ...[
+                              const SizedBox(width: 6),
+                              const Text(
+                                'с',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF8E8E8E),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => ProfileScreen(userId: widget.post.coauthor!.id),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  '@${widget.post.coauthor!.username}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: Color(0xFF0095F6),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -491,23 +523,15 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             await postsProvider.deletePost(widget.post.id, accessToken: accessToken);
                             
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Post deleted successfully'),
-                                  backgroundColor: Color(0xFF0095F6),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
+                              AppNotification.showSuccess(context, 'Post deleted successfully');
                             }
                           }
                         } catch (e) {
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to delete post: $e'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 3),
-                              ),
+                            AppNotification.showError(
+                              context,
+                              'Failed to delete post: $e',
+                              duration: const Duration(seconds: 3),
                             );
                           }
                         }
@@ -565,7 +589,15 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
-                return ClipRRect(
+                return Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
                     width: width,
@@ -641,6 +673,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                       color: Colors.grey[200],
                       child: const Center(
                         child: Icon(Icons.error),
+                      ),
                       ),
                     ),
                           ),
@@ -748,10 +781,20 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                       ),
                     ],
                     const SizedBox(width: 20),
-                    const Icon(
+                    GestureDetector(
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (context) => ShareVideoSheet(post: widget.post),
+                        );
+                      },
+                      child: const Icon(
                       EvaIcons.paperPlaneOutline,
                       size: 28,
                       color: Colors.white,
+                      ),
                     ),
                     const Spacer(),
                     GestureDetector(
@@ -805,6 +848,34 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+
+                // External link button
+                if (widget.post.externalLinkUrl != null && widget.post.externalLinkUrl!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12, top: 4),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0095F6),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () => _openExternalLink(widget.post.externalLinkUrl!),
+                        icon: const Icon(EvaIcons.externalLink, size: 18),
+                        label: Text(
+                          widget.post.externalLinkText ?? 'Link',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
 

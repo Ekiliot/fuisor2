@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -17,6 +16,8 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/supabase_storage_service.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../widgets/app_notification.dart';
+import '../models/user.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
@@ -36,9 +37,14 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final TextEditingController _captionController = TextEditingController();
+  final TextEditingController _linkUrlController = TextEditingController();
+  final TextEditingController _linkTextController = TextEditingController();
   bool _isLoading = false;
   String? _error;
   VideoPlayerController? _webVideoController;
+  VideoPlayerController? _mobileVideoController;
+  User? _selectedCoauthor;
+  bool _showLinkFields = false;
 
   @override
   void initState() {
@@ -51,19 +57,69 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('CreatePostScreen: Has image bytes: ${widget.selectedImageBytes != null}');
       print('CreatePostScreen: Has video controller: ${widget.videoController != null}');
       
-      // Для веб-платформы создаем видеоплеер из blob URL
-      if (kIsWeb && widget.videoController == null && widget.selectedFile != null) {
+      // Проверяем, является ли файл видео
         final fileName = widget.selectedFile!.name.toLowerCase();
+      final filePath = widget.selectedFile!.path.toLowerCase();
         final isVideo = fileName.contains('.mp4') ||
             fileName.contains('.mov') ||
             fileName.contains('.avi') ||
             fileName.contains('.webm') ||
-            fileName.contains('.quicktime');
-        
-        if (isVideo && widget.selectedFile!.path.startsWith('blob:')) {
+          fileName.contains('.quicktime') ||
+          filePath.contains('.mp4') ||
+          filePath.contains('.mov') ||
+          filePath.contains('.avi') ||
+          filePath.contains('.webm') ||
+          filePath.contains('.quicktime');
+      
+      // Для веб-платформы создаем видеоплеер из blob URL
+      if (kIsWeb && widget.videoController == null && isVideo) {
+        if (widget.selectedFile!.path.startsWith('blob:')) {
           print('CreatePostScreen: Creating web video controller for blob URL');
           _initializeWebVideoController();
         }
+      }
+      
+      // Для мобильных платформ создаем видеоплеер из файла, если контроллер не передан
+      if (!kIsWeb && widget.videoController == null && isVideo && widget.selectedImageBytes == null) {
+        print('CreatePostScreen: Creating mobile video controller for file');
+        _initializeMobileVideoController();
+      }
+    }
+  }
+  
+  Future<void> _initializeMobileVideoController() async {
+    try {
+      print('CreatePostScreen: Initializing mobile video controller...');
+      print('CreatePostScreen: File path: ${widget.selectedFile!.path}');
+      
+      // Проверяем, что файл существует
+      final file = File(widget.selectedFile!.path);
+      final fileExists = await file.exists();
+      final fileSize = fileExists ? await file.length() : 0;
+      
+      print('CreatePostScreen: File exists: $fileExists, size: $fileSize bytes');
+      
+      if (!fileExists || fileSize == 0) {
+        print('CreatePostScreen: File does not exist or is empty, cannot initialize video controller');
+        return;
+      }
+      
+      _mobileVideoController = VideoPlayerController.file(file);
+      await _mobileVideoController!.initialize();
+      print('CreatePostScreen: Mobile video controller initialized successfully');
+      print('CreatePostScreen: Video duration: ${_mobileVideoController!.value.duration}');
+      print('CreatePostScreen: Video aspect ratio: ${_mobileVideoController!.value.aspectRatio}');
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e, stackTrace) {
+      print('CreatePostScreen: Error initializing mobile video controller: $e');
+      print('CreatePostScreen: Stack trace: $stackTrace');
+      _mobileVideoController?.dispose();
+      _mobileVideoController = null;
+      if (mounted) {
+        setState(() {});
       }
     }
   }
@@ -90,7 +146,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   void dispose() {
     print('CreatePostScreen: dispose called');
     _captionController.dispose();
+    _linkUrlController.dispose();
+    _linkTextController.dispose();
     _webVideoController?.dispose();
+    _mobileVideoController?.dispose();
     super.dispose();
   }
 
@@ -103,6 +162,130 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       print('Error getting access token: $e');
       return null;
     }
+  }
+
+  // Show user search dialog
+  Future<void> _showUserSearch() async {
+    final TextEditingController searchController = TextEditingController();
+    List<User> searchResults = [];
+    bool isSearching = false;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Search Coauthor',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        hintText: 'Search by username...',
+                        hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                        prefixIcon: Icon(EvaIcons.search, color: Color(0xFF8E8E8E)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF262626),
+                      ),
+                      onChanged: (value) async {
+                        if (value.length >= 2) {
+                          setState(() {
+                            isSearching = true;
+                          });
+                          
+                          try {
+                            final token = await _getAccessTokenFromAuthProvider();
+                            if (token != null) {
+                              final apiService = ApiService();
+                              apiService.setAccessToken(token);
+                              final results = await apiService.searchUsers(value, limit: 10);
+                              
+                              setState(() {
+                                searchResults = results;
+                                isSearching = false;
+                              });
+                            }
+                          } catch (e) {
+                            print('Error searching users: $e');
+                            setState(() {
+                              isSearching = false;
+                            });
+                          }
+                        } else {
+                          setState(() {
+                            searchResults = [];
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (isSearching)
+                      const CircularProgressIndicator(
+                        color: Color(0xFF0095F6),
+                      )
+                    else if (searchResults.isNotEmpty)
+                      SizedBox(
+                        height: 300,
+                        child: ListView.builder(
+                          itemCount: searchResults.length,
+                          itemBuilder: (context, index) {
+                            final user = searchResults[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: user.avatarUrl != null
+                                    ? NetworkImage(user.avatarUrl!)
+                                    : null,
+                                child: user.avatarUrl == null
+                                    ? const Icon(EvaIcons.personOutline)
+                                    : null,
+                              ),
+                              title: Text(
+                                user.name,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '@${user.username}',
+                                style: const TextStyle(color: Color(0xFF8E8E8E)),
+                              ),
+                              onTap: () {
+                                this.setState(() {
+                                  _selectedCoauthor = user;
+                                });
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // Создать thumbnail из видео
@@ -465,12 +648,34 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // Не блокируем создание поста при ошибке получения геолокации
       }
       
+      // Validate external link fields
+      String? linkUrl;
+      String? linkText;
+      if (_showLinkFields) {
+        linkUrl = _linkUrlController.text.trim();
+        linkText = _linkTextController.text.trim();
+        
+        if (linkUrl.isNotEmpty) {
+          // Validate URL
+          if (!Uri.tryParse(linkUrl)!.hasAbsolutePath) {
+            throw Exception('Invalid URL format');
+          }
+          
+          // Validate link text length
+          if (linkText.isNotEmpty && (linkText.length < 6 || linkText.length > 8)) {
+            throw Exception('Button text must be 6-8 characters');
+          }
+        }
+      }
+      
       print('CreatePostScreen: About to call postsProvider.createPost');
       print('CreatePostScreen: Caption: $captionText');
       print('CreatePostScreen: Media type: $mediaType');
       print('CreatePostScreen: Media URL: $mediaUrl');
       print('CreatePostScreen: Thumbnail URL: ${thumbnailUrl ?? "None"}');
       print('CreatePostScreen: Location: ${latitude != null ? "lat=$latitude, lng=$longitude" : "None"}');
+      print('CreatePostScreen: Coauthor: ${_selectedCoauthor?.username ?? "None"}');
+      print('CreatePostScreen: External link: ${linkUrl ?? "None"}');
       print('CreatePostScreen: Access token: ${accessToken != null ? "Present" : "Missing"}');
       
       await postsProvider.createPost(
@@ -481,6 +686,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         accessToken: accessToken,
         latitude: latitude,
         longitude: longitude,
+        currentUser: authProvider.currentUser, // Передаем данные текущего пользователя
+        coauthor: _selectedCoauthor?.id,
+        externalLinkUrl: linkUrl,
+        externalLinkText: linkText,
       );
 
       print('CreatePostScreen: Post created successfully!');
@@ -489,11 +698,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // Закрываем все экраны создания поста и возвращаемся к главному экрану
         Navigator.of(context).popUntil((route) => route.isFirst);
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Post created successfully!'),
-            backgroundColor: Color(0xFF0095F6),
-          ),
+        AppNotification.showSuccess(
+          context,
+          'Post created successfully!',
         );
       }
     } catch (e, stackTrace) {
@@ -505,12 +712,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           _isLoading = false;
       });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error creating post: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
+        AppNotification.showError(
+          context,
+          'Error creating post: ${e.toString()}',
+          duration: const Duration(seconds: 5),
         );
       }
     } finally {
@@ -615,6 +820,177 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   ),
                 ),
                 
+                // Coauthor section
+                const SizedBox(height: 16),
+                const Text(
+                  'Coauthor',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_selectedCoauthor != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF262626),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundImage: _selectedCoauthor!.avatarUrl != null
+                              ? NetworkImage(_selectedCoauthor!.avatarUrl!)
+                              : null,
+                          child: _selectedCoauthor!.avatarUrl == null
+                              ? const Icon(EvaIcons.personOutline, size: 20)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedCoauthor!.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                '@${_selectedCoauthor!.username}',
+                                style: const TextStyle(
+                                  color: Color(0xFF8E8E8E),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(EvaIcons.close, color: Colors.white),
+                          onPressed: () {
+                            setState(() {
+                              _selectedCoauthor = null;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    onTap: () => _showUserSearch(),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF262626),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF404040),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(EvaIcons.personAddOutline, color: Color(0xFF8E8E8E)),
+                          SizedBox(width: 12),
+                          Text(
+                            'Add coauthor (optional)',
+                            style: TextStyle(color: Color(0xFF8E8E8E)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                
+                // External link section
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'External Link',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Switch(
+                      value: _showLinkFields,
+                      onChanged: (value) {
+                        setState(() {
+                          _showLinkFields = value;
+                          if (!value) {
+                            _linkUrlController.clear();
+                            _linkTextController.clear();
+                          }
+                        });
+                      },
+                      activeColor: const Color(0xFF0095F6),
+                    ),
+                  ],
+                ),
+                if (_showLinkFields) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _linkUrlController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: 'https://example.com',
+                      hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: Color(0xFF1A1A1A),
+                      prefixIcon: Icon(EvaIcons.link, color: Color(0xFF8E8E8E)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _linkTextController,
+                    maxLength: 8,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Button text (6-8 chars)',
+                      hintStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                      border: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      enabledBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF262626)),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(color: Color(0xFF0095F6)),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF1A1A1A),
+                      counterText: '${_linkTextController.text.length}/8',
+                      counterStyle: const TextStyle(color: Color(0xFF8E8E8E)),
+                    ),
+                    onChanged: (value) {
+                      setState(() {}); // Update counter
+                    },
+                  ),
+                ],
+                
                 // Ошибка
                 if (_error != null) ...[
                   const SizedBox(height: 16),
@@ -650,11 +1026,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       );
     }
     
-    // Видео с контроллером (мобильная платформа)
+    // Видео с контроллером (мобильная платформа - переданный контроллер)
     if (widget.videoController != null) {
       return AspectRatio(
         aspectRatio: widget.videoController!.value.aspectRatio,
         child: VideoPlayer(widget.videoController!),
+      );
+    }
+
+    // Видео с контроллером (мобильная платформа - созданный контроллер)
+    if (_mobileVideoController != null && _mobileVideoController!.value.isInitialized) {
+      return AspectRatio(
+        aspectRatio: _mobileVideoController!.value.aspectRatio,
+        child: VideoPlayer(_mobileVideoController!),
       );
     }
 

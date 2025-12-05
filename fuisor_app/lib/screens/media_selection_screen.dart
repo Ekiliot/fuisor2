@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'create_post_screen.dart';
 import 'video_editor_screen.dart';
 import '../widgets/custom_image_cropper.dart';
+import '../widgets/app_notification.dart';
 
 class MediaSelectionScreen extends StatefulWidget {
   const MediaSelectionScreen({super.key});
@@ -359,17 +360,10 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   void _showLimitedAccessWarning() {
     if (!mounted) return;
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Limited access - some videos may be hidden'),
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'Select More',
-          onPressed: () async {
-            await _requestFullAccess();
-          },
-        ),
-      ),
+    AppNotification.showInfo(
+      context,
+      'Limited access - some videos may be hidden',
+      duration: const Duration(seconds: 5),
     );
   }
 
@@ -421,24 +415,14 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             _isLimitedAccess = false;
           });
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Full access granted!'),
-                duration: Duration(seconds: 2),
-              ),
-            );
+            AppNotification.showSuccess(context, 'Full access granted!');
           }
         }
       }
     } catch (e) {
       print('Error requesting full access: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppNotification.showError(context, 'Error: ${e.toString()}');
       }
     }
   }
@@ -758,12 +742,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         if (durationSeconds > 300) {
           // Видео слишком длинное
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Video must be 5 minutes or less'),
-                backgroundColor: Colors.red,
-              ),
-            );
+            AppNotification.showError(context, 'Video must be 5 minutes or less');
           }
           setState(() {
             _isLoading = false;
@@ -919,12 +898,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
       print('MediaSelectionScreen: Error picking video: $e');
       print('MediaSelectionScreen: Error stack: ${StackTrace.current}');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking video: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppNotification.showError(context, 'Error picking video: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -1156,38 +1130,117 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                     ),
             ),
           
-          // Вкладки (под предпросмотром)
+          // Вкладки (под предпросмотром) - в стиле профиля
           if (!kIsWeb && _hasPermission)
             Container(
-              decoration: const BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: Color(0xFF262626),
-                    width: 0.5,
-                  ),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 1,
                 ),
               ),
-              child: TabBar(
-                controller: _tabController,
-                indicatorColor: const Color(0xFF0095F6),
-                labelColor: Colors.white,
-                unselectedLabelColor: const Color(0xFF8E8E8E),
-                labelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                ),
-                tabs: const [
-                  Tab(
-                    icon: Icon(EvaIcons.imageOutline, size: 20),
-                    text: 'Photos',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Photos Tab
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_tabController.index != 0) {
+                          _tabController.animateTo(0);
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _tabController.index == 0
+                              ? Colors.white.withOpacity(0.2)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                EvaIcons.imageOutline,
+                                color: _tabController.index == 0
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.6),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Photos',
+                                style: TextStyle(
+                                  color: _tabController.index == 0
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.6),
+                                  fontSize: 14,
+                                  fontWeight: _tabController.index == 0
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  Tab(
-                    icon: Icon(EvaIcons.videoOutline, size: 20),
-                    text: 'Videos',
+                  // Videos Tab
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_tabController.index != 1) {
+                          _tabController.animateTo(1);
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _tabController.index == 1
+                              ? Colors.white.withOpacity(0.2)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                EvaIcons.videoOutline,
+                                color: _tabController.index == 1
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.6),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Videos',
+                                style: TextStyle(
+                                  color: _tabController.index == 1
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.6),
+                                  fontSize: 14,
+                                  fontWeight: _tabController.index == 1
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

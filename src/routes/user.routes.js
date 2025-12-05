@@ -597,7 +597,10 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
       .select(`
         *,
         profiles:user_id (username, name, avatar_url),
-        likes(count)
+        likes(count),
+        post_coauthors!left (
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        )
       `, { count: 'exact' })
       .eq('user_id', id)
       .is('expires_at', null) // Исключаем сторис (посты с expires_at)
@@ -622,12 +625,14 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
       }
     }
 
-    // Transform data to include likes count and is_liked status
+    // Transform data to include likes count, is_liked status, and coauthor
     const postsWithLikes = data.map(post => ({
       ...post,
       likes_count: post.likes?.[0]?.count || 0,
       is_liked: likedPostIds.has(post.id),
-      likes: undefined // Remove the likes array from response
+      likes: undefined, // Remove the likes array from response
+      coauthor: post.post_coauthors?.[0]?.coauthor || null,
+      post_coauthors: undefined // Remove the raw coauthors array
     }));
 
     res.json({

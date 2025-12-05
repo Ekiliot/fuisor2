@@ -11,6 +11,7 @@ import '../utils/hashtag_utils.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/cached_network_image_with_signed_url.dart';
 import '../widgets/username_error_notification.dart';
+import '../widgets/app_notification.dart';
 import 'hashtag_screen.dart';
 import 'profile_screen.dart';
 
@@ -218,13 +219,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
           _commentController.clear();
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Comment updated successfully'),
-                backgroundColor: Color(0xFF0095F6),
-                duration: Duration(seconds: 2),
-              ),
-            );
+            AppNotification.showSuccess(context, 'Comment updated successfully');
           }
         }
       } else {
@@ -248,14 +243,12 @@ class _CommentsScreenState extends State<CommentsScreen> {
     } catch (e) {
       print('Error adding/editing comment: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_editingCommentId != null 
-                ? 'Failed to update comment: $e'
-                : 'Failed to add comment: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
+        AppNotification.showError(
+          context,
+          _editingCommentId != null 
+              ? 'Failed to update comment: $e'
+              : 'Failed to add comment: $e',
+          duration: const Duration(seconds: 3),
         );
       }
     }
@@ -1292,12 +1285,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
       
       if (accessToken == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to view profiles'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppNotification.showError(context, 'Please login to view profiles');
         }
         return;
       }
@@ -1396,26 +1384,14 @@ class _CommentsScreenState extends State<CommentsScreen> {
           });
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Comment deleted successfully'),
-                backgroundColor: Color(0xFF0095F6),
-                duration: Duration(seconds: 2),
-              ),
-            );
+            AppNotification.showSuccess(context, 'Comment deleted successfully');
           }
         }
       }
     } catch (e) {
       print('Error deleting comment: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to delete comment: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to delete comment: $e', duration: const Duration(seconds: 3));
       }
     }
   }
@@ -1487,25 +1463,13 @@ class _CommentsScreenState extends State<CommentsScreen> {
       if (selectedReason != null) {
         // TODO: Implement report API endpoint
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Comment reported: $selectedReason'),
-              backgroundColor: const Color(0xFF0095F6),
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          AppNotification.showSuccess(context, 'Comment reported: $selectedReason');
         }
       }
     } catch (e) {
       print('Error reporting comment: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to report comment: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to report comment: $e', duration: const Duration(seconds: 3));
       }
     }
   }
@@ -1570,12 +1534,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
       });
     } catch (e) {
       print('Error toggling comment like: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to like comment: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppNotification.showError(context, 'Failed to like comment: $e');
     }
   }
 
@@ -1639,12 +1598,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
       });
     } catch (e) {
       print('Error toggling comment dislike: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to dislike comment: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppNotification.showError(context, 'Failed to dislike comment: $e');
     }
   }
 }

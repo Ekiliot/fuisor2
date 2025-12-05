@@ -15,6 +15,7 @@ import '../widgets/profile_skeleton.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/website_link_widget.dart';
 import '../widgets/add_website_dialog.dart';
+import '../widgets/app_notification.dart';
 import '../models/user.dart';
 import 'edit_profile_screen.dart';
 import 'followers_list_screen.dart';
@@ -380,26 +381,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         });
         
         // Показываем уведомление об успешном обновлении
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated!'),
-            backgroundColor: Color(0xFF0095F6),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showSuccess(context, 'Profile updated!');
       }
     } catch (e) {
       if (mounted) {
         _refreshController.refreshFailed();
         
         // Показываем уведомление об ошибке
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update profile: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to update profile: $e');
       }
     }
   }
@@ -439,22 +428,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     try {
       final authProvider = context.read<AuthProvider>();
       if (authProvider.currentUser == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please login to send messages'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppNotification.showError(context, 'Please login to send messages');
         return;
       }
 
       if (userId == authProvider.currentUser!.id) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cannot start chat with yourself'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppNotification.showError(context, 'Cannot start chat with yourself');
         return;
       }
 
@@ -482,13 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     } catch (e) {
       print('ProfileScreen: Error starting chat: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start chat: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to start chat: $e');
       }
     }
   }
@@ -530,13 +503,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     } catch (e) {
       print('ProfileScreen: Error toggling follow: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${_isFollowing ? 'unfollow' : 'follow'}: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to ${_isFollowing ? 'unfollow' : 'follow'}: $e');
       }
     }
   }
@@ -959,24 +926,20 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                       } else {
                                         // Показываем техническую ошибку
                                         if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Failed to save. Server is not responding. Please try again later or use a different link.'),
-                                              backgroundColor: Colors.red,
-                                              duration: Duration(seconds: 4),
-                                            ),
+                                          AppNotification.showError(
+                                            context,
+                                            'Failed to save. Server is not responding. Please try again later or use a different link.',
+                                            duration: const Duration(seconds: 4),
                                           );
                                         }
                                       }
                                     } catch (e) {
                                       // Показываем техническую ошибку при исключении
                                       if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Failed to save. Server is not responding. Please try again later or use a different link.'),
-                                            backgroundColor: Colors.red,
-                                            duration: Duration(seconds: 4),
-                                          ),
+                                        AppNotification.showError(
+                                          context,
+                                          'Failed to save. Server is not responding. Please try again later or use a different link.',
+                                          duration: const Duration(seconds: 4),
                                         );
                                       }
                                     }

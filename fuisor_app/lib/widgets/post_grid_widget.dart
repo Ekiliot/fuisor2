@@ -9,6 +9,7 @@ import '../screens/comments_screen.dart';
 import '../screens/main_screen.dart';
 import '../services/api_service.dart';
 import 'cached_network_image_with_signed_url.dart';
+import '../widgets/app_notification.dart';
 
 class PostGridWidget extends StatefulWidget {
   final List<Post> posts;
@@ -62,12 +63,7 @@ class _PostGridWidgetState extends State<PostGridWidget> {
       
       if (accessToken == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to like posts'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppNotification.showError(context, 'Please login to like posts');
         }
         return;
       }
@@ -98,12 +94,9 @@ class _PostGridWidgetState extends State<PostGridWidget> {
           _likedPosts[post.id] = post.isLiked;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to like post: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
+        AppNotification.showError(
+          context,
+          'Failed to like post: $e',
         );
       }
     }
@@ -116,12 +109,7 @@ class _PostGridWidgetState extends State<PostGridWidget> {
       
       if (accessToken == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to save posts'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppNotification.showError(context, 'Please login to save posts');
         }
         return;
       }
@@ -147,12 +135,9 @@ class _PostGridWidgetState extends State<PostGridWidget> {
           _savedPosts[post.id] = saved;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(saved ? 'Post saved' : 'Post unsaved'),
-            backgroundColor: const Color(0xFF0095F6),
-            duration: const Duration(seconds: 1),
-          ),
+        AppNotification.showSuccess(
+          context,
+          saved ? 'Post saved' : 'Post unsaved',
         );
       }
     } catch (e) {
@@ -163,12 +148,9 @@ class _PostGridWidgetState extends State<PostGridWidget> {
           _savedPosts[post.id] = post.isSaved;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${_savedPosts[post.id] ?? post.isSaved ? "unsave" : "save"} post: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
+        AppNotification.showError(
+          context,
+          'Failed to ${_savedPosts[post.id] ?? post.isSaved ? "unsave" : "save"} post: $e',
         );
       }
     }
@@ -426,22 +408,15 @@ class _PostGridWidgetState extends State<PostGridWidget> {
       } else {
         print('PostGridWidget: MainScreenState not found');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to open Shorts'),
-              backgroundColor: Colors.red,
-            ),
-          );
+        AppNotification.showError(context, 'Failed to open Shorts');
         }
       }
     } catch (e) {
       print('PostGridWidget: Error opening Shorts: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open Shorts: $e'),
-            backgroundColor: Colors.red,
-          ),
+        AppNotification.showError(
+          context,
+          'Failed to open Shorts: $e',
         );
       }
     }

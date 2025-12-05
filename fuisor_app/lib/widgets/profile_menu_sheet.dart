@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../widgets/safe_avatar.dart';
 import '../screens/login_screen.dart';
 import '../screens/settings_screen.dart';
+import '../widgets/app_notification.dart';
 
 class ProfileMenuSheet extends StatelessWidget {
   const ProfileMenuSheet({Key? key}) : super(key: key);
@@ -113,11 +114,9 @@ class ProfileMenuSheet extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(context);
                   // TODO: Navigate to analytics screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Analytics coming soon!'),
-                      backgroundColor: Color(0xFF0095F6),
-                    ),
+                  AppNotification.showInfo(
+                    context,
+                    'Analytics coming soon!',
                   );
                 },
               ),

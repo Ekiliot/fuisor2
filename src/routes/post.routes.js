@@ -17,6 +17,15 @@ const upload = multer({
   },
 });
 
+// Helper function to transform post with coauthor data
+function transformPostWithCoauthor(post) {
+  return {
+    ...post,
+    coauthor: post.post_coauthors?.[0]?.coauthor || null,
+    post_coauthors: undefined // Remove the raw coauthors array
+  };
+}
+
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
   if (req.method === 'POST') {
@@ -42,7 +51,10 @@ router.get('/', validateAuth, async (req, res) => {
       .select(`
         *,
         profiles:user_id (username, name, avatar_url),
-        likes(count)
+        likes(count),
+        post_coauthors!left (
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        )
       `, { count: 'exact' })
       .is('expires_at', null) // Исключаем сторис (посты с expires_at)
       .order('created_at', { ascending: false })
@@ -62,13 +74,16 @@ router.get('/', validateAuth, async (req, res) => {
 
     const likedPostIds = new Set(userLikes.map(like => like.post_id));
 
-    // Transform data to include likes count and is_liked status
-    const postsWithLikes = data.map(post => ({
-      ...post,
-      likes_count: post.likes?.[0]?.count || 0,
-      is_liked: likedPostIds.has(post.id),
-      likes: undefined // Remove the likes array from response
-    }));
+    // Transform data to include likes count, is_liked status, and coauthor
+    const postsWithLikes = data.map(post => {
+      const transformed = transformPostWithCoauthor(post);
+      return {
+        ...transformed,
+        likes_count: post.likes?.[0]?.count || 0,
+        is_liked: likedPostIds.has(post.id),
+        likes: undefined // Remove the likes array from response
+      };
+    });
 
     res.json({
       posts: postsWithLikes,
@@ -328,11 +343,46 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       hasThumbnailUrl: !!req.body.thumbnail_url,
     });
     
-    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude } = req.body;
+    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude, coauthors, external_link_url, external_link_text } = req.body;
 
     if (!media_url) {
       logger.postError('No media URL provided', { userId: req.user.id });
       return res.status(400).json({ message: 'Media URL is required' });
+    }
+
+    // Validate coauthors (maximum 1)
+    if (coauthors && Array.isArray(coauthors)) {
+      if (coauthors.length > 1) {
+        logger.postError('Too many coauthors', { coauthorsCount: coauthors.length, userId: req.user.id });
+        return res.status(400).json({ 
+          message: 'Maximum 1 coauthor per post is allowed' 
+        });
+      }
+    }
+
+    // Validate external link if provided
+    if (external_link_url) {
+      try {
+        new URL(external_link_url);
+      } catch (urlError) {
+        logger.postError('Invalid external link URL', { external_link_url, userId: req.user.id });
+        return res.status(400).json({ 
+          message: 'Invalid external link URL format' 
+        });
+      }
+    }
+
+    // Validate external link text (6-8 characters)
+    if (external_link_text) {
+      if (external_link_text.length < 6 || external_link_text.length > 8) {
+        logger.postError('Invalid external link text length', { 
+          length: external_link_text.length, 
+          userId: req.user.id 
+        });
+        return res.status(400).json({ 
+          message: 'External link text must be between 6 and 8 characters' 
+        });
+      }
     }
 
     // Validate media type
@@ -434,6 +484,12 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       postData.latitude = parseFloat(latitude);
       postData.longitude = parseFloat(longitude);
     }
+
+    // Add external link if provided
+    if (external_link_url) {
+      postData.external_link_url = external_link_url;
+      postData.external_link_text = external_link_text || null;
+    }
     
     const { data, error } = await supabaseAdmin
       .from('posts')
@@ -447,6 +503,48 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
     }
 
     logger.post('Post created successfully', { postId: data.id, userId: req.user.id });
+
+    // Process coauthors if provided
+    if (coauthors && Array.isArray(coauthors) && coauthors.length > 0) {
+      const coauthorUsername = coauthors[0]; // Only one coauthor allowed
+      
+      // Find user by username or user_id
+      let coauthorQuery = supabaseAdmin
+        .from('profiles')
+        .select('id, username');
+      
+      // Check if it's a UUID (user_id) or username
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(coauthorUsername);
+      
+      if (isUUID) {
+        coauthorQuery = coauthorQuery.eq('id', coauthorUsername);
+      } else {
+        coauthorQuery = coauthorQuery.eq('username', coauthorUsername);
+      }
+      
+      const { data: coauthorUser } = await coauthorQuery.single();
+
+      if (coauthorUser && coauthorUser.id !== req.user.id) {
+        // Insert coauthor
+        await supabaseAdmin
+          .from('post_coauthors')
+          .insert([{
+            post_id: data.id,
+            coauthor_user_id: coauthorUser.id
+          }]);
+
+        // Create coauthor notification
+        await createNotification(coauthorUser.id, req.user.id, 'coauthor', data.id, null, {
+          actorName: req.user.name || req.user.username,
+        });
+
+        logger.post('Coauthor added to post', { 
+          postId: data.id, 
+          coauthorId: coauthorUser.id,
+          coauthorUsername: coauthorUser.username 
+        });
+      }
+    }
 
     // Process mentions if provided
     if (mentions && Array.isArray(mentions)) {
@@ -619,7 +717,10 @@ router.get('/feed', validateAuth, async (req, res) => {
       .select(`
         *,
         profiles:user_id (username, name, avatar_url),
-        likes(count)
+        likes(count),
+        post_coauthors!left (
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        )
       `, { count: 'exact' })
       .is('expires_at', null); // Исключаем сторис (посты с expires_at)
 
@@ -693,14 +794,17 @@ router.get('/feed', validateAuth, async (req, res) => {
       });
     }
 
-    // Transform data to include likes count, comments count and is_liked status
-    const postsWithLikes = data.map(post => ({
-      ...post,
-      likes_count: post.likes?.[0]?.count || 0,
-      comments_count: commentsCountMap[post.id] || 0,
-      is_liked: likedPostIds.has(post.id),
-      likes: undefined // Remove the likes array from response
-    }));
+    // Transform data to include likes count, comments count, is_liked status, and coauthor
+    const postsWithLikes = data.map(post => {
+      const transformed = transformPostWithCoauthor(post);
+      return {
+        ...transformed,
+        likes_count: post.likes?.[0]?.count || 0,
+        comments_count: commentsCountMap[post.id] || 0,
+        is_liked: likedPostIds.has(post.id),
+        likes: undefined // Remove the likes array from response
+      };
+    });
 
     logger.recommendations('Feed response sent successfully');
     res.json({

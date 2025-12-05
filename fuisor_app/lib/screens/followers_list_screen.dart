@@ -10,6 +10,7 @@ import '../models/user.dart';
 import '../widgets/safe_avatar.dart';
 import '../widgets/animated_app_bar_title.dart';
 import 'profile_screen.dart';
+import '../widgets/app_notification.dart';
 
 class FollowersListScreen extends StatefulWidget {
   final String userId;
@@ -185,12 +186,9 @@ class _FollowersListScreenState extends State<FollowersListScreen> {
     } catch (e) {
       print('Error toggling follow: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${_followStatus[user.id] == true ? 'unfollow' : 'follow'}: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
+        AppNotification.showError(
+          context,
+          'Failed to ${_followStatus[user.id] == true ? 'unfollow' : 'follow'}: $e',
         );
       }
     } finally {

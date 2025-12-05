@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../services/api_service.dart';
 import '../services/fcm_service.dart';
+import '../widgets/app_notification.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 import 'notification_settings_screen.dart';
@@ -90,16 +91,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              value 
-                ? 'Notifications enabled'
-                : 'Notifications disabled',
-            ),
-            backgroundColor: const Color(0xFF0095F6),
-            duration: const Duration(seconds: 2),
-          ),
+        AppNotification.showSuccess(
+          context,
+          value ? 'Notifications enabled' : 'Notifications disabled',
         );
       }
     } catch (e) {
@@ -110,13 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showError(context, 'Error: ${e.toString()}');
       }
     }
   }
@@ -164,16 +152,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        AppNotification.showSuccess(
+          context,
               value 
                 ? 'Location sharing enabled. Friends can see your location.'
                 : 'Location sharing disabled.',
-            ),
-            backgroundColor: const Color(0xFF0095F6),
-            duration: const Duration(seconds: 2),
-          ),
         );
       }
     } catch (e) {
@@ -184,13 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showError(context, 'Error: ${e.toString()}');
       }
     }
   }

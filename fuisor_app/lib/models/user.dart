@@ -114,6 +114,9 @@ class Post {
   final double? longitude; // For geo-posts
   final String? visibility; // 'public', 'friends', 'private'
   final DateTime? expiresAt; // Expiration time for geo-posts
+  final User? coauthor; // Post coauthor
+  final String? externalLinkUrl; // External link URL
+  final String? externalLinkText; // External link button text (6-8 characters)
 
   Post({
     required this.id,
@@ -136,6 +139,9 @@ class Post {
     this.longitude,
     this.visibility,
     this.expiresAt,
+    this.coauthor,
+    this.externalLinkUrl,
+    this.externalLinkText,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -167,6 +173,9 @@ class Post {
       longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
       visibility: json['visibility'],
       expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at']) : null,
+      coauthor: json['coauthor'] != null ? User.fromJson(json['coauthor']) : null,
+      externalLinkUrl: json['external_link_url'],
+      externalLinkText: json['external_link_text'],
     );
   }
 
@@ -192,6 +201,9 @@ class Post {
       'longitude': longitude,
       'visibility': visibility,
       'expires_at': expiresAt?.toIso8601String(),
+      'coauthor': coauthor?.toJson(),
+      'external_link_url': externalLinkUrl,
+      'external_link_text': externalLinkText,
     };
   }
 
@@ -216,6 +228,9 @@ class Post {
     double? longitude,
     String? visibility,
     DateTime? expiresAt,
+    User? coauthor,
+    String? externalLinkUrl,
+    String? externalLinkText,
   }) {
     return Post(
       id: id ?? this.id,
@@ -238,6 +253,9 @@ class Post {
       longitude: longitude ?? this.longitude,
       visibility: visibility ?? this.visibility,
       expiresAt: expiresAt ?? this.expiresAt,
+      coauthor: coauthor ?? this.coauthor,
+      externalLinkUrl: externalLinkUrl ?? this.externalLinkUrl,
+      externalLinkText: externalLinkText ?? this.externalLinkText,
     );
   }
 }

@@ -13,10 +13,12 @@ import '../widgets/stories_widget.dart';
 import '../widgets/geo_posts_widget.dart';
 import '../widgets/skeleton_post_card.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../widgets/app_notification.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
 import 'camera_screen.dart';
 import 'map_screen.dart';
+import 'feed_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,10 +37,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _geoAnimationController2;
   late Animation<double> _geoAnimation1;
   late Animation<double> _geoAnimation2;
+  
+  // Tab controller for feed tabs
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+
+    // Инициализация TabController для вкладок
+    _tabController = TabController(length: 2, vsync: this);
 
     // Инициализация контроллеров анимации для Geo кнопки
     _geoAnimationController1 = AnimationController(
@@ -85,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _refreshController.dispose();
     _geoAnimationController1.dispose();
     _geoAnimationController2.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -143,13 +152,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Feed updated!'),
-            backgroundColor: Color(0xFF0095F6),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showSuccess(context, 'Feed updated!');
       }
     } catch (e) {
       if (mounted) {
@@ -160,13 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _isRefreshing = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update feed: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to update feed: $e', duration: const Duration(seconds: 3));
       }
     }
   }
@@ -180,6 +177,153 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       print('Error getting access token: $e');
       return null;
     }
+  }
+
+  // Создание виджета вкладок (For You / News)
+  Widget _buildFeedTabs() {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (context, child) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              // Вкладки (For You / News)
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // For You Tab
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_tabController.index != 0) {
+                              _tabController.animateTo(0);
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabController.index == 0
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  EvaIcons.heart,
+                                  color: _tabController.index == 0
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.6),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'For You',
+                                  style: TextStyle(
+                                    color: _tabController.index == 0
+                                        ? Colors.white
+                                        : Colors.white.withOpacity(0.6),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // News Tab
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_tabController.index != 1) {
+                              _tabController.animateTo(1);
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabController.index == 1
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  EvaIcons.fileText,
+                                  color: _tabController.index == 1
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.6),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'News',
+                                  style: TextStyle(
+                                    color: _tabController.index == 1
+                                        ? Colors.white
+                                        : Colors.white.withOpacity(0.6),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Кнопка настроек
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const FeedSettingsScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    EvaIcons.settings2Outline,
+                    color: Colors.white.withOpacity(0.8),
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // Создание анимированной кнопки Geo для header
@@ -527,12 +671,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           // Показываем скелетон пока идет загрузка (первая загрузка или обычная загрузка при пустом списке)
           if ((isInitialLoading || isLoading) && feedPosts.isEmpty) {
             return ListView.builder(
-              itemCount: 4, // Показываем Stories, GeoPosts и 2 скелетона
+              itemCount: 5, // Показываем Stories, Tabs и 3 скелетона
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const StoriesWidget();
                 }
                 if (index == 1) {
+                  return _buildFeedTabs();
+                }
+                if (index == 2) {
                   return const SizedBox.shrink(); // GeoPosts не показываем при загрузке
                 }
                 return const ShimmerSkeletonPostCard();
@@ -613,7 +760,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           // Вычисляем позиции для гео-постов (через каждые 3-5 обычных постов)
           final geoPostsPositions = _calculateGeoPostsPositions(feedPosts.length);
-          final totalItems = 1 + feedPosts.length + geoPostsPositions.length; // Stories + Posts + GeoPosts
+          final totalItems = 2 + feedPosts.length + geoPostsPositions.length; // Stories + Tabs + Posts + GeoPosts
           
           return ClipRect(
             child: SmartRefresher(
@@ -654,10 +801,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   );
                 }
                 
-                // Проверяем, является ли эта позиция гео-постом
-                final adjustedIndex = index - 1; // Убираем Stories из индекса
-                if (geoPostsPositions.contains(adjustedIndex)) {
+                // Feed tabs на второй позиции (после Stories)
+                if (index == 1) {
                   return RepaintBoundary(
+                    child: _buildFeedTabs(),
+                  );
+                }
+                
+                // Показываем контент в зависимости от выбранной вкладки
+                if (_tabController.index == 0) {
+                  // For You tab - показываем обычный feed
+                  // Проверяем, является ли эта позиция гео-постом
+                  final adjustedIndex = index - 2; // Убираем Stories и Tabs из индекса
+                  if (geoPostsPositions.contains(adjustedIndex)) {
+                    return RepaintBoundary(
                     child: const GeoPostsWidget(),
                   );
                 }
@@ -693,6 +850,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 );
+                } else {
+                  // News tab - пока пустой
+                  if (index == 2) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Text(
+                          'News feed coming soon',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }
               },
               ),
             ),

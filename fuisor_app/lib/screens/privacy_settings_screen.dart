@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../providers/auth_provider.dart';
 import '../utils/email_utils.dart';
 import '../widgets/animated_app_bar_title.dart';
+import '../widgets/app_notification.dart';
 import 'change_password_screen.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
@@ -77,16 +78,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       await _apiService.updateOnlineStatusSetting(value);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              value 
-                ? 'Activity status enabled' 
-                : 'Activity status disabled',
-            ),
-            backgroundColor: const Color(0xFF262626),
-            duration: const Duration(seconds: 2),
-          ),
+        AppNotification.showSuccess(
+          context,
+          value ? 'Activity status enabled' : 'Activity status disabled',
         );
       }
     } catch (e) {
@@ -97,13 +91,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update setting'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        AppNotification.showError(context, 'Failed to update setting');
       }
     }
   }
@@ -270,12 +258,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             title: 'Download Your Data',
             subtitle: 'Get a copy of your data',
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Data download feature coming soon!'),
-                  backgroundColor: Color(0xFF0095F6),
-                ),
-              );
+              AppNotification.showInfo(context, 'Data download feature coming soon!');
             },
           ),
           _NavTile(
@@ -315,12 +298,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Account deletion feature coming soon!'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              AppNotification.showError(context, 'Account deletion feature coming soon!');
             },
             child: const Text(
               'Delete',

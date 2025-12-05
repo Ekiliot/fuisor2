@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import '../providers/auth_provider.dart';
 import '../widgets/safe_avatar.dart';
+import '../widgets/app_notification.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -98,11 +99,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _selectedImage = null;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully!'),
-            backgroundColor: Color(0xFF0095F6),
-          ),
+        AppNotification.showSuccess(
+          context,
+          'Profile updated successfully!',
         );
         Navigator.of(context).pop();
       } else if (authProvider.error != null) {

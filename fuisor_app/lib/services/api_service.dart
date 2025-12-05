@@ -12,8 +12,8 @@ class ApiService {
   // Для веб-версии и iOS симулятора: 'http://localhost:3000/api'
   // Для Android эмулятора: 'http://10.0.2.2:3000/api'
   // Для реального устройства: 'http://192.168.X.X:3000/api' (замените X.X на IP вашего ПК)
-  // Production API URL (Vercel): 'https://fuisor2.vercel.app/api'
-  static const String baseUrl = 'https://sonetapp.vercel.app/api';
+  // Production API URL: 'https://api.sonetapp.tech'
+  static const String baseUrl = 'https://api.sonetapp.tech/api';
   String? _accessToken;
 
   void setAccessToken(String? token) {
@@ -951,6 +951,9 @@ class ApiService {
     double? longitude,
     String? visibility,
     int? expiresInHours,
+    String? coauthor,
+    String? externalLinkUrl,
+    String? externalLinkText,
   }) async {
     try {
       print('ApiService: Creating post with media URL: $mediaUrl');
@@ -971,6 +974,9 @@ class ApiService {
         if (longitude != null) 'longitude': longitude,
         if (visibility != null) 'visibility': visibility,
         if (expiresInHours != null) 'expires_in_hours': expiresInHours,
+        if (coauthor != null) 'coauthors': [coauthor],
+        if (externalLinkUrl != null) 'external_link_url': externalLinkUrl,
+        if (externalLinkText != null) 'external_link_text': externalLinkText,
       };
       
       print('ApiService: Request body: ${jsonEncode(requestBody)}');

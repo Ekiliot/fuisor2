@@ -887,25 +887,125 @@ class ShortsScreenState extends State<ShortsScreen> with WidgetsBindingObserver,
 
           return Column(
             children: [
-              // TabBar с SafeArea для защиты от системного трея
+              // Кастомные вкладки в стиле профиля
               SafeArea(
                 bottom: false,
                 child: Container(
-                  color: Colors.black,
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorColor: const Color(0xFF0095F6),
-                    labelColor: Colors.white,
-                    unselectedLabelColor: Colors.grey,
-                    onTap: (index) {
-                      // Если нажали на уже активную вкладку, обновляем ленту
-                      if (index == _currentTabIndex) {
-                        refreshFeed();
-                      }
-                    },
-                    tabs: const [
-                      Tab(text: 'Following'),
-                      Tab(text: 'Recommendations'),
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Following Tab
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_tabController.index != 0) {
+                              _tabController.animateTo(0);
+                            } else {
+                              // Если нажали на уже активную вкладку, обновляем ленту
+                              refreshFeed();
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabController.index == 0
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    EvaIcons.peopleOutline,
+                                    color: _tabController.index == 0
+                                        ? Colors.white
+                                        : Colors.white.withOpacity(0.6),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Following',
+                                    style: TextStyle(
+                                      color: _tabController.index == 0
+                                          ? Colors.white
+                                          : Colors.white.withOpacity(0.6),
+                                      fontSize: 14,
+                                      fontWeight: _tabController.index == 0
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Recommendations Tab
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_tabController.index != 1) {
+                              _tabController.animateTo(1);
+                            } else {
+                              // Если нажали на уже активную вкладку, обновляем ленту
+                              refreshFeed();
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabController.index == 1
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    EvaIcons.compassOutline,
+                                    color: _tabController.index == 1
+                                        ? Colors.white
+                                        : Colors.white.withOpacity(0.6),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Recommendations',
+                                    style: TextStyle(
+                                      color: _tabController.index == 1
+                                          ? Colors.white
+                                          : Colors.white.withOpacity(0.6),
+                                      fontSize: 14,
+                                      fontWeight: _tabController.index == 1
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),

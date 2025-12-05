@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/user.dart' show Post, Comment;
+import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 
@@ -699,6 +699,10 @@ class PostsProvider extends ChangeNotifier {
     double? longitude, // Геолокация для geo-posts
     String? visibility, // Видимость поста: 'public', 'friends', 'private'
     int? expiresInHours, // Время жизни поста в часах: 12, 24, 48
+    User? currentUser, // Данные текущего пользователя для заполнения поста
+    String? coauthor, // Coauthor user ID
+    String? externalLinkUrl, // External link URL
+    String? externalLinkText, // External link button text
   }) async {
     try {
       print('PostsProvider: createPost called');
@@ -733,12 +737,44 @@ class PostsProvider extends ChangeNotifier {
         longitude: longitude,
         visibility: visibility,
         expiresInHours: expiresInHours,
+        coauthor: coauthor,
+        externalLinkUrl: externalLinkUrl,
+        externalLinkText: externalLinkText,
       );
 
       print('PostsProvider: Post created successfully, adding to lists...');
+      
+      // Если у поста нет данных пользователя и они переданы через параметр, добавляем их
+      Post postToAdd = newPost;
+      if ((newPost.user == null || newPost.user!.username.isEmpty) && currentUser != null) {
+        print('PostsProvider: Adding current user data to post');
+        postToAdd = Post(
+          id: newPost.id,
+          userId: newPost.userId,
+          caption: newPost.caption,
+          mediaUrl: newPost.mediaUrl,
+          mediaType: newPost.mediaType,
+          thumbnailUrl: newPost.thumbnailUrl,
+          likesCount: newPost.likesCount,
+          commentsCount: newPost.commentsCount,
+          mentions: newPost.mentions,
+          hashtags: newPost.hashtags,
+          createdAt: newPost.createdAt,
+          updatedAt: newPost.updatedAt,
+          user: currentUser, // Добавляем данные текущего пользователя
+          comments: newPost.comments,
+          isLiked: newPost.isLiked,
+          isSaved: newPost.isSaved,
+          latitude: newPost.latitude,
+          longitude: newPost.longitude,
+          visibility: newPost.visibility,
+          expiresAt: newPost.expiresAt,
+        );
+      }
+      
       // Добавляем новый пост в начало списка
-      _posts.insert(0, newPost);
-      _feedPosts.insert(0, newPost);
+      _posts.insert(0, postToAdd);
+      _feedPosts.insert(0, postToAdd);
       
       // Обновляем счетчик постов
       _currentPage = 1;
