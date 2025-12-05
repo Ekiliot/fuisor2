@@ -598,9 +598,7 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
         *,
         profiles:user_id (username, name, avatar_url),
         likes(count),
-        post_coauthors!left (
-          profiles:coauthor_user_id (id, username, name, avatar_url)
-        )
+        coauthor:coauthor_user_id (id, username, name, avatar_url)
       `, { count: 'exact' })
       .eq('user_id', id)
       .is('expires_at', null) // Исключаем сторис (посты с expires_at)
@@ -625,47 +623,13 @@ router.get('/:id/posts', validateAuth, validateUUID, async (req, res) => {
       }
     }
 
-    // Get coauthors for all posts separately
-    const postIds = data.map(post => post.id);
-    const { data: coauthorsData, error: coauthorsError } = await supabaseAdmin
-      .from('post_coauthors')
-      .select(`
-        post_id,
-        profiles:coauthor_user_id (id, username, name, avatar_url)
-      `)
-      .in('post_id', postIds);
-
-    // Create a map of post_id -> coauthor
-    const coauthorsMap = {};
-    if (coauthorsData && !coauthorsError) {
-      coauthorsData.forEach(item => {
-        if (item.profiles) {
-          coauthorsMap[item.post_id] = item.profiles;
-        }
-      });
-    }
-
     // Transform data to include likes count, is_liked status, and coauthor
-    const postsWithLikes = data.map(post => {
-      // Try to get coauthor from JOIN first, then from separate query
-      let coauthor = null;
-      if (post.post_coauthors && Array.isArray(post.post_coauthors) && post.post_coauthors.length > 0) {
-        coauthor = post.post_coauthors[0]?.profiles || post.post_coauthors[0]?.coauthor || null;
-      }
-      // Fallback to separate query result
-      if (!coauthor && coauthorsMap[post.id]) {
-        coauthor = coauthorsMap[post.id];
-      }
-
-      return {
-        ...post,
-        likes_count: post.likes?.[0]?.count || 0,
-        is_liked: likedPostIds.has(post.id),
-        likes: undefined, // Remove the likes array from response
-        coauthor: coauthor,
-        post_coauthors: undefined // Remove the raw coauthors array
-      };
-    });
+    const postsWithLikes = data.map(post => ({
+      ...post,
+      likes_count: post.likes?.[0]?.count || 0,
+      is_liked: likedPostIds.has(post.id),
+      likes: undefined // Remove the likes array from response
+    }));
 
     res.json({
       posts: postsWithLikes,
