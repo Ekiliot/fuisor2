@@ -55,6 +55,9 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
   
   // Анимация для аватарок соавторов
   late AnimationController _avatarSwapController;
+  late Animation<double> _avatarScaleAnimation;
+  late Animation<Offset> _avatarSlideAnimation;
+  late Animation<double> _avatarOpacityAnimation;
   Timer? _avatarSwapTimer;
   bool _showAuthorFirst = true;
 
@@ -95,17 +98,89 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
     
     // Анимация для аватарок соавторов
     _avatarSwapController = AnimationController(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     
+    // Анимация смены мест: передняя уходит назад, задняя выходит вперед, затем возврат
+    // Scale: 1.0 -> 0.85 -> 1.0 (передняя уменьшается, затем возвращается)
+    _avatarScaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.85)
+          .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 0.4,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.85, end: 0.85)
+          .chain(CurveTween(curve: Curves.linear)),
+        weight: 0.2,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.85, end: 1.0)
+          .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 0.4,
+      ),
+    ]).animate(_avatarSwapController);
+    
+    // Slide: (0,0) -> (10, 0) -> (0, 0) (сдвигается вправо, затем возвращается)
+    _avatarSlideAnimation = TweenSequence<Offset>([
+      TweenSequenceItem(
+        tween: Tween<Offset>(
+          begin: Offset.zero,
+          end: const Offset(10, 0),
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 0.4,
+      ),
+      TweenSequenceItem(
+        tween: Tween<Offset>(
+          begin: const Offset(10, 0),
+          end: const Offset(10, 0),
+        ).chain(CurveTween(curve: Curves.linear)),
+        weight: 0.2,
+      ),
+      TweenSequenceItem(
+        tween: Tween<Offset>(
+          begin: const Offset(10, 0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 0.4,
+      ),
+    ]).animate(_avatarSwapController);
+    
+    // Opacity: 1.0 -> 0.6 -> 1.0 (тускнеет, затем возвращается)
+    _avatarOpacityAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.6)
+          .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 0.4,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.6, end: 0.6)
+          .chain(CurveTween(curve: Curves.linear)),
+        weight: 0.2,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.6, end: 1.0)
+          .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 0.4,
+      ),
+    ]).animate(_avatarSwapController);
+    
     // Запускаем таймер смены аватарок только если есть соавтор
     if (widget.post.coauthor != null) {
-      _avatarSwapTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-        if (mounted) {
+      // Слушаем завершение анимации, чтобы изменить порядок только после завершения
+      _avatarSwapController.addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
           setState(() {
             _showAuthorFirst = !_showAuthorFirst;
           });
+          _avatarSwapController.reset();
+        }
+      });
+      
+      _avatarSwapTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (mounted) {
+          // Запускаем анимацию, порядок изменится после завершения
           _avatarSwapController.forward(from: 0.0);
         }
       });
@@ -379,8 +454,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                 _buildAvatars(),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
                       // Name and username in capsule
                       Container(
@@ -391,8 +465,10 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                         ),
                         child: _buildNamesSection(),
                       ),
-                      const SizedBox(height: 2),
+                      const Spacer(),
+                      // Time and edit icon
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             _formatTimeAgo(widget.post.createdAt),
@@ -403,15 +479,11 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             ),
                           ),
                           if (widget.post.createdAt != widget.post.updatedAt) ...[
-                            const SizedBox(width: 4),
-                            const Text(
-                              '• Изменено',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Colors.white,
-                                fontStyle: FontStyle.italic,
-                              ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              EvaIcons.editOutline,
+                              size: 14,
+                              color: Colors.white,
                             ),
                           ],
                         ],
@@ -991,39 +1063,98 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
       return _buildSingleAvatar(widget.post.user?.avatarUrl);
     }
     
-    // Two overlapping avatars with animation
+    // Two overlapping avatars with card shuffle animation
     return AnimatedBuilder(
       animation: _avatarSwapController,
       builder: (context, child) {
-        final firstAvatar = _showAuthorFirst ? widget.post.user?.avatarUrl : widget.post.coauthor?.avatarUrl;
-        final secondAvatar = _showAuthorFirst ? widget.post.coauthor?.avatarUrl : widget.post.user?.avatarUrl;
+        // Определяем, какая аватарка сейчас спереди (ДО смены, текущее состояние)
+        final currentFrontAvatar = _showAuthorFirst ? widget.post.user?.avatarUrl : widget.post.coauthor?.avatarUrl;
+        final currentBackAvatar = _showAuthorFirst ? widget.post.coauthor?.avatarUrl : widget.post.user?.avatarUrl;
+        
+        // Во время анимации: текущая передняя уходит назад, текущая задняя выходит вперед
+        // После завершения анимации _showAuthorFirst изменится, и порядок зафиксируется
+        
+        // Анимации для аватарки, которая уходит назад (текущая передняя - слева)
+        final goingBackScale = _avatarScaleAnimation.value; // 1.0 -> 0.85 -> 1.0
+        final goingBackSlide = _avatarSlideAnimation.value; // (0,0) -> (10, 0) -> (0, 0)
+        // Если аватарка отсутствует, всегда opacity = 1.0
+        final goingBackOpacity = (currentFrontAvatar == null || currentFrontAvatar.isEmpty) 
+            ? 1.0 
+            : _avatarOpacityAnimation.value; // 1.0 -> 0.6 -> 1.0
+        
+        // Анимации для аватарки, которая выходит вперед (текущая задняя - справа) - инвертируем
+        final comingForwardScale = 0.85 + (1.0 - _avatarScaleAnimation.value) * 0.15; // 0.85 -> 1.0 -> 0.85
+        final comingForwardSlide = Offset(-_avatarSlideAnimation.value.dx, 0); // (0, 0) -> (-10, 0) -> (0, 0)
+        // Если аватарка отсутствует, всегда opacity = 1.0
+        final comingForwardOpacity = (currentBackAvatar == null || currentBackAvatar.isEmpty)
+            ? 1.0
+            : 0.6 + (1.0 - _avatarOpacityAnimation.value) * 0.4; // 0.6 -> 1.0 -> 0.6
         
         return SizedBox(
           width: 62,
           height: 48,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              // Back avatar
+              // Back avatar (справа) - ВСЕГДА внизу Stack (задний план)
+              // Выходит вперед во время анимации
               Positioned(
                 right: 0,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: 1.0 - _avatarSwapController.value * 0.3,
-                  child: _buildSingleAvatar(secondAvatar, size: 42),
+                child: Transform.translate(
+                  offset: comingForwardSlide,
+                  child: Transform.scale(
+                    scale: comingForwardScale,
+                    child: Opacity(
+                      opacity: comingForwardOpacity,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.black,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3 * comingForwardOpacity),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _buildSingleAvatar(currentBackAvatar, size: 42),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              // Front avatar
+              // Front avatar (слева) - ВСЕГДА сверху Stack (передний план)
+              // Уходит назад во время анимации
               Positioned(
                 left: 0,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: 0.7 + _avatarSwapController.value * 0.3,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black, width: 2),
+                child: Transform.translate(
+                  offset: goingBackSlide,
+                  child: Transform.scale(
+                    scale: goingBackScale,
+                    child: Opacity(
+                      opacity: goingBackOpacity,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.black,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3 * goingBackOpacity),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _buildSingleAvatar(currentFrontAvatar),
+                      ),
                     ),
-                    child: _buildSingleAvatar(firstAvatar),
                   ),
                 ),
               ),
