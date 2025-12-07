@@ -7,6 +7,7 @@ import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/online_status_provider.dart';
+import 'providers/recommendation_provider.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'services/message_cache_service.dart';
@@ -83,6 +84,7 @@ class SonetApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PostsProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsProvider(apiService)),
         ChangeNotifierProvider(create: (_) => OnlineStatusProvider()),
+        ChangeNotifierProvider(create: (_) => RecommendationProvider()),
       ],
       child: MaterialApp(
         title: 'Sonet',

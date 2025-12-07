@@ -788,12 +788,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Hashtags are stored directly in the caption text
       final captionText = _captionController.text.trim();
       
-      // Получаем геолокацию только если включен Post Booster
+      // Получаем геолокацию только если включен Geo boost
       double? latitude;
       double? longitude;
       if (_locationInfo != null && _locationVisibility.isNotEmpty) {
         try {
-          print('CreatePostScreen: Getting current location for Post Booster...');
+          print('CreatePostScreen: Getting current location for Geo boost...');
           bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
           if (serviceEnabled) {
             LocationPermission permission = await Geolocator.checkPermission();

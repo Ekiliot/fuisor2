@@ -8,17 +8,20 @@ import 'dart:ui';
 import '../providers/posts_provider.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/recommendation_provider.dart';
 import '../widgets/post_card.dart';
 import '../widgets/stories_widget.dart';
 import '../widgets/geo_posts_widget.dart';
 import '../widgets/skeleton_post_card.dart';
 import '../widgets/animated_app_bar_title.dart';
 import '../widgets/app_notification.dart';
+import '../widgets/recommendation_prompt_sheet.dart';
 import 'activity_screen.dart';
 import 'chats_list_screen.dart';
 import 'camera_screen.dart';
 import 'map_screen.dart';
 import 'feed_settings_screen.dart';
+import 'recommendation_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -77,11 +80,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final accessToken = await _getAccessTokenFromAuthProvider();
+      
+      // Load recommendation settings
+      final recProvider = context.read<RecommendationProvider>();
+      await recProvider.loadSettings();
+      recProvider.startSuggestionsRefreshTimer();
+      
+      // Auto-detect location if enabled
+      if (recProvider.settings?.autoLocation == true) {
+        try {
+          await recProvider.autoDetectAndSave();
+        } catch (e) {
+          print('Error auto-detecting location on startup: $e');
+        }
+      }
+      
+      // Load feed
       context.read<PostsProvider>().loadFeed(refresh: true, accessToken: accessToken);
       
       // Load notifications to update unread count
       final authProvider = context.read<AuthProvider>();
       context.read<NotificationsProvider>().loadNotifications(refresh: true, authProvider: authProvider);
+      
+      // Show recommendation prompt if not shown yet
+      if (recProvider.settings != null && !recProvider.settings!.promptShown) {
+        await Future.delayed(const Duration(seconds: 1));
+        if (mounted) {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            builder: (context) => const RecommendationPromptSheet(),
+          );
+        }
+      }
     });
     
     _scrollController.addListener(_onScroll);
@@ -119,6 +150,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Сохраняем позицию скролла перед refresh
       if (_scrollController.hasClients) {
         _savedScrollPosition = _scrollController.position.pixels;
+      }
+      
+      // Auto-detect location if enabled
+      final recProvider = context.read<RecommendationProvider>();
+      if (recProvider.settings?.autoLocation == true) {
+        try {
+          await recProvider.autoDetectAndSave();
+        } catch (e) {
+          print('Error auto-detecting location on refresh: $e');
+        }
       }
       
       final postsProvider = context.read<PostsProvider>();
@@ -617,6 +658,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          // Recommendation settings button
+          Consumer<RecommendationProvider>(
+            builder: (context, recProvider, child) {
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.tune, size: 28),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RecommendationSettingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  // Explorer mode indicator
+                  if (recProvider.isExplorerModeActive)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.explore,
+                          size: 12,
+                          color: Colors.white,
                         ),
                       ),
                     ),

@@ -657,6 +657,28 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
   }
 });
 
+// Helper function: Calculate distance between two coordinates (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c; // Distance in meters
+}
+
+// Helper function: Shuffle array
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // Get feed posts (posts from followed users) - MUST be before /:id route
 router.get('/feed', validateAuth, async (req, res) => {
   try {
@@ -675,6 +697,25 @@ router.get('/feed', validateAuth, async (req, res) => {
     const to = from + limit - 1;
     const userId = req.user.id;
 
+    // Get user's recommendation settings
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('recommendation_enabled, recommendation_locations, recommendation_radius, explorer_mode_enabled, explorer_mode_expires_at, last_location_lat, last_location_lng')
+      .eq('id', userId)
+      .single();
+
+    if (profileError) {
+      logger.recommendationsError('Error getting user profile', profileError);
+    }
+
+    // Check if explorer mode is active
+    const isExplorerMode = userProfile?.explorer_mode_enabled && 
+                          userProfile?.explorer_mode_expires_at && 
+                          new Date(userProfile.explorer_mode_expires_at) > new Date();
+
+    // Check if personalized recommendations are enabled
+    const isPersonalizedRecommendations = userProfile?.recommendation_enabled && !isExplorerMode;
+
     // Определяем режим: рекомендации (все видео) или подписки (только от подписок)
     const isRecommendations = media_type === 'video' && following_only !== 'true';
     const isFollowingOnly = following_only === 'true' || (media_type !== 'video' && !following_only);
@@ -682,129 +723,259 @@ router.get('/feed', validateAuth, async (req, res) => {
     logger.recommendations('Feed mode', {
       isRecommendations: isRecommendations,
       isFollowingOnly: isFollowingOnly,
+      isExplorerMode: isExplorerMode,
+      isPersonalizedRecommendations: isPersonalizedRecommendations,
       mediaType: media_type
     });
 
-    // Get followed users (только если нужен режим подписок)
-    let followingIds = [];
-    if (isFollowingOnly) {
-    const { data: following, error: followingError } = await supabaseAdmin
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', userId);
+    let finalPosts = [];
+    let totalCount = 0;
 
-    if (followingError) {
-      logger.recommendationsError('Error getting following users', followingError);
-      throw followingError;
-    }
+    // EXPLORER MODE: 50% world, 30% Moldova, 20% nearby
+    if (isExplorerMode) {
+      logger.recommendations('Explorer mode active');
+      
+      const targetLimit = parseInt(limit);
+      const worldLimit = Math.ceil(targetLimit * 0.5);
+      const moldovaLimit = Math.ceil(targetLimit * 0.3);
+      const nearbyLimit = Math.ceil(targetLimit * 0.2);
 
-      followingIds = following.map(f => f.following_id);
-      // Always include own posts in feed when showing following
-    followingIds.push(userId);
-    }
-    
-    logger.recommendations('Feed preparation', {
-      followingCount: followingIds.length,
-      isRecommendations: isRecommendations,
-      isFollowingOnly: isFollowingOnly
-    });
+      // Get world posts (excluding Moldova)
+      const { data: worldPosts } = await supabaseAdmin
+        .from('posts')
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .is('expires_at', null)
+        .neq('country', 'Moldova')
+        .not('country', 'is', null)
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(worldLimit * 2);
 
-    // Строим запрос
-    let query = supabaseAdmin
-      .from('posts')
-      .select(`
-        *,
-        profiles:user_id (username, name, avatar_url),
-        likes(count),
-        coauthor:coauthor_user_id (id, username, name, avatar_url)
-      `, { count: 'exact' })
-      .is('expires_at', null); // Исключаем сторис (посты с expires_at)
+      // Get Moldova posts
+      const { data: moldovaPosts } = await supabaseAdmin
+        .from('posts')
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .is('expires_at', null)
+        .eq('country', 'Moldova')
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(moldovaLimit * 2);
 
-    // Фильтруем по типу медиа, если указан
-    if (media_type && (media_type === 'video' || media_type === 'image')) {
-      query = query.eq('media_type', media_type);
-      logger.recommendations(`Filtering by media_type: ${media_type}`);
-    }
+      // Get nearby posts (if user has location)
+      let nearbyPosts = [];
+      if (userProfile?.last_location_lat && userProfile?.last_location_lng) {
+        const { data: allPosts } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .limit(100);
 
-    // Для рекомендаций показываем ВСЕ видео (не фильтруем по подпискам)
-    // Для подписок фильтруем по подпискам
-    if (isRecommendations) {
-      // Рекомендации: показываем все видео от всех пользователей
-      logger.recommendations('Recommendations mode: showing all videos from all users');
-    } else if (isFollowingOnly) {
-      // Подписки: фильтруем по подпискам
-      if (followingIds.length > 0) {
-      query = query.in('user_id', followingIds);
-        logger.recommendations('Following mode: showing posts from followed users');
+        nearbyPosts = (allPosts || []).filter(post => {
+          const distance = calculateDistance(
+            userProfile.last_location_lat,
+            userProfile.last_location_lng,
+            post.latitude,
+            post.longitude
+          );
+          return distance >= 10000 && distance <= 50000; // 10-50 km
+        }).slice(0, nearbyLimit * 2);
+      }
+
+      // Shuffle and combine
+      const shuffledWorld = shuffleArray(worldPosts || []).slice(0, worldLimit);
+      const shuffledMoldova = shuffleArray(moldovaPosts || []).slice(0, moldovaLimit);
+      const shuffledNearby = shuffleArray(nearbyPosts).slice(0, nearbyLimit);
+
+      finalPosts = [...shuffledWorld, ...shuffledMoldova, ...shuffledNearby];
+      finalPosts = shuffleArray(finalPosts);
+      totalCount = finalPosts.length;
+
+    // PERSONALIZED RECOMMENDATIONS: 60% districts, 20% cities, 10% Moldova, 10% world
+    } else if (isPersonalizedRecommendations && userProfile?.recommendation_locations) {
+      logger.recommendations('Personalized recommendations mode');
+      
+      const locations = userProfile.recommendation_locations || [];
+      const radius = userProfile.recommendation_radius || 0;
+      const targetLimit = parseInt(limit);
+
+      const districtsLimit = Math.ceil(targetLimit * 0.6);
+      const citiesLimit = Math.ceil(targetLimit * 0.2);
+      const moldovaLimit = Math.ceil(targetLimit * 0.1);
+      const worldLimit = Math.ceil(targetLimit * 0.1);
+
+      // Extract districts and cities from locations
+      const districts = locations.map(loc => loc.district).filter(Boolean);
+      const cities = locations.map(loc => loc.city).filter(Boolean);
+
+      // Get district posts
+      let districtPosts = [];
+      if (districts.length > 0) {
+        const { data } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .in('district', districts)
+          .order('created_at', { ascending: false })
+          .limit(districtsLimit * 2);
+        districtPosts = data || [];
+
+        // Apply radius filter if set
+        if (radius > 0 && userProfile?.last_location_lat && userProfile?.last_location_lng) {
+          districtPosts = districtPosts.filter(post => {
+            if (!post.latitude || !post.longitude) return true;
+            const distance = calculateDistance(
+              userProfile.last_location_lat,
+              userProfile.last_location_lng,
+              post.latitude,
+              post.longitude
+            );
+            return distance <= radius;
+          });
+        }
+      }
+
+      // Get city posts (excluding districts)
+      let cityPosts = [];
+      if (cities.length > 0) {
+        const { data } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .in('city', cities)
+          .not('district', 'in', `(${districts.map(d => `"${d}"`).join(',')})`)
+          .order('created_at', { ascending: false })
+          .limit(citiesLimit * 2);
+        cityPosts = data || [];
+      }
+
+      // Get Moldova posts (excluding selected locations)
+      const { data: moldovaPosts } = await supabaseAdmin
+        .from('posts')
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .is('expires_at', null)
+        .eq('country', 'Moldova')
+        .order('created_at', { ascending: false })
+        .limit(moldovaLimit * 3);
+
+      // Filter out already shown posts
+      const shownPostIds = new Set([...districtPosts, ...cityPosts].map(p => p.id));
+      const filteredMoldovaPosts = (moldovaPosts || []).filter(p => !shownPostIds.has(p.id));
+
+      // Get world posts (excluding Moldova)
+      const { data: worldPosts } = await supabaseAdmin
+        .from('posts')
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .is('expires_at', null)
+        .neq('country', 'Moldova')
+        .order('created_at', { ascending: false })
+        .limit(worldLimit * 2);
+
+      // Combine with proper ratios
+      const selectedDistricts = districtPosts.slice(0, districtsLimit);
+      const selectedCities = cityPosts.slice(0, citiesLimit);
+      const selectedMoldova = filteredMoldovaPosts.slice(0, moldovaLimit);
+      const selectedWorld = (worldPosts || []).slice(0, worldLimit);
+
+      finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld];
+      totalCount = finalPosts.length;
+
+    // DEFAULT MODE: Following or all posts
     } else {
-        // Если нет подписок, показываем все посты (discovery mode)
-        logger.recommendations('Discovery mode: showing all posts (new user, no follows)');
+      // Get followed users (только если нужен режим подписок)
+      let followingIds = [];
+      if (isFollowingOnly) {
+        const { data: following, error: followingError } = await supabaseAdmin
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId);
+
+        if (followingError) {
+          logger.recommendationsError('Error getting following users', followingError);
+          throw followingError;
+        }
+
+        followingIds = following.map(f => f.following_id);
+        followingIds.push(userId);
+      }
+
+      // Строим запрос
+      let query = supabaseAdmin
+        .from('posts')
+        .select(`
+          *,
+          profiles:user_id (username, name, avatar_url),
+          likes(count),
+          coauthor:coauthor_user_id (id, username, name, avatar_url)
+        `, { count: 'exact' })
+        .is('expires_at', null);
+
+      // Фильтруем по типу медиа
+      if (media_type && (media_type === 'video' || media_type === 'image')) {
+        query = query.eq('media_type', media_type);
+      }
+
+      // Фильтруем по подпискам
+      if (isFollowingOnly && followingIds.length > 0) {
+        query = query.in('user_id', followingIds);
+      }
+
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      finalPosts = data || [];
+      totalCount = count || 0;
+    }
+
+    // Get user's likes for all posts
+    const postIds = finalPosts.map(post => post.id);
+    let likedPostIds = new Set();
+    
+    if (postIds.length > 0) {
+      const { data: userLikes } = await supabaseAdmin
+        .from('likes')
+        .select('post_id')
+        .eq('user_id', userId)
+        .in('post_id', postIds);
+
+      likedPostIds = new Set((userLikes || []).map(like => like.post_id));
+    }
+
+    // Get comments count
+    let commentsCountMap = {};
+    if (postIds.length > 0) {
+      const { data: commentsCounts } = await supabaseAdmin
+        .from('comments')
+        .select('post_id')
+        .in('post_id', postIds);
+
+      if (commentsCounts) {
+        commentsCounts.forEach(comment => {
+          commentsCountMap[comment.post_id] = (commentsCountMap[comment.post_id] || 0) + 1;
+        });
       }
     }
 
-    const { data, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(from, to);
-
-    if (error) {
-      logger.recommendationsError('Error getting posts', error);
-      throw error;
-    }
-
-    logger.recommendations('Posts retrieved', { count: data?.length || 0, total: count });
-
-    // Get user's likes for all posts
-    const postIds = data.map(post => post.id);
-    const { data: userLikes, error: likesError } = await supabaseAdmin
-      .from('likes')
-      .select('post_id')
-      .eq('user_id', userId)
-      .in('post_id', postIds);
-
-    if (likesError) {
-      logger.recommendationsError('Error getting user likes', likesError);
-      throw likesError;
-    }
-
-    const likedPostIds = new Set(userLikes.map(like => like.post_id));
-    logger.recommendations('Feed response prepared', { 
-      postsCount: data?.length || 0,
-      likedPosts: likedPostIds.size
-    });
-
-    // Get comments count for all posts (including replies)
-    const { data: commentsCounts, error: commentsCountError } = await supabaseAdmin
-      .from('comments')
-      .select('post_id')
-      .in('post_id', postIds);
-
-    if (commentsCountError) {
-      logger.recommendationsError('Error getting comments count', commentsCountError);
-    }
-
-    // Count comments per post (including replies)
-    const commentsCountMap = {};
-    if (commentsCounts) {
-      commentsCounts.forEach(comment => {
-        commentsCountMap[comment.post_id] = (commentsCountMap[comment.post_id] || 0) + 1;
-      });
-    }
-
-    // Transform data to include likes count, comments count, is_liked status, and coauthor
-    const postsWithLikes = data.map(post => ({
+    // Transform data
+    const postsWithLikes = finalPosts.map(post => ({
       ...post,
       likes_count: post.likes?.[0]?.count || 0,
       comments_count: commentsCountMap[post.id] || 0,
       is_liked: likedPostIds.has(post.id),
-      likes: undefined // Remove the likes array from response
+      likes: undefined
     }));
 
     logger.recommendations('Feed response sent successfully');
     res.json({
       posts: postsWithLikes,
-      total: count,
+      total: totalCount,
       page: parseInt(page),
-      totalPages: Math.ceil(count / limit)
+      totalPages: Math.ceil(totalCount / limit)
     });
   } catch (error) {
     logger.recommendationsError('Feed error', error);
@@ -963,10 +1134,10 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
         throw error;
       }
 
-      // Get post owner to create notification
+      // Get post owner and location to create notification and track interaction
       const { data: post } = await supabaseAdmin
         .from('posts')
-        .select('user_id')
+        .select('user_id, country, city, district')
         .eq('id', id)
         .single();
 
@@ -977,6 +1148,30 @@ router.post('/:id/like', validateAuth, validateUUID, async (req, res) => {
           likerId: userId, 
           postOwnerId: post.user_id 
         });
+      }
+
+      // Track location interaction for smart recommendations
+      if (post && (post.country || post.city || post.district)) {
+        try {
+          await supabaseAdmin
+            .from('location_interactions')
+            .insert([{
+              user_id: userId,
+              location_country: post.country,
+              location_city: post.city,
+              location_district: post.district,
+              interaction_type: 'like',
+              post_id: id
+            }]);
+          logger.post('Location interaction tracked', { postId: id, userId: userId });
+        } catch (interactionError) {
+          // Don't fail the like if interaction tracking fails
+          logger.postError('Error tracking location interaction', { 
+            postId: id, 
+            userId: userId, 
+            error: interactionError 
+          });
+        }
       }
 
       isLiked = true;

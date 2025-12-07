@@ -2569,4 +2569,141 @@ class ApiService {
       rethrow;
     }
   }
+
+  // ============================================
+  // RECOMMENDATION SETTINGS METHODS
+  // ============================================
+
+  /// Get recommendation settings
+  Future<RecommendationSettings> getRecommendationSettings() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/recommendation-settings'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return RecommendationSettings.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get recommendation settings');
+      }
+    } catch (e) {
+      print('ApiService: Error getting recommendation settings: $e');
+      rethrow;
+    }
+  }
+
+  /// Update recommendation settings
+  Future<void> updateRecommendationSettings(RecommendationSettings settings) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/recommendation-settings'),
+        headers: _headers,
+        body: jsonEncode({
+          'locations': settings.locations.map((loc) => loc.toJson()).toList(),
+          'radius': settings.radius,
+          'auto_location': settings.autoLocation,
+          'enabled': settings.enabled,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to update recommendation settings');
+      }
+    } catch (e) {
+      print('ApiService: Error updating recommendation settings: $e');
+      rethrow;
+    }
+  }
+
+  /// Auto-detect location using coordinates
+  Future<LocationInfo> autoDetectLocation(double latitude, double longitude) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/auto-detect-location'),
+        headers: _headers,
+        body: jsonEncode({
+          'latitude': latitude,
+          'longitude': longitude,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return LocationInfo.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to auto-detect location');
+      }
+    } catch (e) {
+      print('ApiService: Error auto-detecting location: $e');
+      rethrow;
+    }
+  }
+
+  /// Mark recommendation prompt as shown
+  Future<void> markRecommendationPromptShown() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/mark-recommendation-prompt-shown'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to mark prompt as shown');
+      }
+    } catch (e) {
+      print('ApiService: Error marking prompt as shown: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle explorer mode
+  Future<Map<String, dynamic>> toggleExplorerMode(bool enabled) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/toggle-explorer-mode'),
+        headers: _headers,
+        body: jsonEncode({
+          'enabled': enabled,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to toggle explorer mode');
+      }
+    } catch (e) {
+      print('ApiService: Error toggling explorer mode: $e');
+      rethrow;
+    }
+  }
+
+  /// Get location suggestions (smart recommendations)
+  Future<List<LocationSuggestion>> getLocationSuggestions() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/location-suggestions'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((json) => LocationSuggestion.fromJson(json)).toList();
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get location suggestions');
+      }
+    } catch (e) {
+      print('ApiService: Error getting location suggestions: $e');
+      rethrow;
+    }
+  }
 }

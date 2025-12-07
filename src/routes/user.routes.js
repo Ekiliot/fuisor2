@@ -1407,4 +1407,286 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
   }
 });
 
+// Get recommendation settings
+router.get('/recommendation-settings', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('recommendation_country, recommendation_city, recommendation_district, recommendation_locations, recommendation_radius, recommendation_auto_location, recommendation_prompt_shown, recommendation_enabled, explorer_mode_enabled, explorer_mode_expires_at')
+      .eq('id', userId)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      country: data.recommendation_country,
+      city: data.recommendation_city,
+      district: data.recommendation_district,
+      locations: data.recommendation_locations || [],
+      radius: data.recommendation_radius || 0,
+      autoLocation: data.recommendation_auto_location || false,
+      promptShown: data.recommendation_prompt_shown || false,
+      enabled: data.recommendation_enabled || false,
+      explorerModeEnabled: data.explorer_mode_enabled || false,
+      explorerModeExpiresAt: data.explorer_mode_expires_at
+    });
+  } catch (error) {
+    console.error('Error getting recommendation settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update recommendation settings
+router.put('/recommendation-settings', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { locations, radius, auto_location, enabled } = req.body;
+
+    // Validate locations (max 3)
+    if (locations && (!Array.isArray(locations) || locations.length > 3)) {
+      return res.status(400).json({ error: 'locations must be an array with maximum 3 items' });
+    }
+
+    // Validate radius (0-100000 meters)
+    if (radius !== undefined && (typeof radius !== 'number' || radius < 0 || radius > 100000)) {
+      return res.status(400).json({ error: 'radius must be between 0 and 100000 meters' });
+    }
+
+    const updateData = {
+      recommendation_prompt_shown: true
+    };
+
+    if (locations !== undefined) {
+      updateData.recommendation_locations = locations;
+      // Also update individual fields for backward compatibility
+      if (locations.length > 0) {
+        updateData.recommendation_country = locations[0].country || null;
+        updateData.recommendation_city = locations[0].city || null;
+        updateData.recommendation_district = locations[0].district || null;
+      }
+    }
+
+    if (radius !== undefined) {
+      updateData.recommendation_radius = radius;
+    }
+
+    if (auto_location !== undefined) {
+      updateData.recommendation_auto_location = auto_location;
+    }
+
+    if (enabled !== undefined) {
+      updateData.recommendation_enabled = enabled;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating recommendation settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Auto-detect location
+router.post('/auto-detect-location', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude } = req.body;
+
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return res.status(400).json({ error: 'latitude and longitude must be numbers' });
+    }
+
+    // Call Nominatim API for reverse geocoding
+    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1&accept-language=ro`;
+    
+    const response = await fetch(nominatimUrl, {
+      headers: {
+        'User-Agent': 'FuisorApp/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch location data');
+    }
+
+    const data = await response.json();
+    const address = data.address || {};
+
+    // Extract location info
+    let country = address.country || null;
+    let city = address.city || address.town || address.village || null;
+    let district = address.suburb || address.neighbourhood || address.quarter || null;
+
+    // Special handling for Moldovan districts
+    if (data.display_name) {
+      const displayLower = data.display_name.toLowerCase();
+      if (displayLower.includes('ботаника') || displayLower.includes('botanica')) {
+        district = 'Botanica';
+      } else if (displayLower.includes('центр') || displayLower.includes('centru')) {
+        district = 'Centru';
+      } else if (displayLower.includes('ришкановка') || displayLower.includes('riscani')) {
+        district = 'Rîșcani';
+      } else if (displayLower.includes('чеканы') || displayLower.includes('ciocana')) {
+        district = 'Ciocana';
+      } else if (displayLower.includes('буюканы') || displayLower.includes('buiucani')) {
+        district = 'Buiucani';
+      }
+    }
+
+    // Update user's recommendation settings
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        recommendation_country: country,
+        recommendation_city: city,
+        recommendation_district: district,
+        recommendation_locations: [{ country, city, district }],
+        recommendation_enabled: true,
+        recommendation_prompt_shown: true,
+        last_location_lat: latitude,
+        last_location_lng: longitude,
+        last_location_updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    res.json({
+      country,
+      city,
+      district
+    });
+  } catch (error) {
+    console.error('Error auto-detecting location:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle explorer mode
+router.post('/toggle-explorer-mode', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    const updateData = {
+      explorer_mode_enabled: enabled
+    };
+
+    if (enabled) {
+      // Set expiration to 15 minutes from now
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      updateData.explorer_mode_expires_at = expiresAt.toISOString();
+    } else {
+      updateData.explorer_mode_expires_at = null;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({
+      enabled,
+      expiresAt: updateData.explorer_mode_expires_at
+    });
+  } catch (error) {
+    console.error('Error toggling explorer mode:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get location suggestions (smart recommendations)
+router.get('/location-suggestions', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user's current locations
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('recommendation_locations')
+      .eq('id', userId)
+      .single();
+
+    const currentLocations = profile?.recommendation_locations || [];
+    const currentDistricts = currentLocations.map(loc => loc.district).filter(Boolean);
+
+    // Get interactions from last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: interactions, error } = await supabaseAdmin
+      .from('location_interactions')
+      .select('location_country, location_city, location_district')
+      .eq('user_id', userId)
+      .gte('created_at', sevenDaysAgo)
+      .not('location_district', 'is', null);
+
+    if (error) throw error;
+
+    // Group by location and count interactions
+    const locationCounts = {};
+    interactions.forEach(interaction => {
+      const key = `${interaction.location_district}|${interaction.location_city}|${interaction.location_country}`;
+      if (!locationCounts[key]) {
+        locationCounts[key] = {
+          district: interaction.location_district,
+          city: interaction.location_city,
+          country: interaction.location_country,
+          count: 0
+        };
+      }
+      locationCounts[key].count++;
+    });
+
+    // Filter out current locations and sort by count
+    const suggestions = Object.values(locationCounts)
+      .filter(loc => !currentDistricts.includes(loc.district))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map(loc => ({
+        district: loc.district,
+        city: loc.city,
+        country: loc.country,
+        interactionCount: loc.count
+      }));
+
+    res.json(suggestions);
+  } catch (error) {
+    console.error('Error getting location suggestions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark recommendation prompt as shown
+router.post('/mark-recommendation-prompt-shown', validateAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ recommendation_prompt_shown: true })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking prompt as shown:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

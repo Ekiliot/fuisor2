@@ -478,3 +478,177 @@ class AuthResponse {
     );
   }
 }
+
+/// Location information for recommendations
+class LocationInfo {
+  final String? country;
+  final String? city;
+  final String? district;
+
+  LocationInfo({
+    this.country,
+    this.city,
+    this.district,
+  });
+
+  factory LocationInfo.fromJson(Map<String, dynamic> json) {
+    return LocationInfo(
+      country: json['country'],
+      city: json['city'],
+      district: json['district'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'country': country,
+      'city': city,
+      'district': district,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is LocationInfo &&
+        other.country == country &&
+        other.city == city &&
+        other.district == district;
+  }
+
+  @override
+  int get hashCode => country.hashCode ^ city.hashCode ^ district.hashCode;
+
+  @override
+  String toString() {
+    final parts = <String>[];
+    if (district != null && district!.isNotEmpty) parts.add(district!);
+    if (city != null && city!.isNotEmpty) parts.add(city!);
+    if (country != null && country!.isNotEmpty) parts.add(country!);
+    return parts.join(', ');
+  }
+}
+
+/// Location suggestion based on user interactions
+class LocationSuggestion {
+  final String district;
+  final String city;
+  final String country;
+  final int interactionCount;
+
+  LocationSuggestion({
+    required this.district,
+    required this.city,
+    required this.country,
+    required this.interactionCount,
+  });
+
+  factory LocationSuggestion.fromJson(Map<String, dynamic> json) {
+    return LocationSuggestion(
+      district: json['district'] ?? '',
+      city: json['city'] ?? '',
+      country: json['country'] ?? '',
+      interactionCount: json['interactionCount'] ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'district': district,
+      'city': city,
+      'country': country,
+      'interactionCount': interactionCount,
+    };
+  }
+
+  @override
+  String toString() {
+    return '$district, $city ($interactionCount interactions)';
+  }
+}
+
+/// Recommendation settings for personalized feed
+class RecommendationSettings {
+  final List<LocationInfo> locations; // Up to 3 locations
+  final int? radius; // in meters (0-100000)
+  final bool autoLocation;
+  final bool enabled;
+  final bool promptShown;
+  final bool explorerModeEnabled;
+  final DateTime? explorerModeExpiresAt;
+
+  RecommendationSettings({
+    this.locations = const [],
+    this.radius,
+    this.autoLocation = false,
+    this.enabled = false,
+    this.promptShown = false,
+    this.explorerModeEnabled = false,
+    this.explorerModeExpiresAt,
+  });
+
+  /// Check if explorer mode is currently active
+  bool get isExplorerModeActive {
+    if (!explorerModeEnabled) return false;
+    if (explorerModeExpiresAt == null) return false;
+    return DateTime.now().isBefore(explorerModeExpiresAt!);
+  }
+
+  /// Get remaining time for explorer mode in minutes
+  int? get explorerModeRemainingMinutes {
+    if (!isExplorerModeActive) return null;
+    final remaining = explorerModeExpiresAt!.difference(DateTime.now());
+    return remaining.inMinutes;
+  }
+
+  factory RecommendationSettings.fromJson(Map<String, dynamic> json) {
+    final locationsList = json['locations'] as List<dynamic>? ?? [];
+    final locations = locationsList
+        .map((loc) => LocationInfo.fromJson(loc as Map<String, dynamic>))
+        .toList();
+
+    return RecommendationSettings(
+      locations: locations,
+      radius: json['radius'],
+      autoLocation: json['autoLocation'] ?? false,
+      enabled: json['enabled'] ?? false,
+      promptShown: json['promptShown'] ?? false,
+      explorerModeEnabled: json['explorerModeEnabled'] ?? false,
+      explorerModeExpiresAt: json['explorerModeExpiresAt'] != null
+          ? DateTime.parse(json['explorerModeExpiresAt'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'locations': locations.map((loc) => loc.toJson()).toList(),
+      'radius': radius,
+      'autoLocation': autoLocation,
+      'enabled': enabled,
+      'promptShown': promptShown,
+      'explorerModeEnabled': explorerModeEnabled,
+      'explorerModeExpiresAt': explorerModeExpiresAt?.toIso8601String(),
+    };
+  }
+
+  RecommendationSettings copyWith({
+    List<LocationInfo>? locations,
+    int? radius,
+    bool? autoLocation,
+    bool? enabled,
+    bool? promptShown,
+    bool? explorerModeEnabled,
+    DateTime? explorerModeExpiresAt,
+  }) {
+    return RecommendationSettings(
+      locations: locations ?? this.locations,
+      radius: radius ?? this.radius,
+      autoLocation: autoLocation ?? this.autoLocation,
+      enabled: enabled ?? this.enabled,
+      promptShown: promptShown ?? this.promptShown,
+      explorerModeEnabled: explorerModeEnabled ?? this.explorerModeEnabled,
+      explorerModeExpiresAt: explorerModeExpiresAt ?? this.explorerModeExpiresAt,
+    );
+  }
+}

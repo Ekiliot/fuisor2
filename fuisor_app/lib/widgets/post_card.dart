@@ -455,15 +455,15 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                 _buildAvatars(),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Row(
-                    children: [
+                        child: Row(
+                          children: [
                       // Name and username in capsule
-                      Container(
+                              Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: const Color(0xFF262626),
                           borderRadius: BorderRadius.circular(20),
-                        ),
+                              ),
                         child: _buildNamesSection(),
                       ),
                       const Spacer(),
@@ -484,7 +484,7 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             const Icon(
                               EvaIcons.editOutline,
                               size: 14,
-                              color: Colors.white,
+                                color: Colors.white,
                             ),
                           ],
                         ],
@@ -526,8 +526,8 @@ class _PostCardState extends State<PostCard> with TickerProviderStateMixin {
                             }
                             
                             return EditPostScreen(
-                              postId: widget.post.id,
-                              currentCaption: widget.post.caption,
+                            postId: widget.post.id,
+                            currentCaption: widget.post.caption,
                               currentCoauthor: widget.post.coauthor,
                               currentExternalLinkUrl: widget.post.externalLinkUrl,
                               currentExternalLinkText: widget.post.externalLinkText,

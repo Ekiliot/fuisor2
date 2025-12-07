@@ -27,6 +27,7 @@ dependencies:
   image_cropper: ^8.0.2
   crop_your_image: ^2.0.0
   file_picker: ^8.0.0
+  flutter_image_compress: ^2.3.0
   
   # Navigation
   go_router: ^12.1.3
