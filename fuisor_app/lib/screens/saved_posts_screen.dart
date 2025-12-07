@@ -28,7 +28,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> with AutomaticKeepA
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Загружаем только если данных еще нет
       if (!_hasLoaded && _savedPosts.isEmpty) {
-        _loadSavedPosts(refresh: true);
+      _loadSavedPosts(refresh: true);
         _hasLoaded = true;
       }
     });

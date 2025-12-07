@@ -45,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   String? _previousUserId; // Для отслеживания изменения userId
   bool _isSwitchingProfile = false; // Флаг переключения между профилями
   String? _cachedTitleText; // Кеш текста заголовка для предотвращения лишних обновлений
-  
+
   // Keys для доступа к виджетам SavedPostsScreen и LikedPostsScreen
   final GlobalKey _savedPostsKey = GlobalKey();
   final GlobalKey _likedPostsKey = GlobalKey();

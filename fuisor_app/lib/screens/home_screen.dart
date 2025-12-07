@@ -337,31 +337,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Consumer<RecommendationProvider>(
                 builder: (context, recProvider, child) {
                   return GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
                           builder: (context) => const RecommendationSettingsScreen(),
-                        ),
-                      );
-                    },
+                    ),
+                  );
+                },
                     child: Stack(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Icon(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
                             Icons.tune,
-                            color: Colors.white.withOpacity(0.8),
-                            size: 20,
-                          ),
-                        ),
+                    color: Colors.white.withOpacity(0.8),
+                    size: 20,
+                  ),
+                ),
                         // Индикатор режима исследователя
                         if (recProvider.isExplorerModeActive)
                           Positioned(
