@@ -112,15 +112,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           // Загружаем saved и liked посты в фоне (не блокируем основной UI)
           // Используем небольшую задержку, чтобы виджеты успели инициализироваться
           Future.delayed(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
             final savedState = _savedPostsKey.currentState;
             final likedState = _likedPostsKey.currentState;
             
             // Вызываем методы загрузки через dynamic, так как классы приватные
+            // Не используем refresh: true, чтобы не перезагружать уже загруженные данные
             if (savedState != null) {
-              (savedState as dynamic).loadSavedPosts(refresh: true);
+              (savedState as dynamic).loadSavedPosts(refresh: false);
             }
             if (likedState != null) {
-              (likedState as dynamic).loadLikedPosts(refresh: true);
+              (likedState as dynamic).loadLikedPosts(refresh: false);
             }
           });
         }
@@ -1261,6 +1263,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                           height: MediaQuery.of(context).size.height * 0.6,
                           child: TabBarView(
                             controller: _tabController,
+                            key: const PageStorageKey('profile_tabs'),
                             children: [
                               // Posts Tab
                               Selector<PostsProvider, Map<String, dynamic>>(

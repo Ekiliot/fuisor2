@@ -1417,9 +1417,28 @@ router.get('/recommendation-settings', validateAuth, async (req, res) => {
       .from('profiles')
       .select('recommendation_country, recommendation_city, recommendation_district, recommendation_locations, recommendation_radius, recommendation_auto_location, recommendation_prompt_shown, recommendation_enabled, explorer_mode_enabled, explorer_mode_expires_at')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
+    // Если ошибка и это не "не найдено", выбрасываем ошибку
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    // Если данных нет, возвращаем дефолтные значения
+    if (!data) {
+      return res.json({
+        country: null,
+        city: null,
+        district: null,
+        locations: [],
+        radius: 0,
+        autoLocation: false,
+        promptShown: false,
+        enabled: false,
+        explorerModeEnabled: false,
+        explorerModeExpiresAt: null
+      });
+    }
 
     res.json({
       country: data.recommendation_country,
@@ -1616,26 +1635,36 @@ router.get('/location-suggestions', validateAuth, async (req, res) => {
     const userId = req.user.id;
 
     // Get user's current locations
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('recommendation_locations')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
+
+    // Если ошибка и это не "не найдено", выбрасываем ошибку
+    if (profileError && profileError.code !== 'PGRST116') {
+      throw profileError;
+    }
 
     const currentLocations = profile?.recommendation_locations || [];
-    const currentDistricts = currentLocations.map(loc => loc.district).filter(Boolean);
+    const currentDistricts = currentLocations.map(loc => loc?.district).filter(Boolean);
 
     // Get interactions from last 7 days
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: interactions, error } = await supabaseAdmin
+    const { data: interactions, error: interactionsError } = await supabaseAdmin
       .from('location_interactions')
       .select('location_country, location_city, location_district')
       .eq('user_id', userId)
       .gte('created_at', sevenDaysAgo)
       .not('location_district', 'is', null);
 
-    if (error) throw error;
+    if (interactionsError) throw interactionsError;
+
+    // Если нет взаимодействий, возвращаем пустой массив
+    if (!interactions || interactions.length === 0) {
+      return res.json([]);
+    }
 
     // Group by location and count interactions
     const locationCounts = {};
@@ -1691,23 +1720,25 @@ router.post('/mark-recommendation-prompt-shown', validateAuth, async (req, res) 
 });
 
 // Получить список всех городов из таблицы locations
-// Автоматически синхронизирует недостающие локации из постов
+// Автоматически парсит и синхронизирует все локации из таблицы постов
 router.get('/locations/cities', validateAuth, async (req, res) => {
   try {
     const { country = 'Moldova' } = req.query;
     
-    console.log('Fetching cities and syncing locations...');
+    console.log('Parsing cities from posts table and syncing locations...');
     
-    // 1. Получаем все уникальные локации из постов
+    // 1. Получаем ВСЕ локации из постов (не только для определенной страны, чтобы синхронизировать все)
     const { data: postsLocations, error: postsError } = await supabaseAdmin
       .from('posts')
       .select('country, city, district')
-      .eq('country', country)
+      .not('country', 'is', null)
       .not('city', 'is', null);
     
     if (postsError) throw postsError;
     
-    // 2. Группируем локации из постов
+    console.log(`Found ${postsLocations?.length || 0} posts with locations`);
+    
+    // 2. Группируем локации из постов и считаем количество постов для каждой
     const postsLocationsMap = new Map();
     postsLocations.forEach(post => {
       const key = `${post.country}|${post.city || ''}|${post.district || ''}`;
@@ -1726,30 +1757,41 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
     // 3. Получаем существующие локации из таблицы locations
     const { data: existingLocations, error: locError } = await supabaseAdmin
       .from('locations')
-      .select('country, city, district')
-      .eq('country', country);
+      .select('id, country, city, district, post_count');
     
     if (locError) throw locError;
     
-    // 4. Создаем Set существующих локаций для быстрой проверки
-    const existingKeys = new Set(
-      existingLocations.map(loc => 
-        `${loc.country}|${loc.city || ''}|${loc.district || ''}`
-      )
-    );
+    // 4. Создаем Map существующих локаций для быстрой проверки и обновления
+    const existingLocationsMap = new Map();
+    existingLocations.forEach(loc => {
+      const key = `${loc.country}|${loc.city || ''}|${loc.district || ''}`;
+      existingLocationsMap.set(key, loc);
+    });
     
-    console.log(`Found ${existingKeys.size} locations in database`);
+    console.log(`Found ${existingLocationsMap.size} locations in database`);
     
-    // 5. Находим недостающие локации
+    // 5. Находим недостающие локации и локации, которые нужно обновить
     const missingLocations = [];
+    const locationsToUpdate = [];
+    
     postsLocationsMap.forEach((loc, key) => {
-      if (!existingKeys.has(key)) {
+      const existing = existingLocationsMap.get(key);
+      if (!existing) {
+        // Новая локация - добавляем
         missingLocations.push({
           country: loc.country,
           city: loc.city || null,
           district: loc.district || null,
           post_count: loc.count
         });
+      } else {
+        // Существующая локация - обновляем счетчик, если он изменился
+        if (existing.post_count !== loc.count) {
+          locationsToUpdate.push({
+            id: existing.id,
+            post_count: loc.count
+          });
+        }
       }
     });
     
@@ -1766,11 +1808,24 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
       } else {
         console.log(`Successfully added ${missingLocations.length} locations`);
       }
-    } else {
-      console.log('No missing locations found');
     }
     
-    // 7. Получаем финальный список городов
+    // 7. Обновляем счетчики для существующих локаций
+    if (locationsToUpdate.length > 0) {
+      console.log(`Updating post_count for ${locationsToUpdate.length} existing locations`);
+      for (const loc of locationsToUpdate) {
+        await supabaseAdmin
+          .from('locations')
+          .update({ 
+            post_count: loc.post_count,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', loc.id);
+      }
+      console.log(`Successfully updated ${locationsToUpdate.length} locations`);
+    }
+    
+    // 8. Получаем финальный список городов для запрошенной страны
     const { data: finalData, error: finalError } = await supabaseAdmin
       .from('locations')
       .select('city, post_count')
@@ -1780,7 +1835,7 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
     
     if (finalError) throw finalError;
     
-    // 8. Группируем по городам и суммируем post_count
+    // 9. Группируем по городам и суммируем post_count
     const citiesMap = new Map();
     finalData.forEach(item => {
       if (item.city) {
@@ -1789,12 +1844,16 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
       }
     });
     
-    // 9. Преобразуем в массив и сортируем
+    // 10. Преобразуем в массив и сортируем
     const cities = Array.from(citiesMap.keys()).sort();
     
-    console.log(`Returning ${cities.length} cities`);
+    console.log(`Returning ${cities.length} cities for ${country}`);
     
-    res.json({ cities, synced: missingLocations.length });
+    res.json({ 
+      cities, 
+      synced: missingLocations.length,
+      updated: locationsToUpdate.length 
+    });
   } catch (error) {
     console.error('Error getting cities:', error);
     res.status(500).json({ error: error.message });
@@ -1802,7 +1861,7 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
 });
 
 // Получить список районов для конкретного города
-// Районы уже синхронизированы при запросе городов, просто возвращаем из БД
+// Также синхронизирует локации из постов перед возвратом
 router.get('/locations/districts', validateAuth, async (req, res) => {
   try {
     const { city, country = 'Moldova' } = req.query;
@@ -1811,10 +1870,92 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
       return res.status(400).json({ error: 'City parameter is required' });
     }
     
-    console.log(`Fetching districts for city: ${city}`);
+    console.log(`Fetching districts for city: ${city}, syncing from posts...`);
     
-    // Получаем уникальные районы для города
-    const { data, error } = await supabaseAdmin
+    // 1. Получаем все локации из постов для этого города
+    const { data: postsLocations, error: postsError } = await supabaseAdmin
+      .from('posts')
+      .select('country, city, district')
+      .eq('country', country)
+      .eq('city', city)
+      .not('district', 'is', null);
+    
+    if (postsError) throw postsError;
+    
+    // 2. Группируем локации из постов
+    const postsLocationsMap = new Map();
+    postsLocations.forEach(post => {
+      const key = `${post.country}|${post.city || ''}|${post.district || ''}`;
+      const existing = postsLocationsMap.get(key) || {
+        country: post.country,
+        city: post.city,
+        district: post.district,
+        count: 0
+      };
+      existing.count++;
+      postsLocationsMap.set(key, existing);
+    });
+    
+    // 3. Получаем существующие локации из таблицы locations
+    const { data: existingLocations, error: locError } = await supabaseAdmin
+      .from('locations')
+      .select('id, country, city, district, post_count')
+      .eq('country', country)
+      .eq('city', city);
+    
+    if (locError) throw locError;
+    
+    // 4. Создаем Map существующих локаций
+    const existingLocationsMap = new Map();
+    existingLocations.forEach(loc => {
+      const key = `${loc.country}|${loc.city || ''}|${loc.district || ''}`;
+      existingLocationsMap.set(key, loc);
+    });
+    
+    // 5. Находим недостающие локации и обновляем счетчики
+    const missingLocations = [];
+    const locationsToUpdate = [];
+    
+    postsLocationsMap.forEach((loc, key) => {
+      const existing = existingLocationsMap.get(key);
+      if (!existing) {
+        missingLocations.push({
+          country: loc.country,
+          city: loc.city || null,
+          district: loc.district || null,
+          post_count: loc.count
+        });
+      } else if (existing.post_count !== loc.count) {
+        locationsToUpdate.push({
+          id: existing.id,
+          post_count: loc.count
+        });
+      }
+    });
+    
+    // 6. Добавляем недостающие локации
+    if (missingLocations.length > 0) {
+      console.log(`Adding ${missingLocations.length} missing districts for ${city}`);
+      await supabaseAdmin
+        .from('locations')
+        .insert(missingLocations);
+    }
+    
+    // 7. Обновляем счетчики
+    if (locationsToUpdate.length > 0) {
+      for (const loc of locationsToUpdate) {
+        await supabaseAdmin
+          .from('locations')
+          .update({ 
+            post_count: loc.post_count,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', loc.id);
+      }
+    }
+    
+    // 8. Получаем финальный список районов
+    const { data: finalData, error: finalError } = await supabaseAdmin
       .from('locations')
       .select('district, post_count')
       .eq('country', country)
@@ -1822,23 +1963,27 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
       .not('district', 'is', null)
       .order('post_count', { ascending: false });
     
-    if (error) throw error;
+    if (finalError) throw finalError;
     
-    // Группируем по районам и суммируем post_count
+    // 9. Группируем по районам и суммируем post_count
     const districtsMap = new Map();
-    data.forEach(item => {
+    finalData.forEach(item => {
       if (item.district) {
         const existing = districtsMap.get(item.district) || 0;
         districtsMap.set(item.district, existing + (item.post_count || 0));
       }
     });
     
-    // Преобразуем в массив и сортируем
+    // 10. Преобразуем в массив и сортируем
     const districts = Array.from(districtsMap.keys()).sort();
     
     console.log(`Returning ${districts.length} districts for ${city}`);
     
-    res.json({ districts });
+    res.json({ 
+      districts,
+      synced: missingLocations.length,
+      updated: locationsToUpdate.length
+    });
   } catch (error) {
     console.error('Error getting districts:', error);
     res.status(500).json({ error: error.message });

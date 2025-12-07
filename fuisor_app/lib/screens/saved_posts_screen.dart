@@ -11,7 +11,7 @@ class SavedPostsScreen extends StatefulWidget {
   State<SavedPostsScreen> createState() => _SavedPostsScreenState();
 }
 
-class _SavedPostsScreenState extends State<SavedPostsScreen> {
+class _SavedPostsScreenState extends State<SavedPostsScreen> with AutomaticKeepAliveClientMixin {
   List<Post> _savedPosts = [];
   bool _isLoading = false;
   bool _hasMore = true;
@@ -20,10 +20,14 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
   bool _hasLoaded = false; // Флаг, чтобы не загружать дважды
 
   @override
+  bool get wantKeepAlive => true; // Сохраняем состояние при переключении вкладок
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_hasLoaded) {
+      // Загружаем только если данных еще нет
+      if (!_hasLoaded && _savedPosts.isEmpty) {
         _loadSavedPosts(refresh: true);
         _hasLoaded = true;
       }
@@ -32,6 +36,10 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
 
   // Публичный метод для загрузки извне
   Future<void> loadSavedPosts({bool refresh = false}) async {
+    // Если данные уже есть и не требуется обновление, не загружаем
+    if (!refresh && _savedPosts.isNotEmpty) {
+      return;
+    }
     if (!_hasLoaded || refresh) {
       _hasLoaded = true;
       await _loadSavedPosts(refresh: refresh);
@@ -99,6 +107,7 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Требуется для AutomaticKeepAliveClientMixin
     // Работаем так же, как вкладка с постами - просто возвращаем PostGridWidget
     // PostGridWidget сам обрабатывает пустое состояние и загрузку
     return PostGridWidget(
