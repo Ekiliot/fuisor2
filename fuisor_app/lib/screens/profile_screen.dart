@@ -45,6 +45,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   String? _previousUserId; // Для отслеживания изменения userId
   bool _isSwitchingProfile = false; // Флаг переключения между профилями
   String? _cachedTitleText; // Кеш текста заголовка для предотвращения лишних обновлений
+  
+  // Keys для доступа к виджетам SavedPostsScreen и LikedPostsScreen
+  final GlobalKey _savedPostsKey = GlobalKey();
+  final GlobalKey _likedPostsKey = GlobalKey();
 
   @override
   void initState() {
@@ -102,6 +106,24 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           refresh: true,
           accessToken: accessToken,
         ));
+        
+        // Если это профиль текущего пользователя, загружаем saved и liked посты сразу
+        if (providedUserId == null || providedUserId == authProvider.currentUser?.id) {
+          // Загружаем saved и liked посты в фоне (не блокируем основной UI)
+          // Используем небольшую задержку, чтобы виджеты успели инициализироваться
+          Future.delayed(const Duration(milliseconds: 500), () {
+            final savedState = _savedPostsKey.currentState;
+            final likedState = _likedPostsKey.currentState;
+            
+            // Вызываем методы загрузки через dynamic, так как классы приватные
+            if (savedState != null) {
+              (savedState as dynamic).loadSavedPosts(refresh: true);
+            }
+            if (likedState != null) {
+              (likedState as dynamic).loadLikedPosts(refresh: true);
+            }
+          });
+        }
         
         // Ждем завершения всех загрузок
         await Future.wait(futures);
@@ -1284,9 +1306,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                 },
                               ),
                               // Saved Posts Tab
-                              const SavedPostsScreen(),
+                              SavedPostsScreen(key: _savedPostsKey),
                               // Liked Posts Tab
-                              const LikedPostsScreen(),
+                              LikedPostsScreen(key: _likedPostsKey),
                             ],
                           ),
                         ),

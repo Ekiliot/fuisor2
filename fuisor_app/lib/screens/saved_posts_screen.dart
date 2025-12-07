@@ -17,13 +17,25 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
   bool _hasMore = true;
   int _currentPage = 1;
   final ApiService _apiService = ApiService();
+  bool _hasLoaded = false; // Флаг, чтобы не загружать дважды
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadSavedPosts(refresh: true);
+      if (!_hasLoaded) {
+        _loadSavedPosts(refresh: true);
+        _hasLoaded = true;
+      }
     });
+  }
+
+  // Публичный метод для загрузки извне
+  Future<void> loadSavedPosts({bool refresh = false}) async {
+    if (!_hasLoaded || refresh) {
+      _hasLoaded = true;
+      await _loadSavedPosts(refresh: refresh);
+    }
   }
 
   Future<void> _loadSavedPosts({bool refresh = false}) async {

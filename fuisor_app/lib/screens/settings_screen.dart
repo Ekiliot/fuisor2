@@ -8,6 +8,7 @@ import '../widgets/app_notification.dart';
 import 'privacy_settings_screen.dart';
 import 'storage_settings_screen.dart';
 import 'notification_settings_screen.dart';
+import 'cache_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -262,6 +263,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => const StorageSettingsScreen(),
+            ),
+          );
+        },
+      ),
+      _SettingItem(
+        section: 'Storage',
+        icon: EvaIcons.downloadOutline,
+        title: 'Cache Settings',
+        subtitle: 'Manage media cache and preloading',
+        type: _SettingType.navigation,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const CacheSettingsScreen(),
             ),
           );
         },

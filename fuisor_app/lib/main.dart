@@ -11,6 +11,7 @@ import 'providers/recommendation_provider.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'services/message_cache_service.dart';
+import 'services/media_cache_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/notification_service.dart';
 import 'services/fcm_service.dart';
@@ -37,6 +38,9 @@ void main() async {
   
   // Инициализация кеша сообщений
   await MessageCacheService().init();
+  
+  // Инициализация кеша медиа
+  await MediaCacheService().init();
   
   // Инициализация Firebase ПЕРЕД использованием FCM
   try {

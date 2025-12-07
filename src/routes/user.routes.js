@@ -662,6 +662,7 @@ router.get('/me/saved', validateAuth, async (req, res) => {
           caption,
           media_url,
           media_type,
+          thumbnail_url,
           created_at,
           updated_at,
           expires_at,

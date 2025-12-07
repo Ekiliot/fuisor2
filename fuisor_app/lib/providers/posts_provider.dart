@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../services/media_cache_service.dart';
+import '../services/signed_url_cache_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PostsProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -142,10 +145,16 @@ class PostsProvider extends ChangeNotifier {
         _isRefreshing = false;
         // Кешируем обновленный feed
         await _cacheService.cacheFeed(newPosts);
+        // Предзагружаем медиа для новых постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newPosts);
       } else {
         _feedPosts.addAll(newPosts);
         // Обновляем кеш при загрузке новых постов
         await _cacheService.cacheFeed(_feedPosts);
+        // Предзагружаем медиа для новых постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newPosts);
       }
 
       _hasMorePosts = newPosts.length == 10;
@@ -224,10 +233,16 @@ class PostsProvider extends ChangeNotifier {
         _videoPosts = newVideoPosts;
         // Кешируем обновленные видео посты
         await _cacheService.cacheVideoPosts(newVideoPosts);
+        // Предзагружаем медиа для новых видео постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newVideoPosts);
       } else {
         _videoPosts.addAll(newVideoPosts);
         // Обновляем кеш
         await _cacheService.cacheVideoPosts(_videoPosts);
+        // Предзагружаем медиа для новых видео постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newVideoPosts);
       }
 
       _hasMoreVideoPosts = newVideoPosts.length == 10;
@@ -360,10 +375,16 @@ class PostsProvider extends ChangeNotifier {
         _hashtagPosts = newPosts;
         // Кешируем обновленные посты по хештегу
         await _cacheService.cacheHashtagPosts(hashtag, newPosts);
+        // Предзагружаем медиа для новых постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newPosts);
       } else {
         _hashtagPosts.addAll(newPosts);
         // Обновляем кеш
         await _cacheService.cacheHashtagPosts(hashtag, _hashtagPosts);
+        // Предзагружаем медиа для новых постов
+        final mediaCache = MediaCacheService();
+        await mediaCache.preloadPostsMedia(newPosts);
       }
 
       _hasMorePosts = newPosts.length == 10;
@@ -769,6 +790,38 @@ class PostsProvider extends ChangeNotifier {
         );
       }
       
+      // Инвалидируем кэш для медиа нового поста, чтобы избежать показа старых изображений
+      final signedUrlCache = SignedUrlCacheService();
+      signedUrlCache.invalidate(
+        path: postToAdd.mediaUrl,
+        postId: postToAdd.id,
+      );
+      // Также инвалидируем thumbnail если есть
+      if (postToAdd.thumbnailUrl != null && postToAdd.thumbnailUrl!.isNotEmpty) {
+        signedUrlCache.invalidate(
+          path: postToAdd.thumbnailUrl!,
+          postId: postToAdd.id,
+        );
+      }
+      
+      // Очищаем кэш CachedNetworkImage для этого поста, чтобы избежать показа старых изображений
+      // Очищаем по cacheKey, который будет использоваться для этого поста
+      try {
+        final mediaCacheKey = 'post_${postToAdd.id}_${postToAdd.mediaUrl}_${postToAdd.mediaUrl.hashCode}';
+        await CachedNetworkImage.evictFromCache(mediaCacheKey);
+        
+        if (postToAdd.thumbnailUrl != null && postToAdd.thumbnailUrl!.isNotEmpty) {
+          final thumbCacheKey = 'post_${postToAdd.id}_${postToAdd.thumbnailUrl}_${postToAdd.thumbnailUrl.hashCode}';
+          await CachedNetworkImage.evictFromCache(thumbCacheKey);
+        }
+        
+        print('PostsProvider: Кэш CachedNetworkImage очищен для нового поста ${postToAdd.id}');
+      } catch (e) {
+        print('PostsProvider: Ошибка очистки кэша CachedNetworkImage: $e');
+      }
+      
+      print('PostsProvider: Кэш signed URL инвалидирован для нового поста ${postToAdd.id}');
+      
       // Добавляем новый пост в начало списка
       _posts.insert(0, postToAdd);
       _feedPosts.insert(0, postToAdd);
@@ -952,12 +1005,18 @@ class PostsProvider extends ChangeNotifier {
           _isRefreshingUserPosts = false;
           // Кешируем обновленные посты пользователя
           await _cacheService.cacheUserPosts(userId, filteredResponse);
+          // Предзагружаем медиа для новых постов
+          final mediaCache = MediaCacheService();
+          await mediaCache.preloadPostsMedia(filteredResponse);
         } else {
           // Проверяем, что добавляем посты для правильного пользователя
           if (_currentUserPostsUserId == userId) {
             _userPosts.addAll(filteredResponse);
             // Обновляем кеш
             await _cacheService.cacheUserPosts(userId, _userPosts);
+            // Предзагружаем медиа для новых постов
+            final mediaCache = MediaCacheService();
+            await mediaCache.preloadPostsMedia(filteredResponse);
           } else {
             print('PostsProvider: User changed, not adding posts');
             return;
