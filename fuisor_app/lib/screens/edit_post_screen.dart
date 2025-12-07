@@ -4,7 +4,6 @@ import '../providers/posts_provider.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../widgets/location_selector.dart';
-import '../services/geocoding_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 

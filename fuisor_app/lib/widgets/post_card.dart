@@ -17,7 +17,6 @@ import '../utils/hashtag_utils.dart';
 import '../widgets/username_error_notification.dart';
 import '../widgets/app_notification.dart';
 import '../widgets/share_video_sheet.dart';
-import '../services/geocoding_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

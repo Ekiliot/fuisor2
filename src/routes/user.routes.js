@@ -1689,4 +1689,77 @@ router.post('/mark-recommendation-prompt-shown', validateAuth, async (req, res) 
   }
 });
 
+// Получить список всех городов из таблицы locations
+router.get('/locations/cities', validateAuth, async (req, res) => {
+  try {
+    const { country = 'Moldova' } = req.query;
+    
+    // Получаем уникальные города, отсортированные по количеству постов
+    const { data, error } = await supabaseAdmin
+      .from('locations')
+      .select('city, post_count')
+      .eq('country', country)
+      .not('city', 'is', null)
+      .order('post_count', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Группируем по городам и суммируем post_count
+    const citiesMap = new Map();
+    data.forEach(item => {
+      if (item.city) {
+        const existing = citiesMap.get(item.city) || 0;
+        citiesMap.set(item.city, existing + (item.post_count || 0));
+      }
+    });
+    
+    // Преобразуем в массив и сортируем
+    const cities = Array.from(citiesMap.keys()).sort();
+    
+    res.json({ cities });
+  } catch (error) {
+    console.error('Error getting cities:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получить список районов для конкретного города
+router.get('/locations/districts', validateAuth, async (req, res) => {
+  try {
+    const { city, country = 'Moldova' } = req.query;
+    
+    if (!city) {
+      return res.status(400).json({ error: 'City parameter is required' });
+    }
+    
+    // Получаем уникальные районы для города
+    const { data, error } = await supabaseAdmin
+      .from('locations')
+      .select('district, post_count')
+      .eq('country', country)
+      .eq('city', city)
+      .not('district', 'is', null)
+      .order('post_count', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Группируем по районам и суммируем post_count
+    const districtsMap = new Map();
+    data.forEach(item => {
+      if (item.district) {
+        const existing = districtsMap.get(item.district) || 0;
+        districtsMap.set(item.district, existing + (item.post_count || 0));
+      }
+    });
+    
+    // Преобразуем в массив и сортируем
+    const districts = Array.from(districtsMap.keys()).sort();
+    
+    res.json({ districts });
+  } catch (error) {
+    console.error('Error getting districts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

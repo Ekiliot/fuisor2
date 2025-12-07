@@ -484,11 +484,15 @@ class LocationInfo {
   final String? country;
   final String? city;
   final String? district;
+  final String? street;
+  final String? address;
 
   LocationInfo({
     this.country,
     this.city,
     this.district,
+    this.street,
+    this.address,
   });
 
   factory LocationInfo.fromJson(Map<String, dynamic> json) {
@@ -496,6 +500,8 @@ class LocationInfo {
       country: json['country'],
       city: json['city'],
       district: json['district'],
+      street: json['street'],
+      address: json['address'],
     );
   }
 
@@ -504,6 +510,8 @@ class LocationInfo {
       'country': country,
       'city': city,
       'district': district,
+      'street': street,
+      'address': address,
     };
   }
 

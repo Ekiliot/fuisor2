@@ -20,7 +20,6 @@ import 'activity_screen.dart';
 import 'chats_list_screen.dart';
 import 'camera_screen.dart';
 import 'map_screen.dart';
-import 'feed_settings_screen.dart';
 import 'recommendation_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -334,31 +333,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(width: 8),
-              // Кнопка настроек
-              GestureDetector(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const FeedSettingsScreen(),
+              // Кнопка настроек рекомендаций
+              Consumer<RecommendationProvider>(
+                builder: (context, recProvider, child) {
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const RecommendationSettingsScreen(),
+                        ),
+                      );
+                    },
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.tune,
+                            color: Colors.white.withOpacity(0.8),
+                            size: 20,
+                          ),
+                        ),
+                        // Индикатор режима исследователя
+                        if (recProvider.isExplorerModeActive)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.explore,
+                                size: 10,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   );
                 },
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(
-                    EvaIcons.settings2Outline,
-                    color: Colors.white.withOpacity(0.8),
-                    size: 20,
-                  ),
-                ),
               ),
             ],
           ),
@@ -658,44 +683,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-          // Recommendation settings button
-          Consumer<RecommendationProvider>(
-            builder: (context, recProvider, child) {
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.tune, size: 28),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const RecommendationSettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  // Explorer mode indicator
-                  if (recProvider.isExplorerModeActive)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.explore,
-                          size: 12,
-                          color: Colors.white,
                         ),
                       ),
                     ),

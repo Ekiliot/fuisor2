@@ -17,6 +17,61 @@ const upload = multer({
   },
 });
 
+// Функция для добавления/обновления локации в таблице locations
+async function upsertLocation(country, city, district) {
+  try {
+    // Пропускаем, если нет данных
+    if (!country) return;
+    
+    // Проверяем, существует ли уже такая локация
+    const { data: existing, error: selectError } = await supabaseAdmin
+      .from('locations')
+      .select('id, post_count')
+      .eq('country', country)
+      .eq('city', city || null)
+      .eq('district', district || null)
+      .maybeSingle();
+    
+    if (selectError) {
+      logger.postError('Error checking location', selectError);
+      return;
+    }
+    
+    if (existing) {
+      // Обновляем счетчик постов
+      await supabaseAdmin
+        .from('locations')
+        .update({ 
+          post_count: existing.post_count + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id);
+      
+      logger.post('Location updated', { 
+        country, 
+        city, 
+        district, 
+        newCount: existing.post_count + 1 
+      });
+    } else {
+      // Добавляем новую локацию
+      await supabaseAdmin
+        .from('locations')
+        .insert([{
+          country,
+          city: city || null,
+          district: district || null,
+          post_count: 1
+        }]);
+      
+      logger.post('New location added', { country, city, district });
+    }
+  } catch (error) {
+    // Не блокируем создание поста, если не удалось обновить локацию
+    logger.postError('Error upserting location', error);
+  }
+}
+
 // Логирование всех POST запросов к /posts
 router.use('/', (req, res, next) => {
   if (req.method === 'POST') {
@@ -530,6 +585,11 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
     }
 
     logger.post('Post created successfully', { postId: data.id, userId: req.user.id });
+
+    // Обновляем таблицу локаций, если есть данные о локации
+    if (data.country) {
+      await upsertLocation(data.country, data.city, data.district);
+    }
 
     // Create coauthor notification if coauthor was added
     if (data.coauthor_user_id && data.coauthor_user_id !== req.user.id) {
@@ -1860,6 +1920,11 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       .single();
 
     if (error) throw error;
+
+    // Обновляем таблицу локаций, если локация была изменена
+    if (updatedPost.country) {
+      await upsertLocation(updatedPost.country, updatedPost.city, updatedPost.district);
+    }
 
     res.json(updatedPost);
   } catch (error) {

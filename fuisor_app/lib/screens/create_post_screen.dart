@@ -19,7 +19,6 @@ import '../widgets/animated_app_bar_title.dart';
 import '../widgets/app_notification.dart';
 import '../widgets/location_selector.dart';
 import '../models/user.dart';
-import '../services/geocoding_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final XFile? selectedFile;
