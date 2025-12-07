@@ -346,11 +346,11 @@ router.get('/media/signed-url', validateAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid media path. Must start with post_ or thumb_' });
     }
 
-    // Создаем signed URL (действителен 1 час = 3600 секунд)
+    // Создаем signed URL (действителен 7 дней = 604800 секунд)
     const { data, error } = await supabaseAdmin
       .storage
       .from('post-media')
-      .createSignedUrl(path, 3600);
+      .createSignedUrl(path, 604800);
 
     if (error) {
       logger.postError('Error creating signed URL', error);
@@ -944,47 +944,47 @@ router.get('/feed', validateAuth, async (req, res) => {
 
     // DEFAULT MODE: Following or all posts
     } else {
-      // Get followed users (только если нужен режим подписок)
-      let followingIds = [];
-      if (isFollowingOnly) {
-        const { data: following, error: followingError } = await supabaseAdmin
-          .from('follows')
-          .select('following_id')
-          .eq('follower_id', userId);
+    // Get followed users (только если нужен режим подписок)
+    let followingIds = [];
+    if (isFollowingOnly) {
+    const { data: following, error: followingError } = await supabaseAdmin
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId);
 
-        if (followingError) {
-          logger.recommendationsError('Error getting following users', followingError);
-          throw followingError;
-        }
+    if (followingError) {
+      logger.recommendationsError('Error getting following users', followingError);
+      throw followingError;
+    }
 
-        followingIds = following.map(f => f.following_id);
-        followingIds.push(userId);
-      }
+      followingIds = following.map(f => f.following_id);
+    followingIds.push(userId);
+    }
 
-      // Строим запрос
-      let query = supabaseAdmin
-        .from('posts')
-        .select(`
-          *,
-          profiles:user_id (username, name, avatar_url),
+    // Строим запрос
+    let query = supabaseAdmin
+      .from('posts')
+      .select(`
+        *,
+        profiles:user_id (username, name, avatar_url),
           likes(count),
           coauthor:coauthor_user_id (id, username, name, avatar_url)
-        `, { count: 'exact' })
+      `, { count: 'exact' })
         .is('expires_at', null);
 
       // Фильтруем по типу медиа
-      if (media_type && (media_type === 'video' || media_type === 'image')) {
-        query = query.eq('media_type', media_type);
+    if (media_type && (media_type === 'video' || media_type === 'image')) {
+      query = query.eq('media_type', media_type);
       }
 
       // Фильтруем по подпискам
       if (isFollowingOnly && followingIds.length > 0) {
-        query = query.in('user_id', followingIds);
-      }
+      query = query.in('user_id', followingIds);
+    }
 
-      const { data, error, count } = await query
-        .order('created_at', { ascending: false })
-        .range(from, to);
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
       if (error) throw error;
 
@@ -998,10 +998,10 @@ router.get('/feed', validateAuth, async (req, res) => {
     
     if (postIds.length > 0) {
       const { data: userLikes } = await supabaseAdmin
-        .from('likes')
-        .select('post_id')
-        .eq('user_id', userId)
-        .in('post_id', postIds);
+      .from('likes')
+      .select('post_id')
+      .eq('user_id', userId)
+      .in('post_id', postIds);
 
       likedPostIds = new Set((userLikes || []).map(like => like.post_id));
     }
@@ -1010,14 +1010,14 @@ router.get('/feed', validateAuth, async (req, res) => {
     let commentsCountMap = {};
     if (postIds.length > 0) {
       const { data: commentsCounts } = await supabaseAdmin
-        .from('comments')
-        .select('post_id')
-        .in('post_id', postIds);
+      .from('comments')
+      .select('post_id')
+      .in('post_id', postIds);
 
-      if (commentsCounts) {
-        commentsCounts.forEach(comment => {
-          commentsCountMap[comment.post_id] = (commentsCountMap[comment.post_id] || 0) + 1;
-        });
+    if (commentsCounts) {
+      commentsCounts.forEach(comment => {
+        commentsCountMap[comment.post_id] = (commentsCountMap[comment.post_id] || 0) + 1;
+      });
       }
     }
 

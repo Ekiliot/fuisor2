@@ -791,32 +791,32 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       double? latitude;
       double? longitude;
       if (_locationInfo != null && _locationVisibility.isNotEmpty) {
-        try {
+      try {
           print('CreatePostScreen: Getting current location for Geo boost...');
-          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-          if (serviceEnabled) {
-            LocationPermission permission = await Geolocator.checkPermission();
-            if (permission == LocationPermission.denied) {
-              permission = await Geolocator.requestPermission();
-            }
-            
-            if (permission == LocationPermission.whileInUse || 
-                permission == LocationPermission.always) {
-              Position position = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.high,
-              );
-              latitude = position.latitude;
-              longitude = position.longitude;
-              print('CreatePostScreen: Location obtained: lat=$latitude, lng=$longitude');
-            } else {
-              print('CreatePostScreen: Location permission denied, creating post without location');
-            }
-          } else {
-            print('CreatePostScreen: Location services disabled, creating post without location');
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
           }
-        } catch (e) {
-          print('CreatePostScreen: Error getting location: $e, creating post without location');
-          // Не блокируем создание поста при ошибке получения геолокации
+          
+          if (permission == LocationPermission.whileInUse || 
+              permission == LocationPermission.always) {
+            Position position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            latitude = position.latitude;
+            longitude = position.longitude;
+            print('CreatePostScreen: Location obtained: lat=$latitude, lng=$longitude');
+          } else {
+            print('CreatePostScreen: Location permission denied, creating post without location');
+          }
+        } else {
+          print('CreatePostScreen: Location services disabled, creating post without location');
+        }
+      } catch (e) {
+        print('CreatePostScreen: Error getting location: $e, creating post without location');
+        // Не блокируем создание поста при ошибке получения геолокации
         }
       }
       
@@ -979,10 +979,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           Expanded(
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const Text(
                   'Caption',
                   style: TextStyle(
@@ -1197,7 +1197,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ),
                 ],
-                  ],
+              ],
                 ),
               ),
             ),
