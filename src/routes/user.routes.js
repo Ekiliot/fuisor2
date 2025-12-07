@@ -263,7 +263,176 @@ router.put('/notification-preferences', validateAuth, async (req, res) => {
   }
 });
 
-// Get user profile by ID
+// ВАЖНО: Конкретные маршруты должны быть ПЕРЕД параметрическими маршрутами
+// Иначе Express будет пытаться обработать их как /:id и validateUUID вернет 400
+
+// Get recommendation settings
+router.get('/recommendation-settings', (req, res, next) => {
+  console.log('GET /recommendation-settings: Request received', {
+    headers: req.headers,
+    query: req.query,
+    hasAuth: !!req.headers.authorization
+  });
+  next();
+}, validateAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /recommendation-settings: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    console.log('GET /recommendation-settings: Fetching settings for user:', userId);
+
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('recommendation_country, recommendation_city, recommendation_district, recommendation_locations, recommendation_radius, recommendation_auto_location, recommendation_prompt_shown, recommendation_enabled, explorer_mode_enabled, explorer_mode_expires_at')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // Если ошибка и это не "не найдено", выбрасываем ошибку
+    if (error) {
+      // PGRST116 - это код "не найдено" для maybeSingle, это нормально
+      if (error.code !== 'PGRST116') {
+        console.error('GET /recommendation-settings: Supabase error:', error);
+        throw error;
+      }
+    }
+
+    // Если данных нет, возвращаем дефолтные значения
+    if (!data) {
+      console.log('GET /recommendation-settings: No data found, returning defaults');
+      return res.json({
+        country: null,
+        city: null,
+        district: null,
+        locations: [],
+        radius: 0,
+        autoLocation: false,
+        promptShown: false,
+        enabled: false,
+        explorerModeEnabled: false,
+        explorerModeExpiresAt: null
+      });
+    }
+
+    console.log('GET /recommendation-settings: Returning settings for user:', userId);
+    res.json({
+      country: data.recommendation_country,
+      city: data.recommendation_city,
+      district: data.recommendation_district,
+      locations: data.recommendation_locations || [],
+      radius: data.recommendation_radius || 0,
+      autoLocation: data.recommendation_auto_location || false,
+      promptShown: data.recommendation_prompt_shown || false,
+      enabled: data.recommendation_enabled || false,
+      explorerModeEnabled: data.explorer_mode_enabled || false,
+      explorerModeExpiresAt: data.explorer_mode_expires_at
+    });
+  } catch (error) {
+    console.error('GET /recommendation-settings: Error:', error);
+    // Не возвращаем 400, возвращаем 500 для серверных ошибок
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Get location suggestions (smart recommendations)
+router.get('/location-suggestions', (req, res, next) => {
+  console.log('GET /location-suggestions: Request received', {
+    headers: req.headers,
+    query: req.query,
+    hasAuth: !!req.headers.authorization
+  });
+  next();
+}, validateAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /location-suggestions: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    console.log('GET /location-suggestions: Fetching suggestions for user:', userId);
+
+    // Get user's current locations
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('recommendation_locations')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // Если ошибка и это не "не найдено", выбрасываем ошибку
+    if (profileError) {
+      // PGRST116 - это код "не найдено" для maybeSingle, это нормально
+      if (profileError.code !== 'PGRST116') {
+        console.error('GET /location-suggestions: Profile error:', profileError);
+        throw profileError;
+      }
+    }
+
+    const currentLocations = profile?.recommendation_locations || [];
+    const currentDistricts = currentLocations.map(loc => loc?.district).filter(Boolean);
+
+    // Get interactions from last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: interactions, error: interactionsError } = await supabaseAdmin
+      .from('location_interactions')
+      .select('location_country, location_city, location_district')
+      .eq('user_id', userId)
+      .gte('created_at', sevenDaysAgo)
+      .not('location_district', 'is', null);
+
+    if (interactionsError) {
+      console.error('GET /location-suggestions: Interactions error:', interactionsError);
+      throw interactionsError;
+    }
+
+    // Если нет взаимодействий, возвращаем пустой массив
+    if (!interactions || interactions.length === 0) {
+      console.log('GET /location-suggestions: No interactions found, returning empty array');
+      return res.json([]);
+    }
+
+    // Group by location and count interactions
+    const locationCounts = {};
+    interactions.forEach(interaction => {
+      const key = `${interaction.location_district}|${interaction.location_city}|${interaction.location_country}`;
+      if (!locationCounts[key]) {
+        locationCounts[key] = {
+          district: interaction.location_district,
+          city: interaction.location_city,
+          country: interaction.location_country,
+          count: 0
+        };
+      }
+      locationCounts[key].count++;
+    });
+
+    // Filter out current locations and sort by count
+    const suggestions = Object.values(locationCounts)
+      .filter(loc => !currentDistricts.includes(loc.district))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map(loc => ({
+        district: loc.district,
+        city: loc.city,
+        country: loc.country,
+        interactionCount: loc.count
+      }));
+
+    console.log('GET /location-suggestions: Returning', suggestions.length, 'suggestions');
+    res.json(suggestions);
+  } catch (error) {
+    console.error('GET /location-suggestions: Error:', error);
+    // Не возвращаем 400, возвращаем 500 для серверных ошибок
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Get user profile by ID (параметрический маршрут должен быть ПОСЛЕ конкретных)
 router.get('/:id', validateUUID, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1409,9 +1578,23 @@ router.put('/fcm-token', validateAuth, async (req, res) => {
 });
 
 // Get recommendation settings
-router.get('/recommendation-settings', validateAuth, async (req, res) => {
+router.get('/recommendation-settings', (req, res, next) => {
+  console.log('GET /recommendation-settings: Request received', {
+    headers: req.headers,
+    query: req.query,
+    hasAuth: !!req.headers.authorization
+  });
+  next();
+}, validateAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /recommendation-settings: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    console.log('GET /recommendation-settings: Fetching settings for user:', userId);
 
     const { data, error } = await supabaseAdmin
       .from('profiles')
@@ -1420,12 +1603,17 @@ router.get('/recommendation-settings', validateAuth, async (req, res) => {
       .maybeSingle();
 
     // Если ошибка и это не "не найдено", выбрасываем ошибку
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // PGRST116 - это код "не найдено" для maybeSingle, это нормально
+      if (error.code !== 'PGRST116') {
+        console.error('GET /recommendation-settings: Supabase error:', error);
+        throw error;
+      }
     }
 
     // Если данных нет, возвращаем дефолтные значения
     if (!data) {
+      console.log('GET /recommendation-settings: No data found, returning defaults');
       return res.json({
         country: null,
         city: null,
@@ -1440,6 +1628,7 @@ router.get('/recommendation-settings', validateAuth, async (req, res) => {
       });
     }
 
+    console.log('GET /recommendation-settings: Returning settings for user:', userId);
     res.json({
       country: data.recommendation_country,
       city: data.recommendation_city,
@@ -1453,8 +1642,9 @@ router.get('/recommendation-settings', validateAuth, async (req, res) => {
       explorerModeExpiresAt: data.explorer_mode_expires_at
     });
   } catch (error) {
-    console.error('Error getting recommendation settings:', error);
-    res.status(500).json({ error: error.message });
+    console.error('GET /recommendation-settings: Error:', error);
+    // Не возвращаем 400, возвращаем 500 для серверных ошибок
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
@@ -1630,9 +1820,23 @@ router.post('/toggle-explorer-mode', validateAuth, async (req, res) => {
 });
 
 // Get location suggestions (smart recommendations)
-router.get('/location-suggestions', validateAuth, async (req, res) => {
+router.get('/location-suggestions', (req, res, next) => {
+  console.log('GET /location-suggestions: Request received', {
+    headers: req.headers,
+    query: req.query,
+    hasAuth: !!req.headers.authorization
+  });
+  next();
+}, validateAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      console.error('GET /location-suggestions: No user ID in request');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    console.log('GET /location-suggestions: Fetching suggestions for user:', userId);
 
     // Get user's current locations
     const { data: profile, error: profileError } = await supabaseAdmin
@@ -1642,8 +1846,12 @@ router.get('/location-suggestions', validateAuth, async (req, res) => {
       .maybeSingle();
 
     // Если ошибка и это не "не найдено", выбрасываем ошибку
-    if (profileError && profileError.code !== 'PGRST116') {
-      throw profileError;
+    if (profileError) {
+      // PGRST116 - это код "не найдено" для maybeSingle, это нормально
+      if (profileError.code !== 'PGRST116') {
+        console.error('GET /location-suggestions: Profile error:', profileError);
+        throw profileError;
+      }
     }
 
     const currentLocations = profile?.recommendation_locations || [];
@@ -1659,10 +1867,14 @@ router.get('/location-suggestions', validateAuth, async (req, res) => {
       .gte('created_at', sevenDaysAgo)
       .not('location_district', 'is', null);
 
-    if (interactionsError) throw interactionsError;
+    if (interactionsError) {
+      console.error('GET /location-suggestions: Interactions error:', interactionsError);
+      throw interactionsError;
+    }
 
     // Если нет взаимодействий, возвращаем пустой массив
     if (!interactions || interactions.length === 0) {
+      console.log('GET /location-suggestions: No interactions found, returning empty array');
       return res.json([]);
     }
 
@@ -1693,10 +1905,12 @@ router.get('/location-suggestions', validateAuth, async (req, res) => {
         interactionCount: loc.count
       }));
 
+    console.log('GET /location-suggestions: Returning', suggestions.length, 'suggestions');
     res.json(suggestions);
   } catch (error) {
-    console.error('Error getting location suggestions:', error);
-    res.status(500).json({ error: error.message });
+    console.error('GET /location-suggestions: Error:', error);
+    // Не возвращаем 400, возвращаем 500 для серверных ошибок
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 

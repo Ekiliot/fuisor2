@@ -141,6 +141,55 @@ class PostsProvider extends ChangeNotifier {
 
       // Только после успешной загрузки обновляем список
       if (refresh) {
+        // При refresh очищаем кеш изображений для всех старых постов перед заменой
+        // Это предотвращает показ старых изображений для новых постов
+        // При refresh очищаем кеш изображений для всех старых постов перед заменой
+        // Это предотвращает показ старых изображений для новых постов
+        for (final oldPost in _feedPosts) {
+          final mediaUrl = oldPost.mediaUrl;
+          if (mediaUrl.isNotEmpty) {
+            // Очищаем кеш CachedNetworkImage для медиа
+            try {
+              await CachedNetworkImage.evictFromCache(
+                'post_${oldPost.id}_$mediaUrl\_${mediaUrl.hashCode}',
+              );
+            } catch (e) {
+              print('PostsProvider: Error evicting media cache for post ${oldPost.id}: $e');
+            }
+            // Инвалидируем signed URL кеш
+            try {
+              final signedUrlCache = SignedUrlCacheService();
+              signedUrlCache.invalidate(
+                path: mediaUrl,
+                postId: oldPost.id,
+              );
+            } catch (e) {
+              print('PostsProvider: Error invalidating signed URL cache for post ${oldPost.id}: $e');
+            }
+          }
+          final thumbnailUrl = oldPost.thumbnailUrl;
+          if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+            // Очищаем кеш CachedNetworkImage для thumbnail
+            try {
+              await CachedNetworkImage.evictFromCache(
+                'post_${oldPost.id}_$thumbnailUrl\_${thumbnailUrl.hashCode}',
+              );
+            } catch (e) {
+              print('PostsProvider: Error evicting thumbnail cache for post ${oldPost.id}: $e');
+            }
+            // Инвалидируем signed URL кеш
+            try {
+              final signedUrlCache = SignedUrlCacheService();
+              signedUrlCache.invalidate(
+                path: thumbnailUrl,
+                postId: oldPost.id,
+              );
+            } catch (e) {
+              print('PostsProvider: Error invalidating signed URL cache for thumbnail ${oldPost.id}: $e');
+            }
+          }
+        }
+        
         _feedPosts = newPosts; // Заменяем только после успешной загрузки
         _isRefreshing = false;
         // Кешируем обновленный feed
