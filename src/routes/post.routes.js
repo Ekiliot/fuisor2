@@ -760,7 +760,7 @@ router.get('/feed', validateAuth, async (req, res) => {
     // Get user's recommendation settings
     const { data: userProfile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('recommendation_enabled, recommendation_locations, recommendation_radius, explorer_mode_enabled, explorer_mode_expires_at, last_location_lat, last_location_lng')
+      .select('recommendation_enabled, recommendation_locations, recommendation_radius, recommendation_auto_location, explorer_mode_enabled, explorer_mode_expires_at, last_location_lat, last_location_lng')
       .eq('id', userId)
       .single();
 
@@ -774,7 +774,18 @@ router.get('/feed', validateAuth, async (req, res) => {
                           new Date(userProfile.explorer_mode_expires_at) > new Date();
 
     // Check if personalized recommendations are enabled
-    const isPersonalizedRecommendations = userProfile?.recommendation_enabled && !isExplorerMode;
+    // Персонализированные рекомендации активны только если:
+    // 1. recommendation_enabled = true
+    // 2. И (есть выбранные локации ИЛИ включено автоопределение ИЛИ радиус > 0)
+    const locations = userProfile?.recommendation_locations || [];
+    const hasLocations = Array.isArray(locations) && locations.length > 0;
+    const hasAutoLocation = userProfile?.recommendation_auto_location === true;
+    const hasRadius = (userProfile?.recommendation_radius || 0) > 0;
+    const hasAnyLocationSetting = hasLocations || hasAutoLocation || hasRadius;
+    
+    const isPersonalizedRecommendations = userProfile?.recommendation_enabled && 
+                                         !isExplorerMode && 
+                                         hasAnyLocationSetting;
 
     // Определяем режим: рекомендации (все видео) или подписки (только от подписок)
     const isRecommendations = media_type === 'video' && following_only !== 'true';
@@ -893,11 +904,11 @@ router.get('/feed', validateAuth, async (req, res) => {
         totalCount = finalPosts.length;
       }
 
-    // PERSONALIZED RECOMMENDATIONS: 60% districts, 20% cities, 10% Moldova, 10% world
-    } else if (isPersonalizedRecommendations && userProfile?.recommendation_locations) {
+    // PERSONALIZED RECOMMENDATIONS: 50% districts, 20% cities, 10% Moldova, 10% world, 10% no location
+    } else if (isPersonalizedRecommendations) {
       logger.recommendations('Personalized recommendations mode');
       
-      const locations = userProfile.recommendation_locations || [];
+      const locations = userProfile?.recommendation_locations || [];
       const radius = userProfile.recommendation_radius || 0;
       const targetLimit = parseInt(limit);
 
@@ -984,15 +995,41 @@ router.get('/feed', validateAuth, async (req, res) => {
         .order('created_at', { ascending: false })
         .limit(noLocationLimit * 2);
 
-      // Combine with proper ratios
-      const selectedDistricts = districtPosts.slice(0, districtsLimit);
-      const selectedCities = cityPosts.slice(0, citiesLimit);
-      const selectedMoldova = filteredMoldovaPosts.slice(0, moldovaLimit);
-      const selectedWorld = (worldPosts || []).slice(0, worldLimit);
-      const selectedNoLocation = (noLocationPosts || []).slice(0, noLocationLimit);
+      // Если нет выбранных локаций, но есть радиус, фильтруем все посты по радиусу
+      if (districts.length === 0 && cities.length === 0 && radius > 0 && userProfile?.last_location_lat && userProfile?.last_location_lng) {
+        // Фильтруем все посты по радиусу от текущей локации пользователя
+        const allPosts = [...filteredMoldovaPosts, ...(worldPosts || []), ...(noLocationPosts || [])];
+        const radiusFilteredPosts = allPosts.filter(post => {
+          if (!post.latitude || !post.longitude) return false; // Исключаем посты без координат
+          const distance = calculateDistance(
+            userProfile.last_location_lat,
+            userProfile.last_location_lng,
+            post.latitude,
+            post.longitude
+          );
+          return distance <= radius;
+        });
+        
+        // Если есть посты в радиусе, используем их
+        if (radiusFilteredPosts.length > 0) {
+          finalPosts = shuffleArray(radiusFilteredPosts).slice(0, targetLimit);
+          totalCount = finalPosts.length;
+        } else {
+          // Если нет постов в радиусе, используем обычный режим (fallback)
+          finalPosts = [];
+          totalCount = 0;
+        }
+      } else {
+        // Combine with proper ratios
+        const selectedDistricts = districtPosts.slice(0, districtsLimit);
+        const selectedCities = cityPosts.slice(0, citiesLimit);
+        const selectedMoldova = filteredMoldovaPosts.slice(0, moldovaLimit);
+        const selectedWorld = (worldPosts || []).slice(0, worldLimit);
+        const selectedNoLocation = (noLocationPosts || []).slice(0, noLocationLimit);
 
-      finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld, ...selectedNoLocation];
-      totalCount = finalPosts.length;
+        finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld, ...selectedNoLocation];
+        totalCount = finalPosts.length;
+      }
 
     // DEFAULT MODE: Following or all posts
     } else {
