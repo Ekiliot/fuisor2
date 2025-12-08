@@ -901,10 +901,11 @@ router.get('/feed', validateAuth, async (req, res) => {
       const radius = userProfile.recommendation_radius || 0;
       const targetLimit = parseInt(limit);
 
-      const districtsLimit = Math.ceil(targetLimit * 0.6);
+      const districtsLimit = Math.ceil(targetLimit * 0.5); // Уменьшили с 60% до 50%
       const citiesLimit = Math.ceil(targetLimit * 0.2);
       const moldovaLimit = Math.ceil(targetLimit * 0.1);
       const worldLimit = Math.ceil(targetLimit * 0.1);
+      const noLocationLimit = Math.ceil(targetLimit * 0.1); // 10% для постов без регионов
 
       // Extract districts and cities from locations
       const districts = locations.map(loc => loc.district).filter(Boolean);
@@ -973,13 +974,24 @@ router.get('/feed', validateAuth, async (req, res) => {
         .order('created_at', { ascending: false })
         .limit(worldLimit * 2);
 
+      // Get posts without location (country is null)
+      const { data: noLocationPosts } = await supabaseAdmin
+        .from('posts')
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .is('expires_at', null)
+        .is('country', null)
+        .eq('visibility', 'public')
+        .order('created_at', { ascending: false })
+        .limit(noLocationLimit * 2);
+
       // Combine with proper ratios
       const selectedDistricts = districtPosts.slice(0, districtsLimit);
       const selectedCities = cityPosts.slice(0, citiesLimit);
       const selectedMoldova = filteredMoldovaPosts.slice(0, moldovaLimit);
       const selectedWorld = (worldPosts || []).slice(0, worldLimit);
+      const selectedNoLocation = (noLocationPosts || []).slice(0, noLocationLimit);
 
-      finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld];
+      finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld, ...selectedNoLocation];
       totalCount = finalPosts.length;
 
     // DEFAULT MODE: Following or all posts
