@@ -800,23 +800,27 @@ router.get('/feed', validateAuth, async (req, res) => {
       const moldovaLimit = Math.ceil(targetLimit * 0.3);
       const nearbyLimit = Math.ceil(targetLimit * 0.2);
 
-      // Get world posts (excluding Moldova)
+      // Get world posts (excluding Moldova, excluding current user's posts, only public)
       const { data: worldPosts } = await supabaseAdmin
         .from('posts')
         .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
         .is('expires_at', null)
         .neq('country', 'Moldova')
         .not('country', 'is', null)
+        .neq('user_id', userId) // Исключаем посты текущего пользователя
+        .eq('visibility', 'public') // Только публичные посты
         .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false })
         .limit(worldLimit * 2);
 
-      // Get Moldova posts
+      // Get Moldova posts (excluding current user's posts, only public)
       const { data: moldovaPosts } = await supabaseAdmin
         .from('posts')
         .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
         .is('expires_at', null)
         .eq('country', 'Moldova')
+        .neq('user_id', userId) // Исключаем посты текущего пользователя
+        .eq('visibility', 'public') // Только публичные посты
         .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false })
         .limit(moldovaLimit * 2);
@@ -830,6 +834,8 @@ router.get('/feed', validateAuth, async (req, res) => {
           .is('expires_at', null)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
+          .neq('user_id', userId) // Исключаем посты текущего пользователя
+          .eq('visibility', 'public') // Только публичные посты
           .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .limit(100);
 
