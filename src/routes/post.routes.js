@@ -858,6 +858,40 @@ router.get('/feed', validateAuth, async (req, res) => {
       finalPosts = [...shuffledWorld, ...shuffledMoldova, ...shuffledNearby];
       finalPosts = shuffleArray(finalPosts);
       totalCount = finalPosts.length;
+      
+      // Если в режиме исследователя нет постов, убираем фильтрацию по user_id
+      // чтобы показать хотя бы свои посты
+      if (finalPosts.length === 0) {
+        logger.recommendations('Explorer mode returned no posts, relaxing filters');
+        // Повторяем запросы без фильтрации по user_id
+        const { data: worldPostsRelaxed } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .neq('country', 'Moldova')
+          .not('country', 'is', null)
+          .eq('visibility', 'public')
+          .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order('created_at', { ascending: false })
+          .limit(worldLimit * 2);
+
+        const { data: moldovaPostsRelaxed } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .eq('country', 'Moldova')
+          .eq('visibility', 'public')
+          .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order('created_at', { ascending: false })
+          .limit(moldovaLimit * 2);
+
+        const shuffledWorldRelaxed = shuffleArray(worldPostsRelaxed || []).slice(0, worldLimit);
+        const shuffledMoldovaRelaxed = shuffleArray(moldovaPostsRelaxed || []).slice(0, moldovaLimit);
+
+        finalPosts = [...shuffledWorldRelaxed, ...shuffledMoldovaRelaxed, ...shuffledNearby];
+        finalPosts = shuffleArray(finalPosts);
+        totalCount = finalPosts.length;
+      }
 
     // PERSONALIZED RECOMMENDATIONS: 60% districts, 20% cities, 10% Moldova, 10% world
     } else if (isPersonalizedRecommendations && userProfile?.recommendation_locations) {
@@ -977,6 +1011,16 @@ router.get('/feed', validateAuth, async (req, res) => {
           coauthor:coauthor_user_id (id, username, name, avatar_url)
       `, { count: 'exact' })
         .is('expires_at', null);
+
+      // Фильтруем по видимости: показываем публичные посты и посты друзей
+      // Для режима подписок показываем все посты подписок (включая приватные)
+      if (!isFollowingOnly) {
+        // В режиме рекомендаций показываем только публичные посты
+        query = query.eq('visibility', 'public');
+      } else {
+        // В режиме подписок показываем все посты (публичные, приватные, друзья)
+        // Но фильтруем по подпискам
+      }
 
       // Фильтруем по типу медиа
     if (media_type && (media_type === 'video' || media_type === 'image')) {
