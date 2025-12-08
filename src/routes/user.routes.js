@@ -1817,6 +1817,44 @@ router.get('/locations/cities', validateAuth, async (req, res) => {
       return district;
     };
     
+    // 1. Получаем все локации из таблицы posts
+    const { data: postsLocations, error: postsError } = await supabaseAdmin
+      .from('posts')
+      .select('country, city, district')
+      .not('country', 'is', null);
+    
+    if (postsError) {
+      console.error('Error fetching posts locations:', postsError);
+      throw postsError;
+    }
+    
+    if (!postsLocations || postsLocations.length === 0) {
+      console.log('No posts with locations found');
+      // Возвращаем города из таблицы locations, если есть
+      const { data: existingCities, error: locError } = await supabaseAdmin
+        .from('locations')
+        .select('city, post_count')
+        .eq('country', country)
+        .not('city', 'is', null)
+        .order('post_count', { ascending: false });
+      
+      if (locError) throw locError;
+      
+      const citiesMap = new Map();
+      if (existingCities) {
+        existingCities.forEach(item => {
+          if (item.city) {
+            const existing = citiesMap.get(item.city) || 0;
+            citiesMap.set(item.city, existing + (item.post_count || 0));
+          }
+        });
+      }
+      
+      const cities = Array.from(citiesMap.keys()).sort();
+      return res.json({ cities, synced: 0, updated: 0 });
+    }
+    
+    // 2. Группируем локации из постов с нормализацией
     const postsLocationsMap = new Map();
     postsLocations.forEach(post => {
       // Нормализуем значения
