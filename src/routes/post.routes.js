@@ -904,103 +904,36 @@ router.get('/feed', validateAuth, async (req, res) => {
         totalCount = finalPosts.length;
       }
 
-    // PERSONALIZED RECOMMENDATIONS: 50% districts, 20% cities, 10% Moldova, 10% world, 10% no location
+    // PERSONALIZED RECOMMENDATIONS: Приоритетная логика (бесконечная лента)
     } else if (isPersonalizedRecommendations) {
       logger.recommendations('Personalized recommendations mode');
       
       const locations = userProfile?.recommendation_locations || [];
       const radius = userProfile.recommendation_radius || 0;
       const targetLimit = parseInt(limit);
-
-      const districtsLimit = Math.ceil(targetLimit * 0.5); // Уменьшили с 60% до 50%
-      const citiesLimit = Math.ceil(targetLimit * 0.2);
-      const moldovaLimit = Math.ceil(targetLimit * 0.1);
-      const worldLimit = Math.ceil(targetLimit * 0.1);
-      const noLocationLimit = Math.ceil(targetLimit * 0.1); // 10% для постов без регионов
+      const currentPage = parseInt(page);
+      const offset = (currentPage - 1) * targetLimit;
 
       // Extract districts and cities from locations
       const districts = locations.map(loc => loc.district).filter(Boolean);
       const cities = locations.map(loc => loc.city).filter(Boolean);
-
-      // Get district posts
-      let districtPosts = [];
-      if (districts.length > 0) {
-        const { data } = await supabaseAdmin
-          .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
-          .is('expires_at', null)
-          .in('district', districts)
-          .order('created_at', { ascending: false })
-          .limit(districtsLimit * 2);
-        districtPosts = data || [];
-
-        // Apply radius filter if set
-        if (radius > 0 && userProfile?.last_location_lat && userProfile?.last_location_lng) {
-          districtPosts = districtPosts.filter(post => {
-            if (!post.latitude || !post.longitude) return true;
-            const distance = calculateDistance(
-              userProfile.last_location_lat,
-              userProfile.last_location_lng,
-              post.latitude,
-              post.longitude
-            );
-            return distance <= radius;
-          });
-        }
-      }
-
-      // Get city posts (excluding districts)
-      let cityPosts = [];
-      if (cities.length > 0) {
-        const { data } = await supabaseAdmin
-          .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
-          .is('expires_at', null)
-          .in('city', cities)
-          .not('district', 'in', `(${districts.map(d => `"${d}"`).join(',')})`)
-          .order('created_at', { ascending: false })
-          .limit(citiesLimit * 2);
-        cityPosts = data || [];
-      }
-
-      // Get Moldova posts (excluding selected locations)
-      const { data: moldovaPosts } = await supabaseAdmin
-        .from('posts')
-        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
-        .is('expires_at', null)
-        .eq('country', 'Moldova')
-        .order('created_at', { ascending: false })
-        .limit(moldovaLimit * 3);
-
-      // Filter out already shown posts
-      const shownPostIds = new Set([...districtPosts, ...cityPosts].map(p => p.id));
-      const filteredMoldovaPosts = (moldovaPosts || []).filter(p => !shownPostIds.has(p.id));
-
-      // Get world posts (excluding Moldova)
-      const { data: worldPosts } = await supabaseAdmin
-        .from('posts')
-        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
-        .is('expires_at', null)
-        .neq('country', 'Moldova')
-        .order('created_at', { ascending: false })
-        .limit(worldLimit * 2);
-
-      // Get posts without location (country is null)
-      const { data: noLocationPosts } = await supabaseAdmin
-        .from('posts')
-        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
-        .is('expires_at', null)
-        .is('country', null)
-        .eq('visibility', 'public')
-        .order('created_at', { ascending: false })
-        .limit(noLocationLimit * 2);
+      const countries = [...new Set(locations.map(loc => loc.country).filter(Boolean))]; // Уникальные страны
 
       // Если нет выбранных локаций, но есть радиус, фильтруем все посты по радиусу
       if (districts.length === 0 && cities.length === 0 && radius > 0 && userProfile?.last_location_lat && userProfile?.last_location_lng) {
-        // Фильтруем все посты по радиусу от текущей локации пользователя
-        const allPosts = [...filteredMoldovaPosts, ...(worldPosts || []), ...(noLocationPosts || [])];
-        const radiusFilteredPosts = allPosts.filter(post => {
-          if (!post.latitude || !post.longitude) return false; // Исключаем посты без координат
+        // Получаем все посты с координатами
+        const { data: allPostsWithLocation } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .eq('visibility', 'public')
+          .order('created_at', { ascending: false })
+          .limit(1000); // Большой лимит для фильтрации по радиусу
+
+        // Фильтруем по радиусу
+        const radiusFilteredPosts = (allPostsWithLocation || []).filter(post => {
           const distance = calculateDistance(
             userProfile.last_location_lat,
             userProfile.last_location_lng,
@@ -1010,25 +943,176 @@ router.get('/feed', validateAuth, async (req, res) => {
           return distance <= radius;
         });
         
-        // Если есть посты в радиусе, используем их
-        if (radiusFilteredPosts.length > 0) {
-          finalPosts = shuffleArray(radiusFilteredPosts).slice(0, targetLimit);
-          totalCount = finalPosts.length;
-        } else {
-          // Если нет постов в радиусе, используем обычный режим (fallback)
-          finalPosts = [];
-          totalCount = 0;
-        }
+        // Применяем пагинацию
+        finalPosts = radiusFilteredPosts.slice(offset, offset + targetLimit);
+        totalCount = radiusFilteredPosts.length;
       } else {
-        // Combine with proper ratios
-        const selectedDistricts = districtPosts.slice(0, districtsLimit);
-        const selectedCities = cityPosts.slice(0, citiesLimit);
-        const selectedMoldova = filteredMoldovaPosts.slice(0, moldovaLimit);
-        const selectedWorld = (worldPosts || []).slice(0, worldLimit);
-        const selectedNoLocation = (noLocationPosts || []).slice(0, noLocationLimit);
+        // Приоритетная логика с пагинацией
+        let allPosts = [];
+        let shownPostIds = new Set();
 
-        finalPosts = [...selectedDistricts, ...selectedCities, ...selectedMoldova, ...selectedWorld, ...selectedNoLocation];
-        totalCount = finalPosts.length;
+        // ПРИОРИТЕТ 1: Посты из выбранных районов
+        if (districts.length > 0) {
+          let query = supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .in('district', districts)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false });
+
+          // Применяем фильтр по радиусу если установлен
+          if (radius > 0 && userProfile?.last_location_lat && userProfile?.last_location_lng) {
+            const { data: districtPostsAll } = await query.limit(1000);
+            const filtered = (districtPostsAll || []).filter(post => {
+              if (!post.latitude || !post.longitude) return true;
+              const distance = calculateDistance(
+                userProfile.last_location_lat,
+                userProfile.last_location_lng,
+                post.latitude,
+                post.longitude
+              );
+              return distance <= radius;
+            });
+            allPosts = [...allPosts, ...filtered];
+          } else {
+            const { data: districtPostsAll } = await query.limit(1000);
+            allPosts = [...allPosts, ...(districtPostsAll || [])];
+          }
+          shownPostIds = new Set(allPosts.map(p => p.id));
+        }
+
+        // ПРИОРИТЕТ 2: Посты из выбранных городов (исключая районы) + посты без гео
+        if (cities.length > 0) {
+          // Посты из городов
+          let cityQuery = supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .in('city', cities)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false });
+
+          if (districts.length > 0) {
+            cityQuery = cityQuery.not('district', 'in', `(${districts.map(d => `"${d}"`).join(',')})`);
+          }
+
+          const { data: cityPostsAll } = await cityQuery.limit(1000);
+          const cityPostsFiltered = (cityPostsAll || []).filter(p => !shownPostIds.has(p.id));
+          
+          // Посты без гео (смешиваем с постами из городов)
+          const { data: noLocationPostsAll } = await supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .is('country', null)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+
+          const noLocationFiltered = (noLocationPostsAll || []).filter(p => !shownPostIds.has(p.id));
+          
+          // Смешиваем посты без гео с постами из городов (чередуем)
+          const mixed = [];
+          const maxLength = Math.max(cityPostsFiltered.length, noLocationFiltered.length);
+          for (let i = 0; i < maxLength; i++) {
+            if (i < cityPostsFiltered.length) mixed.push(cityPostsFiltered[i]);
+            if (i < noLocationFiltered.length) mixed.push(noLocationFiltered[i]);
+          }
+          
+          allPosts = [...allPosts, ...mixed];
+          shownPostIds = new Set(allPosts.map(p => p.id));
+        } else if (districts.length > 0 && cities.length === 0) {
+          // Если есть только районы без городов - добавляем посты без гео после районов
+          const { data: noLocationPostsAll } = await supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .is('country', null)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+
+          const noLocationFiltered = (noLocationPostsAll || []).filter(p => !shownPostIds.has(p.id));
+          allPosts = [...allPosts, ...noLocationFiltered];
+          shownPostIds = new Set(allPosts.map(p => p.id));
+        }
+
+        // ПРИОРИТЕТ 3: Посты из выбранных стран (исключая выбранные локации) + посты без гео
+        if (countries.length > 0) {
+          let countryQuery = supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .in('country', countries)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false });
+
+          if (cities.length > 0) {
+            countryQuery = countryQuery.not('city', 'in', `(${cities.map(c => `"${c}"`).join(',')})`);
+          }
+
+          const { data: countryPostsAll } = await countryQuery.limit(1000);
+          const countryPostsFiltered = (countryPostsAll || []).filter(p => !shownPostIds.has(p.id));
+          
+          // Смешиваем с постами без гео
+          const { data: noLocationMore } = await supabaseAdmin
+            .from('posts')
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .is('expires_at', null)
+            .is('country', null)
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+
+          const noLocationMoreFiltered = (noLocationMore || []).filter(p => !shownPostIds.has(p.id));
+          
+          // Смешиваем посты из страны с постами без гео
+          const mixed = [];
+          const maxLength = Math.max(countryPostsFiltered.length, noLocationMoreFiltered.length);
+          for (let i = 0; i < maxLength; i++) {
+            if (i < countryPostsFiltered.length) mixed.push(countryPostsFiltered[i]);
+            if (i < noLocationMoreFiltered.length) mixed.push(noLocationMoreFiltered[i]);
+          }
+          allPosts = [...allPosts, ...mixed];
+          shownPostIds = new Set(allPosts.map(p => p.id));
+        }
+
+        // ПРИОРИТЕТ 4: Весь мир + посты без гео
+        const { data: worldPostsAll } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .eq('visibility', 'public')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+
+        const worldPostsFiltered = (worldPostsAll || []).filter(p => !shownPostIds.has(p.id));
+        
+        // Смешиваем с постами без гео
+        const { data: noLocationFinal } = await supabaseAdmin
+          .from('posts')
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .is('expires_at', null)
+          .is('country', null)
+          .eq('visibility', 'public')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+
+        const noLocationFinalFiltered = (noLocationFinal || []).filter(p => !shownPostIds.has(p.id));
+        
+        // Смешиваем посты из мира с постами без гео
+        const mixedFinal = [];
+        const maxLengthFinal = Math.max(worldPostsFiltered.length, noLocationFinalFiltered.length);
+        for (let i = 0; i < maxLengthFinal; i++) {
+          if (i < worldPostsFiltered.length) mixedFinal.push(worldPostsFiltered[i]);
+          if (i < noLocationFinalFiltered.length) mixedFinal.push(noLocationFinalFiltered[i]);
+        }
+        allPosts = [...allPosts, ...mixedFinal];
+
+        // Применяем пагинацию
+        totalCount = allPosts.length;
+        finalPosts = allPosts.slice(offset, offset + targetLimit);
       }
 
     // DEFAULT MODE: Following or all posts
