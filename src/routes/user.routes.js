@@ -2015,20 +2015,71 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
     
     console.log(`Fetching districts for city: ${city}, syncing from posts...`);
     
-    // 1. Получаем все локации из постов для этого города
+    // Функции нормализации
+    const normalizeCountry = (country) => {
+      if (!country) return null;
+      const countryLower = country.toLowerCase().trim();
+      if (countryLower === 'молдова' || countryLower === 'молдавия' || countryLower === 'moldova') {
+        return 'Moldova';
+      }
+      return country;
+    };
+    
+    const normalizeCity = (city) => {
+      if (!city) return null;
+      const cityLower = city.toLowerCase().trim();
+      if (cityLower === 'кишинёв' || cityLower === 'кишинев' || cityLower === 'chisinau' || cityLower === 'chișinău') {
+        return 'Chișinău';
+      }
+      return city;
+    };
+    
+    const normalizeDistrict = (district) => {
+      if (!district) return null;
+      const districtLower = district.toLowerCase().trim();
+      if (districtLower === 'ботаника' || districtLower === 'сектор ботаника' || districtLower === 'botanica') {
+        return 'Botanica';
+      }
+      if (districtLower === 'центру' || districtLower === 'центр' || districtLower === 'centru') {
+        return 'Centru';
+      }
+      if (districtLower === 'ришкан' || districtLower === 'ришканский' || districtLower === 'rîșcani' || districtLower === 'riscani') {
+        return 'Rîșcani';
+      }
+      if (districtLower === 'чокана' || districtLower === 'ciocana') {
+        return 'Ciocana';
+      }
+      if (districtLower === 'буюкань' || districtLower === 'буюкани' || districtLower === 'buiucani') {
+        return 'Buiucani';
+      }
+      return district;
+    };
+    
+    const normalizedCountry = normalizeCountry(country);
+    const normalizedCity = normalizeCity(city);
+    const moldovaVariants = ['Moldova', 'Молдова', 'Молдавия'];
+    const isMoldova = moldovaVariants.includes(normalizedCountry);
+    const cityVariants = [normalizedCity, city].filter(Boolean);
+    
+    // 1. Получаем все локации из постов для этого города (с учетом всех вариантов)
     const { data: postsLocations, error: postsError } = await supabaseAdmin
       .from('posts')
       .select('country, city, district')
-      .eq('country', country)
-      .eq('city', city)
       .not('district', 'is', null);
     
     if (postsError) throw postsError;
     
-    // 3. Группируем локации из постов с нормализацией
+    // Фильтруем по городу и стране (с учетом нормализации)
+    const filteredPosts = (postsLocations || []).filter(post => {
+      const postCountry = normalizeCountry(post.country);
+      const postCity = normalizeCity(post.city);
+      return (isMoldova ? moldovaVariants.includes(postCountry) : postCountry === normalizedCountry) &&
+             cityVariants.includes(postCity);
+    });
+    
+    // 2. Группируем локации из постов с нормализацией
     const postsLocationsMap = new Map();
-    postsLocations.forEach(post => {
-      // Нормализуем значения
+    filteredPosts.forEach(post => {
       const normCountry = normalizeCountry(post.country);
       const normCity = normalizeCity(post.city);
       const normDistrict = normalizeDistrict(post.district);
@@ -2044,7 +2095,7 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
       postsLocationsMap.set(key, existing);
     });
     
-    // 4. Получаем существующие локации из таблицы locations (с учетом всех вариантов)
+    // 3. Получаем существующие локации из таблицы locations (с учетом всех вариантов)
     let existingLocations;
     if (isMoldova) {
       const { data, error: locError } = await supabaseAdmin
@@ -2054,7 +2105,7 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
         .in('city', cityVariants);
       
       if (locError) throw locError;
-      existingLocations = data;
+      existingLocations = data || [];
     } else {
       const { data, error: locError } = await supabaseAdmin
         .from('locations')
@@ -2063,7 +2114,7 @@ router.get('/locations/districts', validateAuth, async (req, res) => {
         .in('city', cityVariants);
       
       if (locError) throw locError;
-      existingLocations = data;
+      existingLocations = data || [];
     }
     
     // 4. Создаем Map существующих локаций
