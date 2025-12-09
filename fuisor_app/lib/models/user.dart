@@ -13,6 +13,8 @@ class User {
   final String? locationVisibility; // 'nobody', 'mutual_followers', 'followers', 'close_friends'
   final bool? locationSharingEnabled;
   final bool? hasStories; // Whether user has active stories
+  final String? gender; // 'male', 'female', 'secret', or null
+  final DateTime? birthDate; // Birth date (month and year, day set to 1)
 
   User({
     required this.id,
@@ -29,6 +31,8 @@ class User {
     this.locationVisibility,
     this.locationSharingEnabled,
     this.hasStories,
+    this.gender,
+    this.birthDate,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -49,6 +53,8 @@ class User {
       locationVisibility: json['location_visibility'],
       locationSharingEnabled: json['location_sharing_enabled'],
       hasStories: json['hasStories'],
+      gender: json['gender'],
+      birthDate: json['birth_date'] != null ? DateTime.parse(json['birth_date']) : null,
     );
   }
 
@@ -71,6 +77,8 @@ class User {
       locationVisibility: json['location_visibility'],
       locationSharingEnabled: json['location_sharing_enabled'],
       hasStories: json['hasStories'],
+      gender: json['gender'],
+      birthDate: json['birth_date'] != null ? DateTime.parse(json['birth_date']) : null,
     );
   }
 
@@ -89,6 +97,8 @@ class User {
       'created_at': createdAt.toIso8601String(),
       'location_visibility': locationVisibility,
       'location_sharing_enabled': locationSharingEnabled,
+      'gender': gender,
+      'birth_date': birthDate?.toIso8601String(),
     };
   }
 }

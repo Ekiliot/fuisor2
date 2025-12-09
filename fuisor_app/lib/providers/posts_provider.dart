@@ -275,6 +275,7 @@ class PostsProvider extends ChangeNotifier {
         limit: 10,
       );
 
+      // Бекенд уже фильтрует по media_type=video, поэтому дополнительная фильтрация не нужна
       // Предзагружаем комментарии для всех постов в фоне (не блокируем основной поток)
       _preloadCommentsForPosts(newVideoPosts);
 
@@ -358,6 +359,7 @@ class PostsProvider extends ChangeNotifier {
         limit: 10,
       );
 
+      // Бекенд уже фильтрует по media_type=video, поэтому дополнительная фильтрация не нужна
       // Предзагружаем комментарии для всех постов в фоне
       _preloadCommentsForPosts(newVideoPosts);
 

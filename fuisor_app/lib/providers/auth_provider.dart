@@ -210,12 +210,26 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> signup(String email, String password, String username, String name) async {
+  Future<bool> signup(
+    String email,
+    String password,
+    String username,
+    String name, {
+    String? gender,
+    DateTime? birthDate,
+  }) async {
     try {
       _setLoading(true);
       _setError(null);
 
-      await _apiService.signup(email, password, username, name);
+      await _apiService.signup(
+        email,
+        password,
+        username,
+        name,
+        gender: gender,
+        birthDate: birthDate,
+      );
       
       // After successful signup, automatically log in
       final loginSuccess = await login(email, password);
@@ -256,6 +270,8 @@ class AuthProvider extends ChangeNotifier {
     String? username,
     String? bio,
     String? websiteUrl,
+    String? gender,
+    DateTime? birthDate,
     Uint8List? avatarBytes,
     String? avatarFileName,
   }) async {
@@ -268,6 +284,8 @@ class AuthProvider extends ChangeNotifier {
         username: username,
         bio: bio,
         websiteUrl: websiteUrl,
+        gender: gender,
+        birthDate: birthDate,
         avatarBytes: avatarBytes,
         avatarFileName: avatarFileName,
       );

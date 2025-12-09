@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
@@ -157,7 +158,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           const _SectionHeader(title: 'Account Security'),
           _NavTile(
             icon: EvaIcons.lockOutline,
-            title: 'Change Password',
+            title: 'Change password',
             subtitle: 'Update your password using email verification',
             onTap: () {
               Navigator.push(
@@ -377,7 +378,7 @@ class _SwitchTile extends StatelessWidget {
                   fontSize: 12,
                 ),
               ),
-        trailing: Switch(
+        trailing: CupertinoSwitch(
           value: value,
           onChanged: onChanged,
           activeColor: const Color(0xFF0095F6),

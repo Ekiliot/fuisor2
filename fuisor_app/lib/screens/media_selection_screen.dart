@@ -40,13 +40,13 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
   
   // Для вкладок
   late TabController _tabController;
-  int _currentTabIndex = 0; // 0 = Фото, 1 = Видео
+  int _currentTabIndex = 0; // 0 = Фото, 1 = Видео, 2 = News
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging && _tabController.index != _currentTabIndex) {
         setState(() {
@@ -55,7 +55,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
           _hasMore = true;
           _thumbnailCache.clear(); // Очищаем кеш при переключении вкладок
         });
-        if (_hasPermission) {
+        if (_hasPermission && _currentTabIndex != 2) {
           _loadMedia();
         }
       }
@@ -1045,7 +1045,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
         title: Text(
-          'New Post',
+          'New post',
           style: GoogleFonts.delaGothicOne(
             fontSize: 24,
             color: Colors.white,
@@ -1131,7 +1131,7 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
             ),
           
           // Вкладки (под предпросмотром) - в стиле профиля
-          if (!kIsWeb && _hasPermission)
+          if (!kIsWeb)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               padding: const EdgeInsets.all(4),
@@ -1232,6 +1232,54 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                                       : Colors.white.withOpacity(0.6),
                                   fontSize: 14,
                                   fontWeight: _tabController.index == 1
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // News Tab
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_tabController.index != 2) {
+                          _tabController.animateTo(2);
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _tabController.index == 2
+                              ? Colors.white.withOpacity(0.2)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                EvaIcons.fileTextOutline,
+                                color: _tabController.index == 2
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.6),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'News',
+                                style: TextStyle(
+                                  color: _tabController.index == 2
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.6),
+                                  fontSize: 14,
+                                  fontWeight: _tabController.index == 2
                                       ? FontWeight.w600
                                       : FontWeight.normal,
                                 ),
@@ -1386,6 +1434,90 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                 color: Color(0xFF0095F6),
               ),
             ],
+          ],
+        ),
+      );
+    }
+
+    // Для вкладки News показываем специальный контент
+    if (_currentTabIndex == 2) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              EvaIcons.fileTextOutline,
+              size: 80,
+              color: Color(0xFF8E8E8E),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'News',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Create text posts and share news',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF8E8E8E),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Container(
+              width: 200,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0095F6),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0095F6).withOpacity(0.3),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () {
+                    // Переход к созданию текстового поста без медиа
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => CreatePostScreen(
+                          selectedFile: null,
+                          selectedImageBytes: null,
+                          videoController: null,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Center(
+                    child: Text(
+                      'Create post',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       );

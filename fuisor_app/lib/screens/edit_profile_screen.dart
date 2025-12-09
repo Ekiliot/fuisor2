@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:pretty_animated_text/pretty_animated_text.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import '../providers/auth_provider.dart';
@@ -25,6 +28,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _error;
   File? _selectedImage;
   Uint8List? _selectedImageBytes;
+  String? _selectedGender;
+  DateTime? _selectedBirthDate;
 
   @override
   void initState() {
@@ -38,6 +43,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _nameController.text = user.name;
       _usernameController.text = user.username;
       _bioController.text = user.bio ?? '';
+      _selectedGender = user.gender;
+      _selectedBirthDate = user.birthDate;
     }
   }
 
@@ -88,6 +95,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: name,
         username: username,
         bio: bio,
+        gender: _selectedGender,
+        birthDate: _selectedBirthDate,
         avatarBytes: _selectedImageBytes,
         avatarFileName: _selectedImage?.path.split('/').last ?? 'avatar.jpg',
       );
@@ -133,27 +142,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           icon: const Icon(EvaIcons.close, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+        title: BlurText(
+          text: 'Edit profile',
+          duration: const Duration(seconds: 1),
+          type: AnimationType.word,
+          textStyle: GoogleFonts.delaGothicOne(
+            fontSize: 24,
             color: Colors.white,
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _updateProfile,
-            child: Text(
-              'Done',
-              style: TextStyle(
-                color: _isLoading ? const Color(0xFF8E8E8E) : const Color(0xFF0095F6),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -263,6 +260,85 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
+
+              // Birth Date Field
+              GestureDetector(
+                onTap: () => _showBirthDatePicker(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.grey.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Birth Date',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _selectedBirthDate != null
+                                ? '${_getMonthName(_selectedBirthDate!.month)} ${_selectedBirthDate!.year}'
+                                : 'Not set',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _selectedBirthDate != null
+                                  ? Colors.white
+                                  : Colors.grey[400],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Icon(
+                        Icons.calendar_today,
+                        color: Color(0xFF0095F6),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Gender Field
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text(
+                      'Gender',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildGenderChip('male', 'Male'),
+                      _buildGenderChip('female', 'Female'),
+                      _buildGenderChip('secret', 'Prefer not to say'),
+                      _buildGenderChip(null, 'Clear'),
+                    ],
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
 
               // Error Message
@@ -288,34 +364,58 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 24),
 
               // Update Button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _updateProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0095F6),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              Center(
+                child: Container(
+                  width: 200,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _isLoading
+                        ? const Color(0xFF8E8E8E)
+                        : const Color(0xFF0095F6),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: _isLoading
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: const Color(0xFF0095F6).withOpacity(0.3),
+                              blurRadius: 12,
+                              spreadRadius: 0,
+                              offset: const Offset(0, 4),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: _isLoading ? null : _updateProfile,
+                      child: Center(
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Update profile',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
                     ),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'Update Profile',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                 ),
               ),
             ],
@@ -323,5 +423,119 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildGenderChip(String? value, String label) {
+    final isSelected = _selectedGender == value;
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _selectedGender = selected ? value : null;
+        });
+      },
+      selectedColor: const Color(0xFF0095F6),
+      checkmarkColor: Colors.white,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.grey[400],
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+      ),
+      backgroundColor: const Color(0xFF1A1A1A),
+      side: BorderSide(
+        color: isSelected
+            ? const Color(0xFF0095F6)
+            : Colors.grey.withOpacity(0.3),
+        width: isSelected ? 2 : 1,
+      ),
+    );
+  }
+
+  void _showBirthDatePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: 300,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFF262626), width: 1),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Color(0xFF8E8E8E)),
+                    ),
+                  ),
+                  const Text(
+                    'Select Month and Year',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      setState(() {});
+                    },
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(color: Color(0xFF0095F6)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.date,
+                initialDateTime: _selectedBirthDate ?? DateTime(2000, 1, 1),
+                minimumDate: DateTime(1900, 1, 1),
+                maximumDate: DateTime.now(),
+                onDateTimeChanged: (DateTime date) {
+                  // Set day to 1 since we only need month and year
+                  setState(() {
+                    _selectedBirthDate = DateTime(date.year, date.month, 1);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month - 1];
   }
 }

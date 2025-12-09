@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:eva_icons_flutter/eva_icons_flutter.dart';
@@ -25,7 +26,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _apiService = ApiService();
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
-  int _currentStep = 0; // 0: username, 1: password, 2: confirm password, 3: name, 4: email
+  int _currentStep = 0; // 0: username, 1: password, 2: confirm password, 3: name, 4: birth date, 5: gender, 6: email
   
   // Username validation state
   bool? _isUsernameAvailable;
@@ -42,6 +43,10 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _hasNumbers = false;
   bool _hasUppercase = false;
   bool _hasValidChars = true;
+  
+  // Gender and birth date
+  String? _selectedGender; // 'male', 'female', 'secret', or null
+  DateTime? _selectedBirthDate; // Birth date (month and year only, day set to 1)
 
   @override
   void initState() {
@@ -845,6 +850,252 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
+  // Birth Date Step Widget
+  Widget _buildBirthDateStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'When were you born?',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Select your birth month and year. This is required.',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF8E8E8E),
+          ),
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: () => _showBirthDatePicker(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _selectedBirthDate != null
+                    ? const Color(0xFF0095F6)
+                    : Colors.grey.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _selectedBirthDate != null
+                      ? '${_getMonthName(_selectedBirthDate!.month)} ${_selectedBirthDate!.year}'
+                      : 'Select month and year',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: _selectedBirthDate != null
+                        ? Colors.white
+                        : const Color(0xFF8E8E8E),
+                  ),
+                ),
+                const Icon(
+                  Icons.calendar_today,
+                  color: Color(0xFF0095F6),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_selectedBirthDate == null)
+          const Padding(
+            padding: EdgeInsets.only(left: 20.0, top: 8.0),
+            child: Text(
+              'Birth date is required',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Gender Step Widget
+  Widget _buildGenderStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'What\'s your gender?',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'You can select your gender or skip this step.',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF8E8E8E),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Column(
+          children: [
+            _buildGenderOption('male', 'Male'),
+            const SizedBox(height: 12),
+            _buildGenderOption('female', 'Female'),
+            const SizedBox(height: 12),
+            _buildGenderOption('secret', 'Prefer not to say'),
+            const SizedBox(height: 12),
+            _buildGenderOption(null, 'Skip'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGenderOption(String? value, String label) {
+    final isSelected = _selectedGender == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedGender = value;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF0095F6).withOpacity(0.1)
+              : const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF0095F6)
+                : Colors.grey.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                color: isSelected ? Colors.white : const Color(0xFF8E8E8E),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle,
+                color: Color(0xFF0095F6),
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBirthDatePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: 300,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFF262626), width: 1),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Color(0xFF8E8E8E)),
+                    ),
+                  ),
+                  const Text(
+                    'Select Month and Year',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      if (_selectedBirthDate != null) {
+                        Navigator.pop(context);
+                        setState(() {});
+                      }
+                    },
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(color: Color(0xFF0095F6)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.date,
+                initialDateTime: _selectedBirthDate ?? DateTime(2000, 1, 1),
+                minimumDate: DateTime(1900, 1, 1),
+                maximumDate: DateTime.now(),
+                onDateTimeChanged: (DateTime date) {
+                  // Set day to 1 since we only need month and year
+                  setState(() {
+                    _selectedBirthDate = DateTime(date.year, date.month, 1);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -855,7 +1106,7 @@ class _SignupScreenState extends State<SignupScreen> {
         automaticallyImplyLeading: false,
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (index) {
+          children: List.generate(7, (index) {
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -869,7 +1120,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         : const Color(0xFF8E8E8E),
                   ),
                 ),
-                if (index < 4)
+                if (index < 6)
                   Container(
                     width: 32,
                     height: 3,
@@ -912,8 +1163,12 @@ class _SignupScreenState extends State<SignupScreen> {
                           if (_currentStep == 2) _buildConfirmPasswordStep(),
                           // Name Step Widget
                           if (_currentStep == 3) _buildNameStep(),
+                          // Birth Date Step Widget
+                          if (_currentStep == 4) _buildBirthDateStep(),
+                          // Gender Step Widget
+                          if (_currentStep == 5) _buildGenderStep(),
                           // Email Step Widget
-                          if (_currentStep == 4) _buildEmailStep(),
+                          if (_currentStep == 6) _buildEmailStep(),
                         ],
                       ),
                     ),
@@ -1008,6 +1263,12 @@ class _SignupScreenState extends State<SignupScreen> {
                                   name.length <= 50 &&
                                   RegExp(r'^[a-zA-Z0-9._\-]+$').hasMatch(name);
                             } else if (_currentStep == 4) {
+                              // Birth date step (mandatory)
+                              isButtonActive = _selectedBirthDate != null;
+                            } else if (_currentStep == 5) {
+                              // Gender step (optional, can skip)
+                              isButtonActive = true; // Always active since it's optional
+                            } else if (_currentStep == 6) {
                               // Email step
                               final email = _emailController.text.trim();
                               final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
@@ -1048,11 +1309,11 @@ class _SignupScreenState extends State<SignupScreen> {
                                   onTap: isButtonActive
                                       ? () async {
                                           if (_formKey.currentState!.validate()) {
-                                            if (_currentStep < 4) {
+                                            if (_currentStep < 6) {
                                               setState(() {
                                                 _currentStep++;
                                               });
-                                            } else if (_currentStep == 4) {
+                                            } else if (_currentStep == 6) {
                                               // Final step - sign up
                                               final authProvider = Provider.of<AuthProvider>(context, listen: false);
                                               final success = await authProvider.signup(
@@ -1060,6 +1321,8 @@ class _SignupScreenState extends State<SignupScreen> {
                                                 _passwordController.text,
                                                 _usernameController.text.trim(),
                                                 _nameController.text.trim(),
+                                                gender: _selectedGender,
+                                                birthDate: _selectedBirthDate,
                                               );
                                               
                                               if (success && mounted) {
@@ -1075,7 +1338,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                       : null,
                                       child: Center(
                                         child: Text(
-                                          _currentStep == 4 ? 'Sign Up' : 'Next',
+                                          _currentStep == 6 ? 'Sign Up' : 'Next',
                                           style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,

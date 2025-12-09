@@ -1,0 +1,2 @@
+[1029/211843.275:ERROR:registration_protocol_win.cc(108)] CreateFile: Не удается найти указанный файл. (0x2)
+[1029/211849.853:ERROR:registration_protocol_win.cc(108)] CreateFile: Не удается найти указанный файл. (0x2)

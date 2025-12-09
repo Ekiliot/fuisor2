@@ -197,7 +197,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'External Link',
+                        'External link',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -297,29 +297,49 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   const SizedBox(height: 24),
                   
                   // Save button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0095F6),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                  Center(
+                    child: Container(
+                      width: 200,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0095F6),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0095F6).withOpacity(0.3),
+                            blurRadius: 12,
+                            spreadRadius: 0,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _linkUrlController.text = urlController.text;
-                          _linkTextController.text = textController.text;
-                        });
-                        Navigator.pop(context);
-                      },
-                      child: const Text(
-                        'Save',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: () {
+                            setState(() {
+                              _linkUrlController.text = urlController.text;
+                              _linkTextController.text = textController.text;
+                            });
+                            Navigator.pop(context);
+                          },
+                          child: const Center(
+                            child: Text(
+                              'Next',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -930,7 +950,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
         title: const AnimatedAppBarTitle(
-          text: 'New Post',
+          text: 'New post',
         ),
         leading: IconButton(
           icon: const Icon(EvaIcons.close, color: Colors.white),

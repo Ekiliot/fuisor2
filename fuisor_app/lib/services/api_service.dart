@@ -97,16 +97,30 @@ class ApiService {
     }
   }
 
-  Future<void> signup(String email, String password, String username, String name) async {
+  Future<void> signup(
+    String email,
+    String password,
+    String username,
+    String name, {
+    String? gender,
+    DateTime? birthDate,
+  }) async {
+    final body = {
+      'email': email,
+      'password': password,
+      'username': username,
+      'name': name,
+      'birth_date': birthDate?.toIso8601String(),
+    };
+    
+    if (gender != null && gender.isNotEmpty) {
+      body['gender'] = gender;
+    }
+
     final response = await http.post(
       Uri.parse('$baseUrl/auth/signup'),
       headers: _headers,
-      body: jsonEncode({
-        'email': email,
-        'password': password,
-        'username': username,
-        'name': name,
-      }),
+      body: jsonEncode(body),
     );
 
     if (response.statusCode != 201) {
@@ -276,65 +290,64 @@ class ApiService {
   }
 
   Future<List<Post>> getVideoPosts({int page = 1, int limit = 10}) async {
-    print('ApiService: Getting video posts...');
+    print('ApiService: Getting posts for shorts (videos and images)...');
     print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
     
+    // Убираем фильтр media_type, чтобы получать и фото, и видео
     final response = await http.get(
-      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit&media_type=video'),
+      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit'),
       headers: _headers,
     );
 
-    print('ApiService: Video posts response status: ${response.statusCode}');
+    print('ApiService: Posts response status: ${response.statusCode}');
 
     // Проверяем ошибки аутентификации
     if (response.statusCode == 401 || response.statusCode == 403) {
-      print('ApiService: Authentication error in video posts request');
+      print('ApiService: Authentication error in posts request');
       await _handleAuthError(response);
       throw Exception('Authentication failed - token may be expired');
     }
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      // Сервер теперь фильтрует по media_type, поэтому все посты уже видео
-      final videoPosts = (data['posts'] as List)
+      final posts = (data['posts'] as List)
           .map((post) => Post.fromJson(post))
           .toList();
-      print('ApiService: Loaded ${videoPosts.length} video posts (recommendations)');
-      return videoPosts;
+      print('ApiService: Loaded ${posts.length} posts for shorts (recommendations)');
+      return posts;
     } else {
-      throw Exception('Failed to load video posts');
+      throw Exception('Failed to load posts');
     }
   }
 
   Future<List<Post>> getFollowingVideoPosts({int page = 1, int limit = 10}) async {
-    print('ApiService: Getting following video posts...');
+    print('ApiService: Getting following posts for shorts (videos and images)...');
     print('ApiService: Access token: ${_accessToken != null ? "Present (${_accessToken!.substring(0, 20)}...)" : "Missing"}');
     
-    // Для подписок передаем media_type=video и following_only=true
+    // Убираем фильтр media_type, чтобы получать и фото, и видео. Оставляем только following_only=true
     final response = await http.get(
-      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit&media_type=video&following_only=true'),
+      Uri.parse('$baseUrl/posts/feed?page=$page&limit=$limit&following_only=true'),
       headers: _headers,
     );
 
-    print('ApiService: Following video posts response status: ${response.statusCode}');
+    print('ApiService: Following posts response status: ${response.statusCode}');
 
     // Проверяем ошибки аутентификации
     if (response.statusCode == 401 || response.statusCode == 403) {
-      print('ApiService: Authentication error in following video posts request');
+      print('ApiService: Authentication error in following posts request');
       await _handleAuthError(response);
       throw Exception('Authentication failed - token may be expired');
     }
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      // Сервер теперь фильтрует по media_type, поэтому все посты уже видео
-      final videoPosts = (data['posts'] as List)
+      final posts = (data['posts'] as List)
           .map((post) => Post.fromJson(post))
           .toList();
-      print('ApiService: Loaded ${videoPosts.length} following video posts');
-      return videoPosts;
+      print('ApiService: Loaded ${posts.length} following posts for shorts');
+      return posts;
     } else {
-      throw Exception('Failed to load following video posts');
+      throw Exception('Failed to load following posts');
     }
   }
 
@@ -698,6 +711,8 @@ class ApiService {
     String? username,
     String? bio,
     String? websiteUrl,
+    String? gender,
+    DateTime? birthDate,
     Uint8List? avatarBytes,
     String? avatarFileName,
   }) async {
@@ -715,6 +730,13 @@ class ApiService {
       if (username != null && username.isNotEmpty) request.fields['username'] = username;
       if (bio != null) request.fields['bio'] = bio; // Allow empty bio
       if (websiteUrl != null) request.fields['website_url'] = websiteUrl; // Allow empty website_url
+      if (gender != null) {
+        // Send empty string to clear gender, or the actual value
+        request.fields['gender'] = gender.isEmpty ? '' : gender;
+      }
+      if (birthDate != null) {
+        request.fields['birth_date'] = birthDate.toIso8601String();
+      }
 
       // Add avatar file if provided
       if (avatarBytes != null && avatarFileName != null) {

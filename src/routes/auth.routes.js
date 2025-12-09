@@ -126,7 +126,7 @@ router.get('/check-email', async (req, res) => {
 // Sign up
 router.post('/signup', validateSignup, async (req, res) => {
   try {
-    const { email, password, username, name } = req.body;
+    const { email, password, username, name, gender, birth_date } = req.body;
     
     const { data: existingUser, error: searchError } = await supabase
       .from('profiles')
@@ -151,16 +151,23 @@ router.post('/signup', validateSignup, async (req, res) => {
       throw new Error('Service role key not configured');
     }
 
+    // Prepare profile data
+    const profileData = {
+      id: data.user.id,
+      username,
+      name,
+      email,
+      birth_date: birth_date || null,
+    };
+
+    // Only include gender if provided
+    if (gender && ['male', 'female', 'secret'].includes(gender)) {
+      profileData.gender = gender;
+    }
+
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .insert([
-        {
-          id: data.user.id,
-          username,
-          name,
-          email,
-        },
-      ]);
+      .insert([profileData]);
 
     if (profileError) {
       logger.authError('Profile creation error', profileError);

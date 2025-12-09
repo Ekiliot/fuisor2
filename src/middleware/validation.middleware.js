@@ -36,6 +36,15 @@ export const validateSignup = [
     .withMessage('Name must be 1-50 characters long')
     .matches(/^[a-zA-Z0-9._\-]+$/)
     .withMessage('Name can only contain letters, numbers, dots, underscores, and hyphens'),
+  body('birth_date')
+    .notEmpty()
+    .withMessage('Birth date is required')
+    .isISO8601()
+    .withMessage('Birth date must be a valid date'),
+  body('gender')
+    .optional()
+    .isIn(['male', 'female', 'secret'])
+    .withMessage('Gender must be male, female, or secret'),
   validateRequest
 ];
 
@@ -95,6 +104,14 @@ export const validateProfileUpdate = [
     .optional()
     .isLength({ max: 500 })
     .withMessage('Bio must be less than 500 characters'),
+  body('birth_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Birth date must be a valid date'),
+  body('gender')
+    .optional()
+    .isIn(['male', 'female', 'secret'])
+    .withMessage('Gender must be male, female, or secret'),
   validateRequest
 ];
 

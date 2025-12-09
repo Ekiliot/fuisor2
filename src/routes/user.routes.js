@@ -486,11 +486,11 @@ router.get('/:id', validateUUID, async (req, res) => {
 // Update user profile
 router.put('/profile', validateAuth, upload.single('avatar'), validateProfileUpdate, async (req, res) => {
   try {
-    const { username, name, bio, website_url } = req.body;
+    const { username, name, bio, website_url, gender, birth_date } = req.body;
     const avatar = req.file;
     let avatarUrl = null;
 
-    console.log('Update profile request:', { username, name, bio, website_url, hasAvatar: !!avatar });
+    console.log('Update profile request:', { username, name, bio, website_url, gender, birth_date, hasAvatar: !!avatar });
 
     if (avatar) {
       // Сначала получаем текущий аватар пользователя для удаления
@@ -580,6 +580,8 @@ router.put('/profile', validateAuth, upload.single('avatar'), validateProfileUpd
       ...(bio !== undefined && { bio }),
       ...(website_url !== undefined && { website_url }),
       ...(avatarUrl && { avatar_url: avatarUrl }),
+      ...(birth_date && { birth_date }),
+      ...(gender !== undefined && (gender ? { gender } : { gender: null })),
       updated_at: new Date()
     };
 
