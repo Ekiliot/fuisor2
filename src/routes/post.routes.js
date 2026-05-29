@@ -789,7 +789,7 @@ router.get('/feed', validateAuth, async (req, res) => {
 
     // Определяем режим: рекомендации (все видео) или подписки (только от подписок)
     const isRecommendations = media_type === 'video' && following_only !== 'true';
-    const isFollowingOnly = following_only === 'true' || (media_type !== 'video' && !following_only);
+    const isFollowingOnly = following_only === 'true';
 
     logger.recommendations('Feed mode', {
       isRecommendations: isRecommendations,

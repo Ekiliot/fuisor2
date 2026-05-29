@@ -181,19 +181,29 @@ class SupabaseStorageService {
           // Пытаемся получить путь из ответа (если это JSON)
           final responseData = jsonDecode(response.body);
           if (responseData is Map && responseData.containsKey('path')) {
-            final returnedPath = responseData['path'] as String;
+            var returnedPath = responseData['path'] as String;
+            if (returnedPath.startsWith('$bucketName/')) {
+              returnedPath = returnedPath.substring(bucketName.length + 1);
+            }
             // Проверяем что возвращенный путь безопасен
             if (_sanitizeFileName(returnedPath) == returnedPath) {
               filePath = returnedPath;
             }
           } else if (responseData is Map && responseData.containsKey('Key')) {
-            final returnedKey = responseData['Key'] as String;
+            var returnedKey = responseData['Key'] as String;
+            if (returnedKey.startsWith('$bucketName/')) {
+              returnedKey = returnedKey.substring(bucketName.length + 1);
+            }
             if (_sanitizeFileName(returnedKey) == returnedKey) {
               filePath = returnedKey;
             }
           } else if (responseData is String && responseData.isNotEmpty) {
-            if (_sanitizeFileName(responseData) == responseData) {
-              filePath = responseData;
+            var returnedStr = responseData;
+            if (returnedStr.startsWith('$bucketName/')) {
+              returnedStr = returnedStr.substring(bucketName.length + 1);
+            }
+            if (_sanitizeFileName(returnedStr) == returnedStr) {
+              filePath = returnedStr;
             }
           }
         } catch (e) {

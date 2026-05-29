@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'create_post_screen.dart';
 import 'video_editor_screen.dart';
+import 'create_news_screen.dart';
 import '../widgets/custom_image_cropper.dart';
 import '../widgets/app_notification.dart';
 
@@ -1493,20 +1494,16 @@ class _MediaSelectionScreenState extends State<MediaSelectionScreen> with Single
                 child: InkWell(
                   borderRadius: BorderRadius.circular(24),
                   onTap: () {
-                    // Переход к созданию текстового поста без медиа
+                    // Navigate to create news screen
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (context) => CreatePostScreen(
-                          selectedFile: null,
-                          selectedImageBytes: null,
-                          videoController: null,
-                        ),
+                        builder: (context) => const CreateNewsScreen(),
                       ),
                     );
                   },
                   child: const Center(
                     child: Text(
-                      'Create post',
+                      'Create news',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,

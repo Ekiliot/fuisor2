@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import '../models/user.dart';
 import '../models/chat.dart';
 import '../models/message.dart';
+import '../models/news.dart';
 
 class ApiService {
   // Локальный API URL
@@ -15,9 +16,17 @@ class ApiService {
   // Production API URL: 'https://api.sonetapp.tech'
   static const String baseUrl = 'https://api.sonetapp.tech/api';
   String? _accessToken;
+  
+  // Статический callback для обработки ошибок аутентификации (401/403)
+  // Используется статический, чтобы работать для всех экземпляров ApiService
+  static Function()? onAuthError;
 
   void setAccessToken(String? token) {
     _accessToken = token;
+  }
+  
+  static void setAuthErrorCallback(Function() callback) {
+    onAuthError = callback;
   }
 
   Map<String, String> get _headers {
@@ -1151,8 +1160,20 @@ class ApiService {
       print('ApiService: Authentication error detected (${response.statusCode})');
       print('ApiService: Response body: ${response.body}');
       
-      // Здесь можно добавить логику обновления токена
-      // Пока что просто возвращаем false
+      // Вызываем статический callback для обработки ошибки аутентификации
+      // Это вызовет forceLogout в AuthProvider, что очистит сессию
+      // и переключит приложение на экран входа
+      if (ApiService.onAuthError != null) {
+        print('ApiService: Calling onAuthError callback');
+        try {
+          ApiService.onAuthError!();
+        } catch (e) {
+          print('ApiService: Error calling onAuthError callback: $e');
+        }
+      } else {
+        print('ApiService: onAuthError callback not set');
+      }
+      
       return false;
     }
     return false;
@@ -2725,6 +2746,325 @@ class ApiService {
       }
     } catch (e) {
       print('ApiService: Error getting location suggestions: $e');
+      rethrow;
+    }
+  }
+
+  // News endpoints
+  Future<Map<String, dynamic>> getNewsFeed({int page = 1, int limit = 10, String? categoryId}) async {
+    try {
+      String url = '$baseUrl/news?page=$page&limit=$limit';
+      if (categoryId != null && categoryId.isNotEmpty) {
+        url += '&categoryId=$categoryId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'news': (data['news'] as List)
+              .map((json) => News.fromJson(json))
+              .toList(),
+          'total': data['total'] ?? 0,
+          'page': data['page'] ?? page,
+          'totalPages': data['totalPages'] ?? 1,
+        };
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get news feed');
+      }
+    } catch (e) {
+      print('ApiService: Error getting news feed: $e');
+      rethrow;
+    }
+  }
+
+  Future<News> getNews(String newsId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/news/$newsId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return News.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get news');
+      }
+    } catch (e) {
+      print('ApiService: Error getting news: $e');
+      rethrow;
+    }
+  }
+
+  Future<News> createNews({
+    required String title,
+    required String content,
+    required String categoryId,
+    String? subcategoryId,
+    String? coverImageUrl,
+    List<String>? coauthors,
+    String? externalLinkUrl,
+    String? externalLinkText,
+  }) async {
+    try {
+      final body = {
+        'title': title,
+        'content': content,
+        'category_id': categoryId,
+        if (subcategoryId != null && subcategoryId.isNotEmpty) 'subcategory_id': subcategoryId,
+        if (coverImageUrl != null && coverImageUrl.isNotEmpty) 'cover_image_url': coverImageUrl,
+        if (coauthors != null && coauthors.isNotEmpty) 'coauthors': coauthors,
+        if (externalLinkUrl != null && externalLinkUrl.isNotEmpty) 'external_link_url': externalLinkUrl,
+        if (externalLinkText != null && externalLinkText.isNotEmpty) 'external_link_text': externalLinkText,
+      };
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/news'),
+        headers: _headers,
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return News.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? error['message'] ?? 'Failed to create news');
+      }
+    } catch (e) {
+      print('ApiService: Error creating news: $e');
+      rethrow;
+    }
+  }
+
+  Future<News> updateNews(String newsId, {
+    String? title,
+    String? content,
+    String? categoryId,
+    String? subcategoryId,
+    String? coverImageUrl,
+    List<String>? coauthors,
+    String? externalLinkUrl,
+    String? externalLinkText,
+    bool? isPublished,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (title != null) body['title'] = title;
+      if (content != null) body['content'] = content;
+      if (categoryId != null) body['category_id'] = categoryId;
+      if (subcategoryId != null) body['subcategory_id'] = subcategoryId;
+      if (coverImageUrl != null) body['cover_image_url'] = coverImageUrl;
+      if (coauthors != null) body['coauthors'] = coauthors;
+      if (externalLinkUrl != null) body['external_link_url'] = externalLinkUrl;
+      if (externalLinkText != null) body['external_link_text'] = externalLinkText;
+      if (isPublished != null) body['is_published'] = isPublished;
+
+      final response = await http.put(
+        Uri.parse('$baseUrl/news/$newsId'),
+        headers: _headers,
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return News.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? error['message'] ?? 'Failed to update news');
+      }
+    } catch (e) {
+      print('ApiService: Error updating news: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteNews(String newsId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/news/$newsId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? error['message'] ?? 'Failed to delete news');
+      }
+    } catch (e) {
+      print('ApiService: Error deleting news: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> likeNews(String newsId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/news/$newsId/like'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to like news');
+      }
+    } catch (e) {
+      print('ApiService: Error liking news: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getNewsCategories() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/news/categories/all'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'categories': (data['categories'] as List).map((catJson) {
+            return {
+              'category': NewsCategory.fromJson(catJson),
+              'subcategories': (catJson['subcategories'] as List? ?? [])
+                  .map((subJson) => NewsSubcategory.fromJson(subJson))
+                  .toList(),
+            };
+          }).toList(),
+        };
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get news categories');
+      }
+    } catch (e) {
+      print('ApiService: Error getting news categories: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getNewsByCategory(String categoryId, {int page = 1, int limit = 10}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/news/category/$categoryId?page=$page&limit=$limit'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'news': (data['news'] as List)
+              .map((json) => News.fromJson(json))
+              .toList(),
+          'total': data['total'] ?? 0,
+          'page': data['page'] ?? page,
+          'totalPages': data['totalPages'] ?? 1,
+        };
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to get news by category');
+      }
+    } catch (e) {
+      print('ApiService: Error getting news by category: $e');
+      rethrow;
+    }
+  }
+
+  // News comments endpoints
+  Future<Map<String, dynamic>> getNewsComments(String newsId, {int page = 1, int limit = 20}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/news/$newsId/comments?page=$page&limit=$limit'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'comments': (data['comments'] as List)
+              .map((json) => Comment.fromJson(json))
+              .toList(),
+          'total': data['total'] ?? 0,
+          'page': data['page'] ?? page,
+          'totalPages': data['totalPages'] ?? 1,
+        };
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to load news comments');
+      }
+    } catch (e) {
+      print('ApiService: Error getting news comments: $e');
+      rethrow;
+    }
+  }
+
+  Future<Comment> addNewsComment(String newsId, String content, {String? parentCommentId}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/news/$newsId/comments'),
+        headers: _headers,
+        body: jsonEncode({
+          'content': content,
+          if (parentCommentId != null) 'parent_comment_id': parentCommentId,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        return Comment.fromJson(jsonDecode(response.body));
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to add news comment');
+      }
+    } catch (e) {
+      print('ApiService: Error adding news comment: $e');
+      rethrow;
+    }
+  }
+
+  Future<Comment> updateNewsComment(String newsId, String commentId, String content) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/news/$newsId/comments/$commentId'),
+        headers: _headers,
+        body: jsonEncode({
+          'content': content,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return Comment.fromJson(jsonDecode(response.body));
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? error['message'] ?? 'Failed to update news comment');
+      }
+    } catch (e) {
+      print('ApiService: Error updating news comment: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteNewsComment(String newsId, String commentId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/news/$newsId/comments/$commentId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final error = jsonDecode(response.body);
+        throw Exception(error['error'] ?? 'Failed to delete news comment');
+      }
+    } catch (e) {
+      print('ApiService: Error deleting news comment: $e');
       rethrow;
     }
   }

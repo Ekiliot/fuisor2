@@ -986,16 +986,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ),
       body: Column(
         children: [
-          // Предпросмотр медиа
-          if (widget.selectedFile != null)
-            Container(
-              height: 300,
-              width: double.infinity,
-              color: const Color(0xFF1A1A1A),
-              child: _buildMediaPreview(),
-            ),
-          
-          // Поле для подписи и другие опции
           Expanded(
             child: SingleChildScrollView(
               child: Padding(
@@ -1003,37 +993,48 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Caption',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _captionController,
-                  maxLines: 5,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'Write a caption...',
-                    hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: Color(0xFF262626)),
+                // Top row with caption on the left and small media preview on the right
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _captionController,
+                        maxLines: 4,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        decoration: const InputDecoration(
+                          hintText: 'Write a caption...',
+                          hintStyle: TextStyle(color: Color(0xFF8E8E8E)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderSide: BorderSide(color: Color(0xFF262626)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderSide: BorderSide(color: Color(0xFF262626)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderSide: BorderSide(color: Color(0xFF0095F6)),
+                          ),
+                          filled: true,
+                          fillColor: Color(0xFF1A1A1A),
+                        ),
+                      ),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: Color(0xFF262626)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: Color(0xFF0095F6)),
-                    ),
-                    filled: true,
-                    fillColor: Color(0xFF1A1A1A),
-                  ),
+                    if (widget.selectedFile != null) ...[
+                      const SizedBox(width: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 80,
+                          height: 110,
+                          color: const Color(0xFF1A1A1A),
+                          child: _buildMediaPreview(),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 
                 // Coauthor section
@@ -1240,25 +1241,40 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     
     // Видео с контроллером (мобильная платформа - переданный контроллер)
     if (widget.videoController != null) {
-      return AspectRatio(
-        aspectRatio: widget.videoController!.value.aspectRatio,
-        child: VideoPlayer(widget.videoController!),
+      return FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: widget.videoController!.value.size.width > 0 ? widget.videoController!.value.size.width : 100,
+          height: widget.videoController!.value.size.height > 0 ? widget.videoController!.value.size.height : 100,
+          child: VideoPlayer(widget.videoController!),
+        ),
       );
     }
 
     // Видео с контроллером (мобильная платформа - созданный контроллер)
     if (_mobileVideoController != null && _mobileVideoController!.value.isInitialized) {
-      return AspectRatio(
-        aspectRatio: _mobileVideoController!.value.aspectRatio,
-        child: VideoPlayer(_mobileVideoController!),
+      return FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: _mobileVideoController!.value.size.width > 0 ? _mobileVideoController!.value.size.width : 100,
+          height: _mobileVideoController!.value.size.height > 0 ? _mobileVideoController!.value.size.height : 100,
+          child: VideoPlayer(_mobileVideoController!),
+        ),
       );
     }
 
     // Видео для веб-платформы
     if (_webVideoController != null && _webVideoController!.value.isInitialized) {
-      return AspectRatio(
-        aspectRatio: _webVideoController!.value.aspectRatio,
-        child: VideoPlayer(_webVideoController!),
+      return FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: _webVideoController!.value.size.width > 0 ? _webVideoController!.value.size.width : 100,
+          height: _webVideoController!.value.size.height > 0 ? _webVideoController!.value.size.height : 100,
+          child: VideoPlayer(_webVideoController!),
+        ),
       );
     }
     

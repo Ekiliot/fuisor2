@@ -20,6 +20,7 @@ class StoriesWidget extends StatefulWidget {
 class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserver {
   List<User> _usersWithStories = [];
   bool _isLoading = true;
+  bool _isInitialized = false; // Флаг для отслеживания первой загрузки
   User? _currentUser;
   bool _currentUserHasStories = false;
   AuthProvider? _authProvider; // Сохраняем ссылку на provider
@@ -46,9 +47,9 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
     super.didChangeAppLifecycleState(state);
     // Reload stories when app comes back to foreground
     if (state == AppLifecycleState.resumed) {
-      print('StoriesWidget: App resumed, reloading stories');
-      // Always reload when app resumes to catch new stories
-      _loadStories();
+      print('StoriesWidget: App resumed, silently refreshing stories');
+      // Тихое обновление при возвращении в приложение
+      _refreshStoriesSilently();
     }
   }
 
@@ -122,10 +123,13 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
 
   Future<void> _loadStories() async {
     if (!mounted) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
+
+    // Показываем загрузку только при первой загрузке
+    if (!_isInitialized) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       // Get current user from AuthProvider
@@ -135,11 +139,12 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       // Get access token
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
-      
+
       if (accessToken == null) {
         if (mounted) {
           setState(() {
             _isLoading = false;
+            _isInitialized = true;
           });
         }
         return;
@@ -161,6 +166,7 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
           _usersWithStories = users;
           _currentUserHasStories = currentUserHasStories;
           _isLoading = false;
+          _isInitialized = true;
         });
       }
     } catch (e) {
@@ -168,8 +174,50 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isInitialized = true;
         });
       }
+    }
+  }
+
+  // Тихое обновление данных без показа загрузки
+  Future<void> _refreshStoriesSilently() async {
+    if (!mounted || !_isInitialized) return;
+
+    try {
+      print('StoriesWidget: Silently refreshing stories...');
+
+      // Get current user from AuthProvider
+      final authProvider = context.read<AuthProvider>();
+      _currentUser = authProvider.currentUser;
+
+      // Get access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+
+      if (accessToken == null) {
+        return;
+      }
+
+      // Get users with active stories
+      final apiService = ApiService();
+      apiService.setAccessToken(accessToken);
+      final result = await apiService.getUsersWithStories();
+
+      final users = result['users'] as List<User>;
+      final currentUserHasStories = result['currentUserHasStories'] as bool;
+
+      print('StoriesWidget: Silently updated ${users.length} users with stories');
+
+      if (mounted) {
+        setState(() {
+          _usersWithStories = users;
+          _currentUserHasStories = currentUserHasStories;
+        });
+      }
+    } catch (e) {
+      print('StoriesWidget: Error silently refreshing stories: $e');
+      // В случае ошибки не меняем состояние, чтобы не показывать загрузку
     }
   }
 
@@ -178,7 +226,7 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
     return Container(
       height: 100,
       margin: const EdgeInsets.only(top: 0, bottom: 8),
-      child: _isLoading
+      child: _isLoading && !_isInitialized
           ? _buildLoadingShimmer()
           : ListView.builder(
         scrollDirection: Axis.horizontal,
@@ -222,12 +270,12 @@ class _StoriesWidgetState extends State<StoriesWidget> with WidgetsBindingObserv
           ),
         );
           // Reload stories when returning from camera (with longer delay to allow DB to update)
-          print('StoriesWidget: Returned from camera, reloading stories');
+          print('StoriesWidget: Returned from camera, silently refreshing stories');
           if (mounted) {
             // Увеличиваем задержку до 1.5 секунд для надежности
             await Future.delayed(const Duration(milliseconds: 1500));
-            print('StoriesWidget: Delay finished, calling _loadStories');
-            await _loadStories();
+            print('StoriesWidget: Delay finished, calling silent refresh');
+            await _refreshStoriesSilently();
           }
         }
       },

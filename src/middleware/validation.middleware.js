@@ -150,3 +150,98 @@ export const validateFriendId = [
     .withMessage('Invalid friend ID format'),
   validateRequest
 ];
+
+// News validation rules
+export const validateNews = [
+  body('title')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title must be between 1 and 200 characters'),
+  body('content')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 1, max: 50000 })
+    .withMessage('Content must be between 1 and 50000 characters'),
+  body('category_id')
+    .notEmpty()
+    .isUUID()
+    .withMessage('Valid category ID is required'),
+  body('subcategory_id')
+    .optional()
+    .isUUID()
+    .withMessage('Subcategory ID must be a valid UUID'),
+  body('cover_image_url')
+    .optional()
+    .isURL()
+    .withMessage('Cover image URL must be a valid URL'),
+  body('coauthors')
+    .optional()
+    .isArray()
+    .withMessage('Coauthors must be an array'),
+  body('coauthors.*')
+    .optional()
+    .notEmpty()
+    .withMessage('Coauthor username or ID cannot be empty'),
+  body('external_link_url')
+    .optional()
+    .isURL()
+    .withMessage('External link URL must be a valid URL'),
+  body('external_link_text')
+    .optional()
+    .isLength({ min: 6, max: 8 })
+    .withMessage('External link text must be between 6 and 8 characters'),
+  validateRequest
+];
+
+export const validateNewsUpdate = [
+  body('title')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Title must be between 1 and 200 characters'),
+  body('content')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50000 })
+    .withMessage('Content must be between 1 and 50000 characters'),
+  body('category_id')
+    .optional()
+    .isUUID()
+    .withMessage('Category ID must be a valid UUID'),
+  body('subcategory_id')
+    .optional()
+    .isUUID()
+    .withMessage('Subcategory ID must be a valid UUID'),
+  body('cover_image_url')
+    .optional()
+    .isURL()
+    .withMessage('Cover image URL must be a valid URL'),
+  body('coauthors')
+    .optional()
+    .isArray()
+    .withMessage('Coauthors must be an array'),
+  body('external_link_url')
+    .optional()
+    .isURL()
+    .withMessage('External link URL must be a valid URL'),
+  body('external_link_text')
+    .optional()
+    .isLength({ min: 6, max: 8 })
+    .withMessage('External link text must be between 6 and 8 characters'),
+  validateRequest
+];
+
+export const validateNewsId = [
+  param('id')
+    .isUUID()
+    .withMessage('Invalid news ID format'),
+  validateRequest
+];
+
+export const validateCategoryId = [
+  param('categoryId')
+    .isUUID()
+    .withMessage('Invalid category ID format'),
+  validateRequest
+];

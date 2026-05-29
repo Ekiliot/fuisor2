@@ -122,6 +122,15 @@ class AuthProvider extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
     await _loadSession();
+    _setupAuthErrorHandler();
+  }
+
+  // Настройка обработчика ошибок аутентификации
+  void _setupAuthErrorHandler() {
+    ApiService.setAuthErrorCallback(() {
+      print('AuthProvider: Auth error callback called - forcing logout');
+      forceLogout();
+    });
   }
 
   void _setLoginButtonState(LoginButtonState state) {
@@ -262,6 +271,36 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError(e.toString());
+    }
+  }
+
+  // Принудительный выход без вызова API (используется при истечении токена)
+  Future<void> forceLogout() async {
+    try {
+      print('AuthProvider: Force logout - token expired');
+      
+      // Очищаем кеш сообщений при выходе
+      try {
+        await MessageCacheService().clearAllCache();
+        print('AuthProvider: Cleared message cache on force logout');
+      } catch (e) {
+        print('AuthProvider: Error clearing message cache: $e');
+      }
+      
+      // Очищаем сессию
+      await _clearSession();
+      
+      _currentUser = null;
+      _setError(null);
+      notifyListeners();
+      
+      print('AuthProvider: Force logout completed');
+    } catch (e) {
+      print('AuthProvider: Error in force logout: $e');
+      // Даже при ошибке очищаем локальные данные
+      _currentUser = null;
+      _setError(null);
+      notifyListeners();
     }
   }
 

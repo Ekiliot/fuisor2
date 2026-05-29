@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_editor/video_editor.dart';
 import 'package:video_player/video_player.dart';
 import 'package:image_picker/image_picker.dart';
@@ -50,12 +53,16 @@ class TextLayer {
   Offset positionNormalized;
   double startTime;
   double endTime;
+  double scale;
+  double rotation;
 
   TextLayer({
     required this.style,
     this.positionNormalized = const Offset(0.5, 0.5),
     this.startTime = 0.0,
     this.endTime = 3.0,
+    this.scale = 1.0,
+    this.rotation = 0.0,
   });
 }
 
@@ -80,12 +87,78 @@ enum EditorMode { trim, text }
 class _VideoEditorScreenState extends State<VideoEditorScreen> {
   late VideoEditorController _controller;
   bool _exported = false;
+  double _exportProgress = 0.0;
   EditorMode _currentMode = EditorMode.trim;
   
   // Text overlay state - multiple layers support
   List<TextLayer> _textLayers = [];
   int? _selectedLayerIndex; // Currently selected layer for editing
   bool _isDeleteMode = false; // Track if delete mode is active
+
+  // History state for undo/redo
+  List<List<TextLayer>> _history = [];
+  int _historyIndex = -1;
+  
+  void _saveToHistory() {
+    final copy = _textLayers.map((e) => TextLayer(
+      style: e.style.copyWith(),
+      positionNormalized: e.positionNormalized,
+      startTime: e.startTime,
+      endTime: e.endTime,
+      scale: e.scale,
+      rotation: e.rotation,
+    )).toList();
+    
+    if (_historyIndex < _history.length - 1) {
+      _history.removeRange(_historyIndex + 1, _history.length);
+    }
+    
+    _history.add(copy);
+    _historyIndex = _history.length - 1;
+    
+    if (_history.length > 30) {
+      _history.removeAt(0);
+      _historyIndex--;
+    }
+  }
+
+  void _undo() {
+    if (_historyIndex > 0) {
+      setState(() {
+        _historyIndex--;
+        final previousState = _history[_historyIndex];
+        _textLayers = previousState.map((e) => TextLayer(
+          style: e.style.copyWith(),
+          positionNormalized: e.positionNormalized,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          scale: e.scale,
+          rotation: e.rotation,
+        )).toList();
+        if (_selectedLayerIndex != null && _selectedLayerIndex! >= _textLayers.length) {
+          _selectedLayerIndex = null;
+          _currentMode = EditorMode.trim;
+        }
+      });
+    }
+  }
+
+  void _redo() {
+    if (_historyIndex < _history.length - 1) {
+      setState(() {
+        _historyIndex++;
+        final nextState = _history[_historyIndex];
+        _textLayers = nextState.map((e) => TextLayer(
+          style: e.style.copyWith(),
+          positionNormalized: e.positionNormalized,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          scale: e.scale,
+          rotation: e.rotation,
+        )).toList();
+      });
+    }
+  }
   
   // Text input controller for the selected layer
   final TextEditingController _textInputController = TextEditingController();
@@ -98,6 +171,12 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   // ignore: unused_field
   double _audioDuration = 0.0; // Will be used when file picker is fully integrated
   bool _muteOriginalAudio = false;
+  
+  // Gesture tracking
+  double _baseScale = 1.0;
+  double _baseRotation = 0.0;
+  bool _snappedX = false;
+  bool _snappedY = false;
   
   final GlobalKey _previewKey = GlobalKey(); // Key для получения размеров превью
   final GlobalKey _stackKey = GlobalKey(); // Key для Stack для получения координат
@@ -142,6 +221,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           }
         });
         
+        _saveToHistory();
         setState(() {});
       }
     }).catchError((error) {
@@ -220,7 +300,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           return;
         }
         
-    setState(() => _exported = true);
+    setState(() {
+      _exported = true;
+      _exportProgress = 0.0;
+    });
     
     await _controller.video.pause();
 
@@ -234,60 +317,52 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
     // Получаем размеры видео
     final videoSize = _controller.video.value.size;
-    final videoWidth = videoSize.width.round();
-    final videoHeight = videoSize.height.round();
+    final videoWidth = (videoSize.width.round() / 2).floor() * 2;
+    final videoHeight = (videoSize.height.round() / 2).floor() * 2;
 
-    // Подготавливаем параметры текста (поддержка нескольких слоёв)
-    List<TextOverlay> textOverlays = [];
-    if (_textLayers.isNotEmpty) {
+    // Подготавливаем параметры текста (перевод в картинки)
+    List<ImageOverlay> imageOverlays = [];
+    if (_textLayers.isNotEmpty && _previewSize != null) {
+      final scale = videoWidth / _previewSize!.width;
       final videoDuration = _controller.video.value.duration.inMilliseconds / 1000.0;
       final trimStart = _controller.minTrim * videoDuration;
       final trimEnd = _controller.maxTrim * videoDuration;
-      
-      print('VideoEditorScreen: Video info:');
-      print('  Total duration: ${videoDuration}s');
-      print('  Trim: ${trimStart}s - ${trimEnd}s');
-      print('  Text layers: ${_textLayers.length}');
       
       for (int i = 0; i < _textLayers.length; i++) {
         final layer = _textLayers[i];
         if (layer.style.text.isEmpty) continue;
         
-        // Ограничиваем время текста границами обрезанного сегмента
         final clampedTextStart = layer.startTime.clamp(trimStart, trimEnd);
         final clampedTextEnd = layer.endTime.clamp(trimStart, trimEnd);
         
-        // Время текста относительно начала обрезанного сегмента
         final textStartRelative = clampedTextStart - trimStart;
         final textEndRelative = clampedTextEnd - trimStart;
         
-        // Оцениваем размер текста для корректировки позиции
-        // Limit text width to 80% of video width
-        final textSize = _estimateTextSize(layer.style, maxWidth: videoWidth * 0.8);
-        final textWidth = textSize.width;
-        final textHeight = textSize.height;
+        // Render text to PNG image
+        final imagePath = await _renderTextLayerToImage(layer, scale, videoWidth * 0.8);
         
-        // Рассчитываем абсолютные координаты из нормализованных (центр текста)
+        // Measure the resulting image bounds
+        final imgFile = File(imagePath);
+        final decodedImage = await decodeImageFromList(await imgFile.readAsBytes());
+        final textWidth = decodedImage.width.toDouble();
+        final textHeight = decodedImage.height.toDouble();
+        
         final centerX = layer.positionNormalized.dx * videoWidth;
         final centerY = layer.positionNormalized.dy * videoHeight;
         
-        // Конвертируем в верхний левый угол и ограничиваем границами видео
-        final clampedX = (centerX - textWidth / 2).clamp(0.0, videoWidth - textWidth);
-        final clampedY = (centerY - textHeight / 2).clamp(0.0, videoHeight - textHeight);
+        final maxLeft = (videoWidth - textWidth) > 0 ? videoWidth - textWidth : 0.0;
+        final maxTop = (videoHeight - textHeight) > 0 ? videoHeight - textHeight : 0.0;
         
-        textOverlays.add(TextOverlay(
-          text: layer.style.text,
+        final clampedX = (centerX - textWidth / 2).clamp(0.0, maxLeft);
+        final clampedY = (centerY - textHeight / 2).clamp(0.0, maxTop);
+        
+        imageOverlays.add(ImageOverlay(
+          imagePath: imagePath,
           x: clampedX,
           y: clampedY,
           startTime: textStartRelative,
           endTime: textEndRelative,
-          fontWeight: layer.style.fontWeight,
-          fontStyle: layer.style.fontStyle,
-          textColor: layer.style.textColor,
-          backgroundColor: layer.style.backgroundColor,
         ));
-        
-        print('  Layer $i: "${layer.style.text}" at (${clampedX.round()}, ${clampedY.round()}) time: ${textStartRelative.toStringAsFixed(2)}s - ${textEndRelative.toStringAsFixed(2)}s');
       }
     }
     
@@ -316,13 +391,20 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       outputPath: outputPath,
       startSeconds: start / 1000.0,
       durationSeconds: duration / 1000.0,
-      textOverlays: textOverlays.isNotEmpty ? textOverlays : null,
+      imageOverlays: imageOverlays.isNotEmpty ? imageOverlays : null,
       videoWidth: videoWidth,
       videoHeight: videoHeight,
       audioPath: audioPath,
       audioStartTime: audioStartTime,
       audioEndTime: audioEndTime,
       muteOriginalAudio: _muteOriginalAudio,
+      onProgress: (progress) {
+        if (mounted) {
+          setState(() {
+            _exportProgress = progress;
+          });
+        }
+      },
     );
 
     setState(() => _exported = false);
@@ -345,7 +427,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
         if (mounted) {
           AppNotification.showError(
             context,
-            'Ошибка: экспортированный файл поврежден',
+            'Error: exported file is corrupted',
           );
         }
       }
@@ -354,7 +436,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       if (mounted) {
         AppNotification.showError(
           context,
-          'Ошибка сохранения видео',
+          'Error saving video',
         );
       }
     }
@@ -381,16 +463,19 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     final endTime = (startTime + 3.0).clamp(startTime + 0.5, trimEnd);
 
     final newLayer = TextLayer(
-      style: const TextOverlayStyle(text: "Текст"),
+      style: const TextOverlayStyle(text: "Text"),
       positionNormalized: const Offset(0.5, 0.5),
       startTime: startTime,
       endTime: endTime,
+      scale: 1.0,
+      rotation: 0.0,
     );
 
     setState(() {
       _textLayers.add(newLayer);
       _selectedLayerIndex = _textLayers.length - 1;
     });
+    _saveToHistory();
   }
 
   void _deleteSelectedLayer() {
@@ -405,6 +490,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
         _selectedLayerIndex = (_selectedLayerIndex! - 1).clamp(0, _textLayers.length - 1);
       }
     });
+    _saveToHistory();
   }
 
   Future<void> _pickAudio() async {
@@ -417,7 +503,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.folder, color: Colors.white),
-              title: const Text('Из галереи', style: TextStyle(color: Colors.white)),
+              title: const Text('From Gallery', style: TextStyle(color: Colors.white)),
               onTap: () async {
                 Navigator.pop(context);
                 await _pickAudioFromGallery();
@@ -425,19 +511,19 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.library_music, color: Colors.white),
-              title: const Text('Из библиотеки', style: TextStyle(color: Colors.white)),
+              title: const Text('From Library', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 AppNotification.showInfo(
                   context,
-                  'Скоро будет доступно',
+                  'Coming Soon',
                 );
               },
             ),
             if (_selectedAudio != null)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Удалить аудио', style: TextStyle(color: Colors.red)),
+                title: const Text('Delete Audio', style: TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() {
@@ -475,7 +561,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           if (mounted) {
             AppNotification.showError(
               context,
-              'Не удалось определить длительность аудио файла',
+              'Could not determine audio file duration',
             );
           }
           return;
@@ -486,7 +572,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
           if (mounted) {
             AppNotification.showError(
               context,
-              'Дождитесь загрузки видео',
+              'Please wait for video to load',
             );
           }
           return;
@@ -516,7 +602,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       if (mounted) {
         AppNotification.showError(
           context,
-          'Ошибка выбора аудио: $e',
+          'Error selecting audio: $e',
         );
       }
     }
@@ -598,9 +684,11 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                   final centerX = layer.positionNormalized.dx * fixedPreviewWidth;
                                   final centerY = layer.positionNormalized.dy * fixedPreviewHeight;
                                   
-                                  // Convert to top-left position, clamped to bounds
-                                  final leftPos = (centerX - textWidth / 2).clamp(0.0, fixedPreviewWidth - textWidth);
-                                  final topPos = (centerY - textHeight / 2).clamp(0.0, fixedPreviewHeight - textHeight);
+                                  // Convert to top-left position, clamped to bounds safely
+                                  final maxLeft = (fixedPreviewWidth - textWidth) > 0 ? fixedPreviewWidth - textWidth : 0.0;
+                                  final maxTop = (fixedPreviewHeight - textHeight) > 0 ? fixedPreviewHeight - textHeight : 0.0;
+                                  final leftPos = (centerX - textWidth / 2).clamp(0.0, maxLeft);
+                                  final topPos = (centerY - textHeight / 2).clamp(0.0, maxTop);
                                   
                                   final isSelected = _selectedLayerIndex == index;
                                   
@@ -638,44 +726,87 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                         left: leftPos,
                                         top: topPos,
                                         child: GestureDetector(
-                                          onTap: () {
+                                          onDoubleTap: () {
                                             setState(() {
                                               _selectedLayerIndex = index;
                                               _currentMode = EditorMode.text;
                                             });
                                           },
-                                          child: Draggable(
-                                            feedback: Material(
-                                              color: Colors.transparent,
-                                              child: ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                  maxWidth: fixedPreviewWidth * 0.8,
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedLayerIndex = index;
+                                            });
+                                          },
+                                          onScaleStart: (details) {
+                                            setState(() {
+                                              _selectedLayerIndex = index;
+                                              _baseScale = layer.scale;
+                                              _baseRotation = layer.rotation;
+                                              _snappedX = false;
+                                              _snappedY = false;
+                                            });
+                                          },
+                                          onScaleUpdate: (details) {
+                                            double newScale = (_baseScale * details.scale).clamp(0.5, 5.0);
+                                            double newRotation = _baseRotation + details.rotation;
+                                            
+                                            double dx = details.focalPointDelta.dx / fixedPreviewWidth;
+                                            double dy = details.focalPointDelta.dy / fixedPreviewHeight;
+                                            
+                                            double newX = layer.positionNormalized.dx + dx;
+                                            double newY = layer.positionNormalized.dy + dy;
+                                            
+                                            bool snapX = false;
+                                            bool snapY = false;
+                                            
+                                            if ((newX - 0.5).abs() < 0.03) {
+                                              newX = 0.5;
+                                              snapX = true;
+                                            }
+                                            if ((newY - 0.5).abs() < 0.03) {
+                                              newY = 0.5;
+                                              snapY = true;
+                                            }
+                                            
+                                            if (snapX && !_snappedX) {
+                                              HapticFeedback.lightImpact();
+                                              _snappedX = true;
+                                            } else if (!snapX) {
+                                              _snappedX = false;
+                                            }
+                                            
+                                            if (snapY && !_snappedY) {
+                                              HapticFeedback.lightImpact();
+                                              _snappedY = true;
+                                            } else if (!snapY) {
+                                              _snappedY = false;
+                                            }
+                                            
+                                            setState(() {
+                                              layer.scale = newScale;
+                                              layer.rotation = newRotation;
+                                              layer.positionNormalized = Offset(newX.clamp(0.0, 1.0), newY.clamp(0.0, 1.0));
+                                            });
+                                          },
+                                          onScaleEnd: (details) {
+                                            _saveToHistory();
+                                          },
+                                          child: Transform.rotate(
+                                            angle: layer.rotation,
+                                            child: Transform.scale(
+                                              scale: layer.scale,
+                                              child: Container(
+                                                decoration: isSelected ? BoxDecoration(
+                                                  border: Border.all(color: const Color(0xFFFFFF00), width: 2 / layer.scale),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ) : null,
+                                                child: ConstrainedBox(
+                                                  constraints: BoxConstraints(
+                                                    maxWidth: fixedPreviewWidth * 0.8,
+                                                  ),
+                                                  child: _buildTextWidgetForLayer(layer.style),
                                                 ),
-                                                child: _buildTextWidgetForLayer(layer.style, isDragging: true),
                                               ),
-                                            ),
-                                            childWhenDragging: const SizedBox.shrink(),
-                                            onDragEnd: (details) {
-                                              final RenderBox? stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
-                                              if (stackBox != null) {
-                                                final localPosition = stackBox.globalToLocal(details.offset);
-                                                // Store center position (add half of text size back)
-                                                final centerX = localPosition.dx + textWidth / 2;
-                                                final centerY = localPosition.dy + textHeight / 2;
-                                                final normalizedX = (centerX / fixedPreviewWidth).clamp(0.0, 1.0);
-                                                final normalizedY = (centerY / fixedPreviewHeight).clamp(0.0, 1.0);
-              
-                                                setState(() {
-                                                  layer.positionNormalized = Offset(normalizedX, normalizedY);
-                                                });
-                                              }
-                                            },
-                                            child: Container(
-                                              decoration: isSelected ? BoxDecoration(
-                                                border: Border.all(color: const Color(0xFFFFFF00), width: 2),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ) : null,
-                                              child: _buildTextWidgetForLayer(layer.style),
                                             ),
                                           ),
                                         ),
@@ -745,22 +876,34 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                         },
             ),
                       _controlBar(),
-                      // Фиксированная высота для области инструментов (не влияет на размер превью)
-          Expanded(
-            child: _currentMode == EditorMode.trim 
-                ? _trimmer()
-                : _currentMode == EditorMode.text 
-                    ? _textEditor()
-                    : const SizedBox.shrink(),
-          ),
+                      // Stable height for tools panel with smooth transitions
+                      SizedBox(
+                        height: 190,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          switchInCurve: Curves.easeInOut,
+                          switchOutCurve: Curves.easeInOut,
+                          transitionBuilder: (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0.0, 0.08),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _currentMode == EditorMode.trim 
+                              ? _trimmer()
+                              : _currentMode == EditorMode.text 
+                                  ? _textEditor()
+                                  : const SizedBox.shrink(),
+                        ),
+                      ),
+                      _bottomNavBar(),
                     ],
-                  ),
-                  // Кнопки прикреплены к низу экрана
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: _bottomNavBar(),
                   ),
                   if (_exported)
           Container(
@@ -771,19 +914,38 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Animated circular progress indicator
+                              // Animated circular progress indicator with percentage
                               SizedBox(
                                 width: 80,
                                 height: 80,
-                                child: CircularProgressIndicator(
-                                  color: const Color(0xFFFFFF00),
-                                  strokeWidth: 4,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 80,
+                                      height: 80,
+                                      child: CircularProgressIndicator(
+                                        value: _exportProgress > 0 ? _exportProgress : null,
+                                        color: const Color(0xFFFFFF00),
+                                        strokeWidth: 4,
+                                      ),
+                                    ),
+                                    if (_exportProgress > 0)
+                                      Text(
+                                        '${(_exportProgress * 100).toInt()}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 24),
                               // Processing text
                               Text(
-                                'Обработка видео...',
+                                'Processing video...',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
@@ -793,7 +955,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                               const SizedBox(height: 8),
                               // Subtitle
                               Text(
-                                'Применяем эффекты',
+                                'Applying effects',
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.6),
                                   fontSize: 14,
@@ -832,7 +994,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                       });
               },
               icon: const Icon(Icons.delete),
-              label: const Text("Удалить текст", style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text("Delete text", style: TextStyle(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
@@ -846,7 +1008,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   _isDeleteMode = false;
                       });
                     },
-              child: const Text("Отмена", style: TextStyle(color: Colors.white)),
+              child: const Text("Cancel", style: TextStyle(color: Colors.white)),
               ),
           ],
         ),
@@ -859,14 +1021,14 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildControlButton(
-            _currentMode == EditorMode.trim ? "Обрезка" : "",
+            _currentMode == EditorMode.trim ? "Trim" : "",
             Icons.cut,
             _currentMode == EditorMode.trim,
             onTap: () => setState(() => _currentMode = EditorMode.trim),
           ),
           const SizedBox(width: 10),
           _buildControlButton(
-            _currentMode == EditorMode.text ? "Текст" : "",
+            _currentMode == EditorMode.text ? "Text" : "",
             Icons.text_fields,
             _currentMode == EditorMode.text,
             onTap: () {
@@ -874,7 +1036,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
               if (!_controller.initialized) {
                 AppNotification.showError(
                   context,
-                  'Подождите загрузки видео',
+                  'Please wait for video to load',
                 );
                 return;
               }
@@ -913,39 +1075,79 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
              if (_controller.isPlaying) _controller.video.pause();
           }),
           const SizedBox(width: 10),
-          const Icon(Icons.undo, color: Colors.white),
-          const SizedBox(width: 10),
-          const Icon(Icons.redo, color: Colors.white),
+          IconButton(
+            icon: Icon(Icons.undo, color: _historyIndex > 0 ? Colors.white : Colors.white30),
+            onPressed: _historyIndex > 0 ? _undo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 15),
+          IconButton(
+            icon: Icon(Icons.redo, color: _historyIndex < _history.length - 1 ? Colors.white : Colors.white30),
+            onPressed: _historyIndex < _history.length - 1 ? _redo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildControlButton(String text, IconData icon, bool isActive, {VoidCallback? onTap}) {
+    final foregroundColor = isActive ? Colors.black : Colors.white70;
+    
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFFFFFF00) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (text.isNotEmpty) ...[
-              Text(
-                text,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                    ),
+      child: AnimatedScale(
+        scale: isActive ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFFFFFF00) : Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive ? Colors.white.withOpacity(0.2) : Colors.transparent,
+              width: 1,
+            ),
+            boxShadow: isActive ? [
+              BoxShadow(
+                color: const Color(0xFFFFFF00).withOpacity(0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              )
+            ] : [],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: foregroundColor, size: 20),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (text.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: TextStyle(
+                          color: foregroundColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        child: Text(text),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(width: 5),
             ],
-            Icon(icon, color: Colors.black, size: 20),
-          ],
+          ),
         ),
       ),
     );
@@ -960,6 +1162,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       ),
       child: Text(
         style.text,
+        textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 30,
           color: style.textColor,
@@ -994,6 +1197,64 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     );
   }
 
+  Future<String> _renderTextLayerToImage(TextLayer layer, double scale, double maxWidth) async {
+    final textStyle = layer.style;
+    final textSpan = TextSpan(
+      text: textStyle.text,
+      style: TextStyle(
+        fontSize: 30 * scale,
+        color: textStyle.textColor,
+        fontWeight: textStyle.fontWeight,
+        fontStyle: textStyle.fontStyle,
+      ),
+    );
+
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+      textAlign: TextAlign.center,
+    );
+    textPainter.layout(maxWidth: maxWidth);
+
+    final padding = 12.0 * scale;
+    final borderRadius = 4.0 * scale;
+    
+    final originalWidth = textPainter.width + padding * 2;
+    final originalHeight = textPainter.height + padding * 2;
+
+    final double maxDim = math.sqrt(originalWidth * originalWidth + originalHeight * originalHeight) * layer.scale;
+    final int width = maxDim.ceil();
+    final int height = maxDim.ceil();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    canvas.translate(width / 2, height / 2);
+    canvas.rotate(layer.rotation);
+    canvas.scale(layer.scale);
+    canvas.translate(-originalWidth / 2, -originalHeight / 2);
+
+    final bgPaint = Paint()..color = textStyle.backgroundColor;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, originalWidth, originalHeight), Radius.circular(borderRadius)),
+      bgPaint,
+    );
+
+    textPainter.paint(canvas, Offset(padding, padding));
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(width, height);
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    final buffer = byteData!.buffer.asUint8List();
+
+    final tempDir = await getTemporaryDirectory();
+    final file = File('${tempDir.path}/text_layer_${DateTime.now().millisecondsSinceEpoch}_${layer.hashCode}.png');
+    await file.writeAsBytes(buffer);
+    
+    return file.path;
+  }
+
   Widget _textEditor() {
     // Preset colors for text
     final textColors = [
@@ -1019,12 +1280,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     // If no layer selected or no layers exist, show add button
     if (_textLayers.isEmpty || _selectedLayerIndex == null || _selectedLayerIndex! >= _textLayers.length) {
       return Center(
+        key: const ValueKey('addText'),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: ElevatedButton.icon(
             onPressed: _addNewTextLayer,
             icon: const Icon(Icons.add),
-            label: const Text('Добавить текст'),
+            label: const Text('Add Text'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFFF00),
               foregroundColor: Colors.black,
@@ -1045,11 +1307,12 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     }
 
     return SingleChildScrollView(
-      padding: EdgeInsets.only(
+      key: const ValueKey('textEditor'),
+      padding: const EdgeInsets.only(
         left: 16,
         right: 16,
-        top: 16,
-        bottom: 16 + 80,
+        top: 12,
+        bottom: 12,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1061,7 +1324,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                 child: ElevatedButton.icon(
                   onPressed: _addNewTextLayer,
                   icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Новый'),
+                  label: const Text('New'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFFF00),
                     foregroundColor: Colors.black,
@@ -1073,7 +1336,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
               ElevatedButton.icon(
                 onPressed: _deleteSelectedLayer,
                 icon: const Icon(Icons.delete, size: 16),
-                label: const Text('Удалить'),
+                label: const Text('Delete'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -1127,7 +1390,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             maxLines: 2,
             style: const TextStyle(color: Colors.white, fontSize: 16),
             decoration: InputDecoration(
-              hintText: 'Введите текст...',
+              hintText: 'Enter text...',
               hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
               enabledBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
@@ -1149,7 +1412,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
           // Font style buttons
           const Text(
-            'Стиль',
+            'Style',
             style: TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -1205,7 +1468,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
           // Text color
           const Text(
-            'Цвет текста',
+            'Text Color',
             style: TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -1230,7 +1493,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
           // Background color
           const Text(
-            'Цвет фона',
+            'Background Color',
             style: TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -1342,9 +1605,9 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     final trimEnd = _controller.maxTrim * videoDuration;
     final trimDuration = trimEnd - trimStart;
     
-    return Expanded(
-      child: Column(
-        children: [
+    return Column(
+      key: const ValueKey('trimmer'),
+      children: [
           // TrimSlider - fixed at top, always visible
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1410,10 +1673,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                 final layerStart = layer.startTime.clamp(trimStart, trimEnd);
                 final layerEnd = layer.endTime.clamp(layerStart, trimEnd);
 
-                // Calculate position on trackbar relative to trim segment
-                final startPosition = ((layerStart - trimStart) / trimDuration) * trimmedSegmentWidth;
-                final endPosition = ((layerEnd - trimStart) / trimDuration) * trimmedSegmentWidth;
-                final trackWidth = (endPosition - startPosition).clamp(40.0, trimmedSegmentWidth);
+                // Calculate position on trackbar relative to full video duration to sync with TrimSlider
+                final startPosition = (layerStart / videoDuration) * trimmedSegmentWidth;
+                final endPosition = (layerEnd / videoDuration) * trimmedSegmentWidth;
+                final trackWidth = (endPosition - startPosition).clamp(24.0, trimmedSegmentWidth);
     
                 return GestureDetector(
                   onTap: () {
@@ -1447,13 +1710,14 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                         Positioned(
                           left: 12 + startPosition.clamp(0.0, trimmedSegmentWidth),
                           child: GestureDetector(
+                            onHorizontalDragEnd: (_) => _saveToHistory(),
                             onHorizontalDragUpdate: (details) {
                               setState(() {
-                                final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                final newStart = (layer.startTime + delta).clamp(trimStart, trimEnd - 0.5);
-                                final newEnd = (layer.endTime + delta).clamp(trimStart + 0.5, trimEnd);
+                                final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                final newStart = (layer.startTime + delta).clamp(trimStart, trimEnd - ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0));
+                                final newEnd = (layer.endTime + delta).clamp(trimStart + ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0), trimEnd);
                                 final currentDuration = layer.endTime - layer.startTime;
-                                const minDuration = 0.5;
+                                final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
 
                                 if (newStart >= trimStart && newEnd <= trimEnd && newEnd - newStart >= minDuration) {
                                   layer.startTime = newStart;
@@ -1469,7 +1733,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                               });
                             },
                             child: Container(
-                              width: trackWidth.clamp(60.0, trimmedSegmentWidth),
+                              width: trackWidth.clamp(24.0, trimmedSegmentWidth),
                               height: 36,
                               decoration: BoxDecoration(
                                 color: isSelected ? const Color(0xFFFFFF00) : const Color(0xFFFFFF00).withOpacity(0.6),
@@ -1483,14 +1747,16 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                 children: [
                                   // Left handle
                                   GestureDetector(
+                                    onHorizontalDragEnd: (_) => _saveToHistory(),
                                     onHorizontalDragUpdate: (details) {
                                       setState(() {
-                                        final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                        final newStart = (layer.startTime + delta).clamp(trimStart, layer.endTime - 0.5);
-                                        if (layer.endTime - newStart >= 0.5) {
+                                        final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                        final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
+                                        final newStart = (layer.startTime + delta).clamp(trimStart, layer.endTime - minDuration);
+                                        if (layer.endTime - newStart >= minDuration) {
                                           layer.startTime = newStart;
                                         } else {
-                                          layer.startTime = layer.endTime - 0.5;
+                                          layer.startTime = layer.endTime - minDuration;
                                         }
                                       });
                                     },
@@ -1535,14 +1801,16 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                   ),
                                   // Right handle
                                   GestureDetector(
+                                    onHorizontalDragEnd: (_) => _saveToHistory(),
                                     onHorizontalDragUpdate: (details) {
                                       setState(() {
-                                        final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                        final newEnd = (layer.endTime + delta).clamp(layer.startTime + 0.5, trimEnd);
-                                        if (newEnd - layer.startTime >= 0.5) {
+                                        final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                        final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
+                                        final newEnd = (layer.endTime + delta).clamp(layer.startTime + minDuration, trimEnd);
+                                        if (newEnd - layer.startTime >= minDuration) {
                                           layer.endTime = newEnd;
                                         } else {
-                                          layer.endTime = layer.startTime + 0.5;
+                                          layer.endTime = layer.startTime + minDuration;
                                         }
                                       });
                                     },
@@ -1602,7 +1870,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
                 final audioDurationInSegment = (_audioEndTime - _audioStartTime).clamp(0.0, trimDuration);
                 final startPosition = ((_audioStartTime - trimStart) / trimDuration * trimmedSegmentWidth).clamp(0.0, trimmedSegmentWidth);
-                final trackWidth = (audioDurationInSegment / trimDuration * trimmedSegmentWidth).clamp(60.0, trimmedSegmentWidth);
+                final trackWidth = (audioDurationInSegment / trimDuration * trimmedSegmentWidth).clamp(24.0, trimmedSegmentWidth);
 
                 return GestureDetector(
                   onLongPress: () {
@@ -1638,12 +1906,12 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                           child: GestureDetector(
                             onHorizontalDragUpdate: (details) {
                               setState(() {
-                                final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                final newStart = (_audioStartTime + delta).clamp(trimStart, trimEnd - 0.5);
-                                final newEnd = (_audioEndTime + delta).clamp(trimStart + 0.5, trimEnd);
+                                final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
+                                final newStart = (_audioStartTime + delta).clamp(trimStart, trimEnd - minDuration);
+                                final newEnd = (_audioEndTime + delta).clamp(trimStart + minDuration, trimEnd);
 
                                 final currentDuration = _audioEndTime - _audioStartTime;
-                                final minDuration = 0.5;
 
                                 if (newStart >= trimStart && newEnd <= trimEnd && newEnd - newStart >= minDuration) {
                                   _audioStartTime = newStart;
@@ -1659,7 +1927,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                               });
                             },
                             child: Container(
-                              width: trackWidth.clamp(60.0, trimmedSegmentWidth),
+                              width: trackWidth.clamp(24.0, trimmedSegmentWidth),
                               height: 40,
                               decoration: BoxDecoration(
                                 color: const Color(0xFF9C27B0), // Purple for audio
@@ -1672,12 +1940,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                   GestureDetector(
                                     onHorizontalDragUpdate: (details) {
                                       setState(() {
-                                        final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                        final newStart = (_audioStartTime + delta).clamp(trimStart, _audioEndTime - 0.5);
-                                        if (_audioEndTime - newStart >= 0.5) {
+                                        final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                        final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
+                                        final newStart = (_audioStartTime + delta).clamp(trimStart, _audioEndTime - minDuration);
+                                        if (_audioEndTime - newStart >= minDuration) {
                                           _audioStartTime = newStart;
                                         } else {
-                                          _audioStartTime = _audioEndTime - 0.5;
+                                          _audioStartTime = _audioEndTime - minDuration;
                                         }
                                       });
                                     },
@@ -1726,12 +1995,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                                   GestureDetector(
                                     onHorizontalDragUpdate: (details) {
                                       setState(() {
-                                        final delta = details.delta.dx / trimmedSegmentWidth * trimDuration;
-                                        final newEnd = (_audioEndTime + delta).clamp(_audioStartTime + 0.5, trimEnd);
-                                        if (newEnd - _audioStartTime >= 0.5) {
+                                        final delta = details.delta.dx / trimmedSegmentWidth * videoDuration;
+                                        final minDuration = ((24.0 / trimmedSegmentWidth) * videoDuration).clamp(0.1, 5.0);
+                                        final newEnd = (_audioEndTime + delta).clamp(_audioStartTime + minDuration, trimEnd);
+                                        if (newEnd - _audioStartTime >= minDuration) {
                                           _audioEndTime = newEnd;
                                         } else {
-                                          _audioEndTime = _audioStartTime + 0.5;
+                                          _audioEndTime = _audioStartTime + minDuration;
                                         }
                                       });
                                     },
@@ -1769,8 +2039,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _bottomNavBar() {
@@ -1800,7 +2069,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text("Назад", style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text("Back", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
             const SizedBox(width: 16),
@@ -1813,7 +2082,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                child: const Text("Сохранить", style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -1906,7 +2175,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Редактировать текст',
+                    'Edit text',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -1928,7 +2197,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
                 maxLines: 3,
                 style: const TextStyle(color: Colors.white, fontSize: 16),
                 decoration: InputDecoration(
-                  hintText: 'Введите текст...',
+                  hintText: 'Enter text...',
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
@@ -1945,7 +2214,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
 
               // Preview
               const Text(
-                'Превью',
+                'Preview',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -1961,7 +2230,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    _textController.text.isEmpty ? 'Текст' : _textController.text,
+                    _textController.text.isEmpty ? 'Text' : _textController.text,
                     style: TextStyle(
                       fontSize: 30,
                       color: _textColor,
@@ -1975,7 +2244,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
 
               // Font style buttons
               const Text(
-                'Стиль шрифта',
+                'Font Style',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -2025,7 +2294,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
 
               // Text color
               const Text(
-                'Цвет текста',
+                'Text Color',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -2048,7 +2317,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
 
               // Background color
               const Text(
-                'Цвет фона',
+                'Background Color',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -2094,7 +2363,7 @@ class _TextStyleEditorSheetState extends State<_TextStyleEditorSheet> {
                     ),
                   ),
                   child: const Text(
-                    'Сохранить',
+                    'Save',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

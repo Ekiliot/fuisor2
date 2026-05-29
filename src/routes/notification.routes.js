@@ -22,6 +22,7 @@ router.get('/', validateAuth, async (req, res) => {
         type,
         post_id,
         comment_id,
+        news_id,
         is_read,
         created_at,
         actor:actor_id (
@@ -39,6 +40,11 @@ router.get('/', validateAuth, async (req, res) => {
         comment:comment_id (
           id,
           content
+        ),
+        news:news_id (
+          id,
+          title,
+          cover_image_url
         )
       `)
       .eq('user_id', userId)
@@ -509,6 +515,7 @@ async function createNotification(userId, actorId, type, postId = null, commentI
         type,
         post_id: postId,
         comment_id: commentId,
+        news_id: options.news_id || null,
         is_read: false
       })
       .select()

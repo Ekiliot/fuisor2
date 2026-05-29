@@ -21,6 +21,7 @@ import 'chats_list_screen.dart';
 import 'camera_screen.dart';
 import 'map_screen.dart';
 import 'recommendation_settings_screen.dart';
+import 'news_feed_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -917,19 +918,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 );
                 } else {
-                  // News tab - пока пустой
+                  // News tab - показываем NewsFeedScreen
                   if (index == 2) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Text(
-                          'News feed coming soon',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                    return const SizedBox(
+                      height: 600, // Примерная высота для новостей
+                      child: NewsFeedScreen(),
                     );
                   }
                   return const SizedBox.shrink();

@@ -13,6 +13,8 @@ const NOTIFICATION_TYPE_TO_PREFERENCE = {
   'comment': 'comment_enabled',
   'comment_reply': 'comment_reply_enabled',
   'comment_like': 'comment_like_enabled',
+  'news_like': 'news_like_enabled',
+  'news_comment': 'news_comment_enabled',
 };
 
 /**
@@ -108,6 +110,8 @@ export async function getUserNotificationPreferences(userId) {
         comment_enabled: true,
         comment_reply_enabled: true,
         comment_like_enabled: true,
+        news_like_enabled: true,
+        news_comment_enabled: true,
       };
     }
 
@@ -138,6 +142,8 @@ export async function getUserNotificationPreferences(userId) {
             comment_enabled: true,
             comment_reply_enabled: true,
             comment_like_enabled: true,
+            news_like_enabled: true,
+            news_comment_enabled: true,
           };
         }
         
@@ -165,6 +171,8 @@ export async function getUserNotificationPreferences(userId) {
       comment_enabled: preferences.comment_enabled ?? true,
       comment_reply_enabled: preferences.comment_reply_enabled ?? true,
       comment_like_enabled: preferences.comment_like_enabled ?? true,
+      news_like_enabled: preferences.news_like_enabled ?? true,
+      news_comment_enabled: preferences.news_comment_enabled ?? true,
     };
   } catch (error) {
     console.error(`[NotificationPreferences] Exception getting preferences: ${error.message}`);
@@ -180,6 +188,8 @@ export async function getUserNotificationPreferences(userId) {
       comment_enabled: true,
       comment_reply_enabled: true,
       comment_like_enabled: true,
+      news_like_enabled: true,
+      news_comment_enabled: true,
     };
   }
 }
