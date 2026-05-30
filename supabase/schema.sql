@@ -92,9 +92,25 @@ CREATE TABLE post_hashtags (
     UNIQUE(post_id, hashtag_id)
 );
 
+-- Create sounds table
+CREATE TABLE sounds (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    title TEXT NOT NULL,
+    audio_url TEXT NOT NULL,
+    author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+    source_post_id UUID REFERENCES posts(id) ON DELETE SET NULL,
+    duration INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Modify posts table to add sound_id
+ALTER TABLE posts ADD COLUMN sound_id UUID REFERENCES sounds(id) ON DELETE SET NULL;
+
 -- Create storage buckets
 INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true);
 INSERT INTO storage.buckets (id, name, public) VALUES ('post-media', 'post-media', true);
+INSERT INTO storage.buckets (id, name, public) VALUES ('sounds', 'sounds', true);
 
 -- Set up storage policies
 CREATE POLICY "Avatar images are publicly accessible."
@@ -113,6 +129,14 @@ CREATE POLICY "Authenticated users can upload post media."
   ON storage.objects FOR INSERT
   WITH CHECK ( bucket_id = 'post-media' AND auth.role() = 'authenticated' );
 
+CREATE POLICY "Sound files are publicly accessible."
+  ON storage.objects FOR SELECT
+  USING ( bucket_id = 'sounds' );
+
+CREATE POLICY "Authenticated users can upload sounds."
+  ON storage.objects FOR INSERT
+  WITH CHECK ( bucket_id = 'sounds' AND auth.role() = 'authenticated' );
+
 -- Set up RLS (Row Level Security)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
@@ -123,6 +147,7 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE post_mentions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hashtags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE post_hashtags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sounds ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Public profiles are viewable by everyone."
@@ -248,6 +273,23 @@ CREATE POLICY "Users can delete hashtags from their posts."
   USING ( auth.uid() IN (
     SELECT user_id FROM posts WHERE id = post_id
   ));
+
+-- Sounds policies
+CREATE POLICY "Sounds are viewable by everyone."
+  ON sounds FOR SELECT
+  USING ( true );
+
+CREATE POLICY "Authenticated users can create sounds."
+  ON sounds FOR INSERT
+  WITH CHECK ( auth.role() = 'authenticated' );
+
+CREATE POLICY "Users can update own sounds."
+  ON sounds FOR UPDATE
+  USING ( auth.uid() = author_id );
+
+CREATE POLICY "Users can delete own sounds."
+  ON sounds FOR DELETE
+  USING ( auth.uid() = author_id );
 
 -- Create comment_likes table
 CREATE TABLE comment_likes (

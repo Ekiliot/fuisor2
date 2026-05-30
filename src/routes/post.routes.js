@@ -98,7 +98,7 @@ router.get('/', validateAuth, async (req, res) => {
         *,
         profiles:user_id (username, name, avatar_url),
         likes(count),
-        coauthor:coauthor_user_id (id, username, name, avatar_url)
+        coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))
       `, { count: 'exact' })
       .is('expires_at', null) // Исключаем сторис (посты с expires_at)
       .order('created_at', { ascending: false })
@@ -384,7 +384,7 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       hasThumbnailUrl: !!req.body.thumbnail_url,
     });
     
-    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude, coauthors, external_link_url, external_link_text, city, district, street, address, country, location_visibility } = req.body;
+    const { caption, media_url, media_type, thumbnail_url, mentions, visibility, expires_in_hours, latitude, longitude, coauthors, external_link_url, external_link_text, city, district, street, address, country, location_visibility, sound_id } = req.body;
 
     if (!media_url) {
       logger.postError('No media URL provided', { userId: req.user.id });
@@ -520,6 +520,11 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       postData.expires_at = expiresAt.toISOString();
     }
 
+    // Add sound_id if provided
+    if (sound_id) {
+      postData.sound_id = sound_id;
+    }
+
     // Add location if provided
     if (latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null) {
       postData.latitude = parseFloat(latitude);
@@ -575,7 +580,7 @@ router.post('/', validateAuth, validatePost, async (req, res) => {
       .select(`
         *,
         profiles:user_id (username, name, avatar_url),
-        coauthor:coauthor_user_id (id, username, name, avatar_url)
+        coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))
       `)
       .single();
       
@@ -814,7 +819,7 @@ router.get('/feed', validateAuth, async (req, res) => {
       // Get world posts (excluding Moldova, excluding current user's posts, only public)
       const { data: worldPosts } = await supabaseAdmin
         .from('posts')
-        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
         .is('expires_at', null)
         .neq('country', 'Moldova')
         .not('country', 'is', null)
@@ -827,7 +832,7 @@ router.get('/feed', validateAuth, async (req, res) => {
       // Get Moldova posts (excluding current user's posts, only public)
       const { data: moldovaPosts } = await supabaseAdmin
         .from('posts')
-        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+        .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
         .is('expires_at', null)
         .eq('country', 'Moldova')
         .neq('user_id', userId) // Исключаем посты текущего пользователя
@@ -841,7 +846,7 @@ router.get('/feed', validateAuth, async (req, res) => {
       if (userProfile?.last_location_lat && userProfile?.last_location_lng) {
         const { data: allPosts } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
@@ -877,7 +882,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         // Повторяем запросы без фильтрации по user_id
         const { data: worldPostsRelaxed } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .neq('country', 'Moldova')
           .not('country', 'is', null)
@@ -888,7 +893,7 @@ router.get('/feed', validateAuth, async (req, res) => {
 
         const { data: moldovaPostsRelaxed } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .eq('country', 'Moldova')
           .eq('visibility', 'public')
@@ -924,7 +929,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         // Получаем все посты с координатами
         const { data: allPostsWithLocation } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
@@ -955,7 +960,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         if (districts.length > 0) {
           let query = supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .in('district', districts)
             .eq('visibility', 'public')
@@ -987,7 +992,7 @@ router.get('/feed', validateAuth, async (req, res) => {
           // Посты из городов
           let cityQuery = supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .in('city', cities)
             .eq('visibility', 'public')
@@ -1003,7 +1008,7 @@ router.get('/feed', validateAuth, async (req, res) => {
           // Посты без гео (смешиваем с постами из городов)
           const { data: noLocationPostsAll } = await supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .is('country', null)
             .eq('visibility', 'public')
@@ -1026,7 +1031,7 @@ router.get('/feed', validateAuth, async (req, res) => {
           // Если есть только районы без городов - добавляем посты без гео после районов
           const { data: noLocationPostsAll } = await supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .is('country', null)
             .eq('visibility', 'public')
@@ -1042,7 +1047,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         if (countries.length > 0) {
           let countryQuery = supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .in('country', countries)
             .eq('visibility', 'public')
@@ -1058,7 +1063,7 @@ router.get('/feed', validateAuth, async (req, res) => {
           // Смешиваем с постами без гео
           const { data: noLocationMore } = await supabaseAdmin
             .from('posts')
-            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+            .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
             .is('expires_at', null)
             .is('country', null)
             .eq('visibility', 'public')
@@ -1081,7 +1086,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         // ПРИОРИТЕТ 4: Весь мир + посты без гео
         const { data: worldPostsAll } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .eq('visibility', 'public')
           .order('created_at', { ascending: false })
@@ -1092,7 +1097,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         // Смешиваем с постами без гео
         const { data: noLocationFinal } = await supabaseAdmin
           .from('posts')
-          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url)`)
+          .select(`*, profiles:user_id (username, name, avatar_url), likes(count), coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))`)
           .is('expires_at', null)
           .is('country', null)
           .eq('visibility', 'public')
@@ -1141,7 +1146,7 @@ router.get('/feed', validateAuth, async (req, res) => {
         *,
         profiles:user_id (username, name, avatar_url),
           likes(count),
-          coauthor:coauthor_user_id (id, username, name, avatar_url)
+          coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))
       `, { count: 'exact' })
         .is('expires_at', null);
 
@@ -2099,7 +2104,7 @@ router.put('/:id', validateAuth, validateUUID, validatePostUpdate, async (req, r
       .select(`
         *,
         profiles:user_id (username, name, avatar_url),
-        coauthor:coauthor_user_id (id, username, name, avatar_url)
+        coauthor:coauthor_user_id (id, username, name, avatar_url), sound:sound_id (id, title, audio_url, author_id, duration, author:author_id(username, name))
       `)
       .single();
 

@@ -10,6 +10,7 @@ import hashtagRoutes from './routes/hashtag.routes.js';
 import { router as notificationRoutes } from './routes/notification.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
 import newsRoutes from './routes/news.routes.js';
+import soundRoutes from './routes/sound.routes.js';
 import { logger } from './utils/logger.js';
 import { initializeFCM } from './utils/fcm_service.js';
 
@@ -53,6 +54,7 @@ app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/news', newsRoutes);
+app.use('/api/sounds', soundRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
